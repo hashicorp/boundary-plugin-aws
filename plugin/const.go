@@ -6,4 +6,5 @@ const (
 	constSecretAccessKey           = "secret_access_key"
 	constDisableCredentialRotation = "disable_credential_rotation"
 	constCredsLastRotatedTime      = "creds_last_rotated_time"
+	constDescribeInstancesFilters  = "filters"
 )
