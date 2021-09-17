@@ -6,8 +6,11 @@ import (
 	"fmt"
 	"time"
 
+	"github.com/aws/aws-sdk-go/aws"
 	"github.com/aws/aws-sdk-go/aws/awserr"
 	"github.com/aws/aws-sdk-go/aws/endpoints"
+	"github.com/aws/aws-sdk-go/aws/session"
+	"github.com/aws/aws-sdk-go/service/ec2"
 	"github.com/aws/aws-sdk-go/service/iam"
 	pb "github.com/hashicorp/boundary/sdk/pbs/plugin"
 	"github.com/hashicorp/go-secure-stdlib/awsutil"
@@ -41,7 +44,7 @@ func (p *AwsPlugin) OnCreateCatalog(ctx context.Context, req *pb.OnCreateCatalog
 		return nil, errors.New("attributes are required")
 	}
 
-	if err := validateRegionValue(attrs); err != nil {
+	if _, err := getValidateRegionValue(attrs); err != nil {
 		return nil, err
 	}
 
@@ -73,8 +76,13 @@ func (p *AwsPlugin) OnCreateCatalog(ctx context.Context, req *pb.OnCreateCatalog
 		}
 	}
 
+	persistedProto, err := state.ToProto()
+	if err != nil {
+		return nil, err
+	}
+
 	return &pb.OnCreateCatalogResponse{
-		Persisted: state.ToProto(),
+		Persisted: persistedProto,
 	}, nil
 }
 
@@ -101,7 +109,7 @@ func (p *AwsPlugin) OnUpdateCatalog(ctx context.Context, req *pb.OnUpdateCatalog
 	}
 
 	// Validate the region.
-	if err := validateRegionValue(attrs); err != nil {
+	if _, err := getValidateRegionValue(attrs); err != nil {
 		return nil, err
 	}
 
@@ -160,8 +168,13 @@ func (p *AwsPlugin) OnUpdateCatalog(ctx context.Context, req *pb.OnUpdateCatalog
 	}
 
 	// That's it!
-	return &pb.OnCreateCatalogResponse{
-		Persisted: state.ToProto(),
+	persistedProto, err := state.ToProto()
+	if err != nil {
+		return nil, err
+	}
+
+	return &pb.OnUpdateCatalogResponse{
+		Persisted: persistedProto,
 	}, nil
 }
 
@@ -199,18 +212,19 @@ func (p *AwsPlugin) OnCreateSet(ctx context.Context, req *pb.OnCreateSetRequest)
 	if catalogAttrs == nil {
 		return nil, errors.New("catalog missing attributes")
 	}
-	
-  state, err := awsCatalogPersistedStateFromProto(req.GetPersisted())
+
+	state, err := awsCatalogPersistedStateFromProto(req.GetPersisted())
 	if err != nil {
 		return nil, err
 	}
 
-	// Validate the region.
-	if err := validateRegionValue(catalogAttrs); err != nil {
+	// Get/validate the region.
+	region, err := getValidateRegionValue(catalogAttrs)
+	if err != nil {
 		return nil, err
 	}
-	
-  set := req.GetSet()
+
+	set := req.GetSet()
 	if set == nil {
 		return nil, errors.New("set is nil")
 	}
@@ -220,9 +234,33 @@ func (p *AwsPlugin) OnCreateSet(ctx context.Context, req *pb.OnCreateSetRequest)
 		return nil, errors.New("set missing attributes")
 	}
 
-  // validate the request by populating the 
+	// We validate the parameters by attempting to do a dry run of
+	// DescribeInstances with the host catalog authentication details,
+	// the supplied region, and the filter parameters specified in the
+	// host set.
+	//
+	// Build the filters first.
+	filters, err := buildFilters(setAttrs)
+	if err != nil {
+		return nil, fmt.Errorf("error building filters: %w", err)
+	}
 
-	return nil, errors.New("not implemented")
+	// Get a client from the state information.
+	ec2Client, err := state.EC2Client(region)
+	if err != nil {
+		return nil, fmt.Errorf("error getting EC2 client: %w", err)
+	}
+
+	// Perform the request, making sure to set a dry run. Ignore the
+	// output, we just want to make sure there isn't an error.
+	if _, err := ec2Client.DescribeInstances(&ec2.DescribeInstancesInput{
+		DryRun:  aws.Bool(true),
+		Filters: filters,
+	}); err != nil {
+		return nil, fmt.Errorf("error performing dry run of DescribeInstances: %w", err)
+	}
+
+	return &pb.OnCreateSetResponse{}, nil
 }
 
 func (p *AwsPlugin) OnUpdateSet(ctx context.Context, req *pb.OnUpdateSetRequest) (*pb.OnUpdateSetResponse, error) {
@@ -368,6 +406,31 @@ func (s *awsCatalogPersistedState) DeleteCreds() error {
 	return nil
 }
 
+// GetSession returns a configured AWS session for the credentials in
+// the state.
+func (s *awsCatalogPersistedState) GetSession() (*session.Session, error) {
+	c, err := awsutil.NewCredentialsConfig(
+		awsutil.WithAccessKey(s.AccessKeyId),
+		awsutil.WithSecretKey(s.SecretAccessKey),
+	)
+	if err != nil {
+		return nil, err
+	}
+
+	return c.GetSession()
+}
+
+// EC2Client returns a configured EC2 client based on the session
+// information stored in the state.
+func (s *awsCatalogPersistedState) EC2Client(region string) (*ec2.EC2, error) {
+	sess, err := s.GetSession()
+	if err != nil {
+		return nil, fmt.Errorf("error getting AWS session: %w", err)
+	}
+
+	return ec2.New(sess, aws.NewConfig().WithRegion(region)), nil
+}
+
 func getStringValue(in *structpb.Struct, k string, required bool) (string, error) {
 	mv := in.AsMap()
 	v, ok := mv[k]
@@ -445,37 +508,48 @@ func getMapValue(in *structpb.Struct, k string) (map[string]interface{}, error) 
 	return m, nil
 }
 
-func validateRegionValue(in *structpb.Struct) error {
+func getValidateRegionValue(in *structpb.Struct) (string, error) {
 	region, err := getStringValue(in, constRegion, true)
 	if err != nil {
-		return err
+		return "", err
 	}
 
 	_, found := endpoints.PartitionForRegion(endpoints.DefaultPartitions(), region)
 	if !found {
-		return fmt.Errorf("not a valid region: %s", region)
+		return "", fmt.Errorf("not a valid region: %s", region)
 	}
 
-	return nil
+	return region, nil
 }
 
 func buildFilters(in *structpb.Struct) ([]*ec2.Filter, error) {
 	var filters []*ec2.Filter
-  m, err := 
-  m := in.AsMap()
-	for k, v := range m[constDescribeInstancesFilters] {
+	m, err := getMapValue(in, constDescribeInstancesFilters)
+	if err != nil {
+		return nil, err
+	}
+
+	for k, v := range m {
 		w, ok := v.([]interface{})
-    if !ok {
-      return nil, 
-    }
-		var filterValues []*string
-		for _, e := range m["values"].([]interface{}) {
-			filterValues = append(filterValues, aws.String(e.(string)))
+		if !ok {
+			return nil, fmt.Errorf("unexpected type for filter values in %q: want array, got %T", k, v)
 		}
+
+		var filterValues []*string
+		for _, e := range w {
+			f, ok := e.(string)
+			if !ok {
+				return nil, fmt.Errorf("unexpected type for filter value %v: want array, got %T", e, e)
+			}
+
+			filterValues = append(filterValues, aws.String(f))
+		}
+
 		filters = append(filters, &ec2.Filter{
-			Name:   aws.String(m["name"].(string)),
+			Name:   aws.String(k),
 			Values: filterValues,
 		})
 	}
-	return filters
+
+	return filters, nil
 }
