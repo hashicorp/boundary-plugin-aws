@@ -239,10 +239,10 @@ func (p *AwsPlugin) OnCreateSet(ctx context.Context, req *pb.OnCreateSetRequest)
 		return nil, fmt.Errorf("error getting EC2 client: %w", err)
 	}
 
-  input, err := buildDescribeInstancesInput(setAttrs, true)
-  if err != nil {
-    return nil, fmt.Errorf("error building DescribeInstances parameters: %w", err)
-  }
+	input, err := buildDescribeInstancesInput(setAttrs, true)
+	if err != nil {
+		return nil, fmt.Errorf("error building DescribeInstances parameters: %w", err)
+	}
 
 	if _, err := ec2Client.DescribeInstances(input); err != nil {
 		return nil, fmt.Errorf("error performing dry run of DescribeInstances: %w", err)
@@ -273,8 +273,8 @@ func (p *AwsPlugin) OnUpdateSet(ctx context.Context, req *pb.OnUpdateSetRequest)
 		return nil, err
 	}
 
-  // As with catalog, we don't need to really look at the old host
-  // set here, just need to work off of/validate the new set config
+	// As with catalog, we don't need to really look at the old host
+	// set here, just need to work off of/validate the new set config
 	set := req.GetNewSet()
 	if set == nil {
 		return nil, errors.New("new set is nil")
@@ -290,10 +290,10 @@ func (p *AwsPlugin) OnUpdateSet(ctx context.Context, req *pb.OnUpdateSetRequest)
 		return nil, fmt.Errorf("error getting EC2 client: %w", err)
 	}
 
-  input, err := buildDescribeInstancesInput(setAttrs, true)
-  if err != nil {
-    return nil, fmt.Errorf("error building DescribeInstances parameters: %w", err)
-  }
+	input, err := buildDescribeInstancesInput(setAttrs, true)
+	if err != nil {
+		return nil, fmt.Errorf("error building DescribeInstances parameters: %w", err)
+	}
 
 	if _, err := ec2Client.DescribeInstances(input); err != nil {
 		return nil, fmt.Errorf("error performing dry run of DescribeInstances: %w", err)
@@ -303,8 +303,8 @@ func (p *AwsPlugin) OnUpdateSet(ctx context.Context, req *pb.OnUpdateSetRequest)
 }
 
 func (p *AwsPlugin) OnDeleteSet(ctx context.Context, req *pb.OnDeleteSetRequest) (*pb.OnDeleteSetResponse, error) {
-  // No-op, AWS host set does not maintain anything that requires
-  // cleanup
+	// No-op, AWS host set does not maintain anything that requires
+	// cleanup
 	return nil, nil
 }
 
@@ -331,51 +331,82 @@ func (p *AwsPlugin) ListHosts(ctx context.Context, req *pb.ListHostsRequest) (*p
 	}
 
 	sets := req.GetSets()
-	if set == nil {
-		return nil, errors.New("set is nil")
+	if sets == nil {
+		return nil, errors.New("sets is nil")
 	}
 
-  // Build all the queries in advance.
-  type hostSetQuery struct {
-    Id string
-    Input *ec2.DescribeInstancesInput
-    Output *ec2.DescribeInstancesOutput
-  }
+	// Build all the queries in advance.
+	type hostSetQuery struct {
+		Id          string
+		Input       *ec2.DescribeInstancesInput
+		Output      *ec2.DescribeInstancesOutput
+		OutputHosts []*pb.ListHostsResponseHost
+	}
 
-  queries := make([]hostSetQuery, len(sets))
-  for i, set := range sets {
-    setAttrs := set.GetAttributes()
-    if setAttrs == nil {
-      return nil, errors.New("set missing attributes")
-    }
+	queries := make([]hostSetQuery, len(sets))
+	for i, set := range sets {
+		setAttrs := set.GetAttributes()
+		if setAttrs == nil {
+			return nil, errors.New("set missing attributes")
+		}
 
-    input, err := buildDescribeInstancesInput(setAttrs, true)
-    if err != nil {
-      return nil, fmt.Errorf("error building DescribeInstances parameters for host set id %q: %w", set.GetId(), err)
-    }
-    queries[i] = hostSetQuery{
-      Id: set.GetId(),
-      Input: input,
-    }
-  }
-	
-  ec2Client, err := state.EC2Client(region)
+		input, err := buildDescribeInstancesInput(setAttrs, true)
+		if err != nil {
+			return nil, fmt.Errorf("error building DescribeInstances parameters for host set id %q: %w", set.GetId(), err)
+		}
+		queries[i] = hostSetQuery{
+			Id:    set.GetId(),
+			Input: input,
+		}
+	}
+
+	ec2Client, err := state.EC2Client(region)
 	if err != nil {
 		return nil, fmt.Errorf("error getting EC2 client: %w", err)
 	}
 
-  // Run all queries now and assemble output.
-  for i, query range queries {
-    output, err := ec2Client.DescribeInstances(query.Input)
-    if err != nil {
-      return nil, fmt.Errorf("error running DescribeInstances for host set id %q: %w", query.Id, err)
-    }
+	// Run all queries now and assemble output.
+	var maxLen int
+	for i, query := range queries {
+		output, err := ec2Client.DescribeInstances(query.Input)
+		if err != nil {
+			return nil, fmt.Errorf("error running DescribeInstances for host set id %q: %w", query.Id, err)
+		}
 
-    queries[i].Output = output
-  }
+		queries[i].Output = output
 
-  // Now process the results. Basically go through each set of output
-  // and assemble 
+		// Process the output here, we will normalize this into a single
+		// set of hosts afterwards (possibly removing duplicates).
+		for _, reservation := range output.Reservations {
+			for _, instance := range reservation.Instances {
+				host, err := awsInstanceToHost(instance)
+				if err != nil {
+					return nil, fmt.Errorf("error processing host results for host set id %q: %w", query.Id, err)
+				}
+
+				queries[i].OutputHosts = append(queries[i].OutputHosts, host)
+				maxLen++ // Increment maximum counter for allocation later
+			}
+		}
+	}
+
+	// Now de-duplicate the hosts for the output.
+	hostResults := make([]*pb.ListHostsResponseHost, 0, maxLen)
+	seenInstances := make(map[string]struct{})
+	for _, query := range queries {
+		for _, host := range query.OutputHosts {
+			if _, ok := seenInstances[host.ExternalId]; !ok {
+				continue
+			}
+
+			hostResults = append(hostResults, host)
+		}
+	}
+
+	// Done!
+	return &pb.ListHostsResponse{
+		Hosts: hostResults,
+	}, nil
 }
 
 type awsCatalogPersistedState struct {
@@ -658,7 +689,7 @@ func buildFilters(in *structpb.Struct) ([]*ec2.Filter, error) {
 }
 
 func buildDescribeInstancesInput(attrs *structpb.Struct, dryRun bool) (*ec2.DescribeInstancesInput, error) {
-	filters, err := buildFilters(setAttrs)
+	filters, err := buildFilters(attrs)
 	if err != nil {
 		return nil, fmt.Errorf("error building filters: %w", err)
 	}
@@ -666,7 +697,7 @@ func buildDescribeInstancesInput(attrs *structpb.Struct, dryRun bool) (*ec2.Desc
 	return &ec2.DescribeInstancesInput{
 		DryRun:  aws.Bool(dryRun),
 		Filters: filters,
-	})
+	}, nil
 }
 
 // awsInstanceToHost processes data from an ec2.Instance and returns
@@ -676,90 +707,90 @@ func buildDescribeInstancesInput(attrs *structpb.Struct, dryRun bool) (*ec2.Desc
 // Returns nil if the instance is not ready (ie: powered down,
 // hibernated, or terminated).
 func awsInstanceToHost(instance *ec2.Instance) (*pb.ListHostsResponseHost, error) {
-  // Integrity check: some fields should always be non-nil. Check
-  // those.
-  if instance == nil {
-    return nil, errors.New("response integrity error: missing instance entry")
-  }
+	// Integrity check: some fields should always be non-nil. Check
+	// those.
+	if instance == nil {
+		return nil, errors.New("response integrity error: missing instance entry")
+	}
 
-  if instance.InstanceState == nil {
-    return nil, errors.New("response integrity error: missing instance state")
-  }
+	if instance.State == nil {
+		return nil, errors.New("response integrity error: missing instance state")
+	}
 
-  if aws.StringValue(instance.InstanceState.Name) == "" {
-    return nil, errors.New("response integrity error: missing instance state name")
-  }
-  
-  if aws.StringValue(instance.InstanceId) == "" {
-    return nil, errors.New("response integrity error: missing instance id")
-  }
+	if aws.StringValue(instance.State.Name) == "" {
+		return nil, errors.New("response integrity error: missing instance state name")
+	}
 
-  // Abort this if the instance is not ready
-  if aws.StringValue(instance.InstanceState.Name) != ec2.InstanceStateNameRunning {
-    return nil
-  }
+	if aws.StringValue(instance.InstanceId) == "" {
+		return nil, errors.New("response integrity error: missing instance id")
+	}
 
-  result := new(pb.ListHostsResponseHost)
-  
-  // External ID is the instance ID.
-  result.ExternalId = aws.StringValue(instance.InstanceId)
+	// Abort this if the instance is not ready
+	if aws.StringValue(instance.State.Name) != ec2.InstanceStateNameRunning {
+		return nil, nil
+	}
 
-  // First IP address is always the private IP address field if it's
-  // populated
-  if aws.StringValue(instance.PrivateIpAddress) != "" {
-    result.IpAddresses = append(result.IpAddresses, aws.StringValue(instance.PrivateIpAddress))
-  }
+	result := new(pb.ListHostsResponseHost)
 
-  // Public IP address is next.
-  if aws.StringValue(instance.PublicIpAddress) != "" {
-    result.IpAddresses = append(result.IpAddresses, aws.StringValue(instance.PublicIpAddress))
-  }
+	// External ID is the instance ID.
+	result.ExternalId = aws.StringValue(instance.InstanceId)
 
-  // Now go through all of the interfaces and log the IP address of
-  // every interface.
-  for _, iface := range instance.NetworkInterfaces {
-    if iface == nil {
-      // Probably will never happen, but just in case
-      return nil, errors.New("response integrity error: interface entry is nil")
-    }
+	// First IP address is always the private IP address field if it's
+	// populated
+	if aws.StringValue(instance.PrivateIpAddress) != "" {
+		result.IpAddresses = append(result.IpAddresses, aws.StringValue(instance.PrivateIpAddress))
+	}
 
-    // Iterate through the private IP addresses and log the
-    // information.
-    for _, addr := range iface.PrivateIpAddresses {
-      if addr == nil {
-        return nil, errors.New("response integrity error: interface address entry is nil")
-      }
+	// Public IP address is next.
+	if aws.StringValue(instance.PublicIpAddress) != "" {
+		result.IpAddresses = append(result.IpAddresses, aws.StringValue(instance.PublicIpAddress))
+	}
 
-      // Check to see if the PrivateIpAddress matches the one
-      // reported at the top-level of the instance (let's call it the
-      // "default address"). If it doesn't, add it.
-      if aws.StringValue(addr.PrivateIpAddress) != "" {
-        if aws.StringValue(instance.PrivateIpAddress) != aws.StringValue(addr.PrivateIpAddress) {
-          result.IpAddresses = append(result.IpAddresses, aws.StringValue(addr.PrivateIpAddress))
-        }
-      }
-      
-      // Do the same for the default public IP address and the
-      // public association on the interface.
-      if addr.Association != nil && addr.Assoication.PubilcIp != nil && *addr.Assoication.PubilcIp != "" {
-        if instance.PublicIpAddress != nil && *instance.PublicIpAddress != *addr.Assoication.PubilcIp {
-          result.IpAddresses = append(result.IpAddresses, *addr.Assoication.PubilcIp)
-        }
-      }
-    }
+	// Now go through all of the interfaces and log the IP address of
+	// every interface.
+	for _, iface := range instance.NetworkInterfaces {
+		if iface == nil {
+			// Probably will never happen, but just in case
+			return nil, errors.New("response integrity error: interface entry is nil")
+		}
 
-    // Add the IPv6 addresses.
-    for _, addr := range iface.Ipv6Addresses {
-      if addr == nil {
-        continue
-      }
+		// Iterate through the private IP addresses and log the
+		// information.
+		for _, addr := range iface.PrivateIpAddresses {
+			if addr == nil {
+				return nil, errors.New("response integrity error: interface address entry is nil")
+			}
 
-      if addr.Ipv6Address != nil && *addr.Ipv6Address != "" {
-        result.IpAddresses = append(result.IpAddresses, *addr.Ipv6Address)
-      }
-    }
-  }
+			// Check to see if the PrivateIpAddress matches the one
+			// reported at the top-level of the instance (let's call it the
+			// "default address"). If it doesn't, add it.
+			if aws.StringValue(addr.PrivateIpAddress) != "" {
+				if aws.StringValue(instance.PrivateIpAddress) != aws.StringValue(addr.PrivateIpAddress) {
+					result.IpAddresses = append(result.IpAddresses, aws.StringValue(addr.PrivateIpAddress))
+				}
+			}
 
-  // Done
-  return result
+			// Do the same for the default public IP address and the
+			// public association on the interface.
+			if addr.Association != nil && addr.Association.PublicIp != nil && aws.StringValue(addr.Association.PublicIp) != "" {
+				if instance.PublicIpAddress != nil && aws.StringValue(instance.PublicIpAddress) != aws.StringValue(addr.Association.PublicIp) {
+					result.IpAddresses = append(result.IpAddresses, aws.StringValue(addr.Association.PublicIp))
+				}
+			}
+		}
+
+		// Add the IPv6 addresses.
+		for _, addr := range iface.Ipv6Addresses {
+			if addr == nil {
+				continue
+			}
+
+			if addr.Ipv6Address != nil && aws.StringValue(addr.Ipv6Address) != "" {
+				result.IpAddresses = append(result.IpAddresses, aws.StringValue(addr.Ipv6Address))
+			}
+		}
+	}
+
+	// Done
+	return result, nil
 }
