@@ -15,8 +15,6 @@ resource "aws_iam_user" "user" {
 
 resource "aws_iam_access_key" "user_initial_key" {
   user = aws_iam_user.user.name
-
-  tags = var.project_path_tags
 }
 
 resource "aws_iam_policy" "ec2_describeinstances" {
@@ -36,11 +34,13 @@ resource "aws_iam_policy" "ec2_describeinstances" {
   ]
 }
 EOF
+
+  tags = var.project_path_tags
 }
 
-resource "aws_iam_user_policy_attachement" "user_ec2_describeinstances_attachment" {
+resource "aws_iam_user_policy_attachment" "user_ec2_describeinstances_attachment" {
   user       = aws_iam_user.user.name
-  policy_arn = aws_iam_policy.ec2_describeinstancest.arn
+  policy_arn = aws_iam_policy.ec2_describeinstances.arn
 }
 
 resource "aws_iam_policy" "user_self_manage_policy" {
@@ -62,9 +62,29 @@ resource "aws_iam_policy" "user_self_manage_policy" {
   ]
 }
 EOF
+
+  tags = var.project_path_tags
 }
 
-resource "aws_iam_user_policy_attachement" "user_self_manage_policy_attachment" {
+resource "aws_iam_user_policy_attachment" "user_self_manage_policy_attachment" {
   user       = aws_iam_user.user.name
   policy_arn = aws_iam_policy.user_self_manage_policy.arn
+}
+
+output "iam_user_name" {
+  value = aws_iam_user.user.name
+}
+
+output "iam_user_arn" {
+  value = aws_iam_user.user.arn
+}
+
+output "iam_access_key_id" {
+  value     = aws_iam_access_key.user_initial_key.id
+  sensitive = true
+}
+
+output "iam_secret_access_key" {
+  value     = aws_iam_access_key.user_initial_key.secret
+  sensitive = true
 }

@@ -57,7 +57,7 @@ resource "aws_instance" "instances" {
   ami           = data.aws_ami.ubuntu.id
   instance_type = "t3.nano"
 
-  tags = merge(instance_tags[count.index], var.project_path_tags)
+  tags = merge(var.instance_tags[count.index], var.project_path_tags)
 }
 
 output "instance_tags" {
