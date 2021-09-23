@@ -223,6 +223,8 @@ github.com/hashicorp/go-rootcerts v1.0.2/go.mod h1:pqUvnprVnM5bf7AOirdbb01K4ccR3
 github.com/hashicorp/go-secure-stdlib/awsutil v0.1.2/go.mod h1:QRJZ7siKie+SZJB9jLbfKrs0Gd0yPWMtbneg0iU1PrY=
 github.com/hashicorp/go-secure-stdlib/awsutil v0.1.3 h1:IC4hCiNbbfG0jZBIU8/KTHXKfkdukQtx5kTjyo6Nkn0=
 github.com/hashicorp/go-secure-stdlib/awsutil v0.1.3/go.mod h1:MpCPSPGLDILGb4JMm94/mMi3YysIqsXzGCzkEZjcjXg=
+github.com/hashicorp/go-secure-stdlib/awsutil v0.1.4 h1:aCPwC2WPyomaw5gk5ZZ7DPevN8d9DS3igkmq6DxGMjU=
+github.com/hashicorp/go-secure-stdlib/awsutil v0.1.4/go.mod h1:MpCPSPGLDILGb4JMm94/mMi3YysIqsXzGCzkEZjcjXg=
 github.com/hashicorp/go-secure-stdlib/configutil v0.1.2/go.mod h1:EN1DJMjv9y5e/uRAuP2WPibAox5KHEiq2BjZl00aNPQ=
 github.com/hashicorp/go-secure-stdlib/listenerutil v0.1.1/go.mod h1:irE9ILwhE8VooWdhHhBy0qXzOMRlHKoWoMlr31mAFCE=
 github.com/hashicorp/go-secure-stdlib/parseutil v0.1.1/go.mod h1:QmrqtbKuxxSWTN3ETMPuB+VtEiBJ/A9XhoYGv8E1uD8=

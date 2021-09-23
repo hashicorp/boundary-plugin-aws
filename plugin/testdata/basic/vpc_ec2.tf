@@ -60,6 +60,16 @@ resource "aws_instance" "instances" {
   tags = merge(var.instance_tags[count.index], var.project_path_tags)
 }
 
+output "instance_ids" {
+  value = aws_instance.instances.*.id
+}
+
+output "instance_addrs" {
+  value = {
+    for _, r in aws_instance.instances : r.id => r.private_ip
+  }
+}
+
 output "instance_tags" {
   value = {
     for _, r in aws_instance.instances : r.id => r.tags

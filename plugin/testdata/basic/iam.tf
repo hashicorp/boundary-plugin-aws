@@ -2,19 +2,27 @@ variable "iam_user_prefix" {
   default = "boundary-plugin-host-aws-test-iam-user"
 }
 
+variable "iam_user_count" {
+  default = 2
+}
+
 resource "random_id" "aws_iam_user_name" {
-  prefix      = var.iam_user_prefix
+  count       = var.iam_user_count
+  prefix      = "${var.iam_user_prefix}-${count.index}"
   byte_length = 4
 }
 
 resource "aws_iam_user" "user" {
-  name = random_id.aws_iam_user_name.dec
+  count         = var.iam_user_count
+  name          = random_id.aws_iam_user_name[count.index].dec
+  force_destroy = true
 
   tags = var.project_path_tags
 }
 
 resource "aws_iam_access_key" "user_initial_key" {
-  user = aws_iam_user.user.name
+  count = var.iam_user_count
+  user  = aws_iam_user.user[count.index].name
 }
 
 resource "aws_iam_policy" "ec2_describeinstances" {
@@ -39,12 +47,14 @@ EOF
 }
 
 resource "aws_iam_user_policy_attachment" "user_ec2_describeinstances_attachment" {
-  user       = aws_iam_user.user.name
+  count      = var.iam_user_count
+  user       = aws_iam_user.user[count.index].name
   policy_arn = aws_iam_policy.ec2_describeinstances.arn
 }
 
 resource "aws_iam_policy" "user_self_manage_policy" {
-  name = "BoundaryPluginHostAwsTestUserSelfManagePolicy"
+  count = var.iam_user_count
+  name  = "BoundaryPluginHostAwsTestUserSelfManagePolicy-${count.index}"
 
   policy = <<EOF
 {
@@ -57,7 +67,7 @@ resource "aws_iam_policy" "user_self_manage_policy" {
         "iam:CreateAccessKey"
       ],
       "Effect": "Allow",
-      "Resource": "${aws_iam_user.user.arn}"
+      "Resource": "${aws_iam_user.user[count.index].arn}"
     }
   ]
 }
@@ -67,24 +77,25 @@ EOF
 }
 
 resource "aws_iam_user_policy_attachment" "user_self_manage_policy_attachment" {
-  user       = aws_iam_user.user.name
-  policy_arn = aws_iam_policy.user_self_manage_policy.arn
+  count      = var.iam_user_count
+  user       = aws_iam_user.user[count.index].name
+  policy_arn = aws_iam_policy.user_self_manage_policy[count.index].arn
 }
 
-output "iam_user_name" {
-  value = aws_iam_user.user.name
+output "iam_user_names" {
+  value = aws_iam_user.user.*.name
 }
 
-output "iam_user_arn" {
-  value = aws_iam_user.user.arn
+output "iam_user_arns" {
+  value = aws_iam_user.user.*.arn
 }
 
-output "iam_access_key_id" {
-  value     = aws_iam_access_key.user_initial_key.id
+output "iam_access_key_ids" {
+  value     = aws_iam_access_key.user_initial_key.*.id
   sensitive = true
 }
 
 output "iam_secret_access_key" {
-  value     = aws_iam_access_key.user_initial_key.secret
+  value     = aws_iam_access_key.user_initial_key.*.secret
   sensitive = true
 }

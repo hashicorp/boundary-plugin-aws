@@ -17,6 +17,11 @@ import (
 	"google.golang.org/protobuf/types/known/structpb"
 )
 
+// rotationWaitTimeout controls the time we wait for credential rotation to
+// succeed. This is important to ensure that rotated credentials can be used
+// right away.
+const rotationWaitTimeout = time.Second * 30
+
 // AwsPlugin implements the HostPluginServiceServer interface for the
 // AWS plugin.
 type AwsPlugin struct {
@@ -73,6 +78,11 @@ func (p *AwsPlugin) OnCreateCatalog(ctx context.Context, req *pb.OnCreateCatalog
 	if !skipRotate {
 		if err := state.RotateCreds(); err != nil {
 			return nil, fmt.Errorf("error during credential rotation: %w", err)
+		}
+	} else {
+		// Simply validate if we aren't rotating.
+		if err := state.ValidateCreds(); err != nil {
+			return nil, fmt.Errorf("error during credential validation: %w", err)
 		}
 	}
 
@@ -456,6 +466,22 @@ func (s *awsCatalogPersistedState) ToProto() (*pb.HostCatalogPersisted, error) {
 	return &pb.HostCatalogPersisted{Data: data}, nil
 }
 
+func (s *awsCatalogPersistedState) ValidateCreds() error {
+	c, err := awsutil.NewCredentialsConfig(
+		awsutil.WithAccessKey(s.AccessKeyId),
+		awsutil.WithSecretKey(s.SecretAccessKey),
+	)
+	if err != nil {
+		return fmt.Errorf("error loading credentials: %w", err)
+	}
+
+	if _, err := c.GetCallerIdentity(); err != nil {
+		return fmt.Errorf("error validating credentials: %w", err)
+	}
+
+	return nil
+}
+
 func (s *awsCatalogPersistedState) RotateCreds() error {
 	c, err := awsutil.NewCredentialsConfig(
 		awsutil.WithAccessKey(s.AccessKeyId),
@@ -465,7 +491,7 @@ func (s *awsCatalogPersistedState) RotateCreds() error {
 		return fmt.Errorf("error loading credentials: %w", err)
 	}
 
-	if err := c.RotateKeys(); err != nil {
+	if err := c.RotateKeys(awsutil.WithValidityCheckTimeout(rotationWaitTimeout)); err != nil {
 		return fmt.Errorf("error rotating credentials: %w", err)
 	}
 

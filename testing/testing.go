@@ -134,6 +134,54 @@ func (t *TestTerraformer) GetOutput(key string) (interface{}, error) {
 	return output.Value, nil
 }
 
+// GetOutputString wraps GetOutput and returns the value as a string. It's an
+// error if the return value is actually not a string.
+func (t *TestTerraformer) GetOutputString(key string) (string, error) {
+	value, err := t.GetOutput(key)
+	if err != nil {
+		return "", err
+	}
+
+	str, ok := value.(string)
+	if !ok {
+		return "", fmt.Errorf("expected output value at key %q to be string, got %T", key, value)
+	}
+
+	return str, nil
+}
+
+// GetOutputMap wraps GetOutput and returns the value as a map. It's an
+// error if the return value is actually not a map.
+func (t *TestTerraformer) GetOutputMap(key string) (map[string]interface{}, error) {
+	value, err := t.GetOutput(key)
+	if err != nil {
+		return nil, err
+	}
+
+	m, ok := value.(map[string]interface{})
+	if !ok {
+		return nil, fmt.Errorf("expected output value at key %q to be map, got %T", key, value)
+	}
+
+	return m, nil
+}
+
+// GetOutputSlice wraps GetOutput and returns the value as a slice. It's an
+// error if the return value is actually not a slice.
+func (t *TestTerraformer) GetOutputSlice(key string) ([]interface{}, error) {
+	value, err := t.GetOutput(key)
+	if err != nil {
+		return nil, err
+	}
+
+	m, ok := value.([]interface{})
+	if !ok {
+		return nil, fmt.Errorf("expected output value at key %q to be slice, got %T", key, value)
+	}
+
+	return m, nil
+}
+
 // init runs "terraform init" in the project's working directory.
 //
 // This is only ever done once.
