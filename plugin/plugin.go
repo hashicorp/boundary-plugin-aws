@@ -367,7 +367,7 @@ func (p *AwsPlugin) ListHosts(ctx context.Context, req *pb.ListHostsRequest) (*p
 
 	queries := make([]hostSetQuery, len(sets))
 	for i, set := range sets {
-		// Validate Id
+		// Validate Id since we use it in output
 		if set.GetId() == "" {
 			return nil, errors.New("set missing id")
 		}
@@ -377,7 +377,7 @@ func (p *AwsPlugin) ListHosts(ctx context.Context, req *pb.ListHostsRequest) (*p
 			return nil, errors.New("set missing attributes")
 		}
 
-		input, err := buildDescribeInstancesInput(setAttrs, true)
+		input, err := buildDescribeInstancesInput(setAttrs, false)
 		if err != nil {
 			return nil, fmt.Errorf("error building DescribeInstances parameters for host set id %q: %w", set.GetId(), err)
 		}
@@ -411,6 +411,12 @@ func (p *AwsPlugin) ListHosts(ctx context.Context, req *pb.ListHostsRequest) (*p
 					return nil, fmt.Errorf("error processing host results for host set id %q: %w", query.Id, err)
 				}
 
+				if host == nil {
+					// Nil result means we don't include the host (instance not
+					// running, or some other issue).
+					continue
+				}
+
 				queries[i].OutputHosts = append(queries[i].OutputHosts, host)
 				maxLen++ // Increment maximum counter for allocation later
 			}
@@ -422,11 +428,12 @@ func (p *AwsPlugin) ListHosts(ctx context.Context, req *pb.ListHostsRequest) (*p
 	seenInstances := make(map[string]struct{})
 	for _, query := range queries {
 		for _, host := range query.OutputHosts {
-			if _, ok := seenInstances[host.ExternalId]; !ok {
+			if _, ok := seenInstances[host.ExternalId]; ok {
 				continue
 			}
 
 			hostResults = append(hostResults, host)
+			seenInstances[host.ExternalId] = struct{}{}
 		}
 	}
 
@@ -706,7 +713,12 @@ func buildFilters(in *structpb.Struct) ([]*ec2.Filter, error) {
 		return nil, err
 	}
 
+	var foundStateFilter bool
 	for k, v := range m {
+		if k == "instance-state-code" || k == "instance-state-name" {
+			foundStateFilter = true
+		}
+
 		w, ok := v.([]interface{})
 		if !ok {
 			return nil, fmt.Errorf("unexpected type for filter values in %q: want array, got %T", k, v)
@@ -725,6 +737,17 @@ func buildFilters(in *structpb.Struct) ([]*ec2.Filter, error) {
 		filters = append(filters, &ec2.Filter{
 			Name:   aws.String(k),
 			Values: filterValues,
+		})
+	}
+
+	if !foundStateFilter {
+		// if there is no explicit instance state filter, add the
+		// instance-state-name = ["running"] to the filter set. This
+		// ensures that we filter on running instances only at the API
+		// side, saving time when processing results.
+		filters = append(filters, &ec2.Filter{
+			Name:   aws.String("instance-state-name"),
+			Values: aws.StringSlice([]string{ec2.InstanceStateNameRunning}),
 		})
 	}
 

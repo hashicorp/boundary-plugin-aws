@@ -2,6 +2,7 @@ package plugin
 
 import (
 	"context"
+	"fmt"
 	"os"
 	"sort"
 	"strings"
@@ -143,8 +144,10 @@ func TestPlugin(t *testing.T) {
 
 	cases := [][]string{
 		{"foo"},
-		{"foo", "bar"},
 		{"bar"},
+		{"baz"},
+		{"foo", "bar"},
+		{"foo", "baz"},
 		{"bar", "baz"},
 		{"foo", "bar", "baz"},
 	}
@@ -527,6 +530,7 @@ func testPluginListHosts(ctx context.Context, t *testing.T, p *AwsPlugin, region
 		})
 		require.NoError(err)
 		sets[i] = &hostsets.HostSet{
+			Id:         fmt.Sprintf("hostset-%d", i),
 			Attributes: setAttrs,
 		}
 	}
@@ -567,7 +571,7 @@ func testPluginListHosts(ctx context.Context, t *testing.T, p *AwsPlugin, region
 	// Compare
 	require.Equal(expectedInstances, actualInstances)
 	// Success
-	ids := make([]string, len(expectedInstances))
+	ids := make([]string, 0, len(expectedInstances))
 	for k := range expectedInstances {
 		ids = append(ids, k)
 	}

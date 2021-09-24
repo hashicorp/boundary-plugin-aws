@@ -56,6 +56,7 @@ resource "aws_instance" "instances" {
   count         = length(var.instance_tags)
   ami           = data.aws_ami.ubuntu.id
   instance_type = "t3.nano"
+  subnet_id     = aws_subnet.subnet.id
 
   tags = merge(var.instance_tags[count.index], var.project_path_tags)
 }
