@@ -3,7 +3,7 @@ variable "iam_user_prefix" {
 }
 
 variable "iam_user_count" {
-  default = 2
+  default = 6
 }
 
 resource "random_id" "aws_iam_user_name" {
@@ -95,7 +95,7 @@ output "iam_access_key_ids" {
   sensitive = true
 }
 
-output "iam_secret_access_key" {
+output "iam_secret_access_keys" {
   value     = aws_iam_access_key.user_initial_key.*.secret
   sensitive = true
 }

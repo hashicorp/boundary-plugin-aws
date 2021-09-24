@@ -107,7 +107,7 @@ func (p *AwsPlugin) OnUpdateCatalog(ctx context.Context, req *pb.OnUpdateCatalog
 
 	var updateSecrets bool
 	secrets := catalog.GetSecrets()
-	if secrets == nil {
+	if secrets != nil {
 		// We will be updating secrets this run, but what exactly that
 		// means will be determined later.
 		updateSecrets = true
@@ -209,7 +209,7 @@ func (p *AwsPlugin) OnDeleteCatalog(ctx context.Context, req *pb.OnDeleteCatalog
 		}
 	}
 
-	return nil, nil
+	return &pb.OnDeleteCatalogResponse{}, nil
 }
 
 func (p *AwsPlugin) OnCreateSet(ctx context.Context, req *pb.OnCreateSetRequest) (*pb.OnCreateSetResponse, error) {
@@ -254,11 +254,17 @@ func (p *AwsPlugin) OnCreateSet(ctx context.Context, req *pb.OnCreateSetRequest)
 		return nil, fmt.Errorf("error building DescribeInstances parameters: %w", err)
 	}
 
-	if _, err := ec2Client.DescribeInstances(input); err != nil {
-		return nil, fmt.Errorf("error performing dry run of DescribeInstances: %w", err)
+	_, err = ec2Client.DescribeInstances(input)
+	if err == nil {
+		return nil, errors.New("query error: DescribeInstances DryRun should have returned error, but none was found")
 	}
 
-	return &pb.OnCreateSetResponse{}, nil
+	if awsErr, ok := err.(awserr.Error); ok && awsErr.Code() == "DryRunOperation" {
+		// Success
+		return &pb.OnCreateSetResponse{}, nil
+	}
+
+	return nil, fmt.Errorf("error performing dry run of DescribeInstances: %w", err)
 }
 
 func (p *AwsPlugin) OnUpdateSet(ctx context.Context, req *pb.OnUpdateSetRequest) (*pb.OnUpdateSetResponse, error) {
@@ -305,11 +311,17 @@ func (p *AwsPlugin) OnUpdateSet(ctx context.Context, req *pb.OnUpdateSetRequest)
 		return nil, fmt.Errorf("error building DescribeInstances parameters: %w", err)
 	}
 
-	if _, err := ec2Client.DescribeInstances(input); err != nil {
-		return nil, fmt.Errorf("error performing dry run of DescribeInstances: %w", err)
+	_, err = ec2Client.DescribeInstances(input)
+	if err == nil {
+		return nil, errors.New("query error: DescribeInstances DryRun should have returned error, but none was found")
 	}
 
-	return &pb.OnUpdateSetResponse{}, nil
+	if awsErr, ok := err.(awserr.Error); ok && awsErr.Code() == "DryRunOperation" {
+		// Success
+		return &pb.OnUpdateSetResponse{}, nil
+	}
+
+	return nil, fmt.Errorf("error performing dry run of DescribeInstances: %w", err)
 }
 
 func (p *AwsPlugin) OnDeleteSet(ctx context.Context, req *pb.OnDeleteSetRequest) (*pb.OnDeleteSetResponse, error) {
@@ -355,6 +367,11 @@ func (p *AwsPlugin) ListHosts(ctx context.Context, req *pb.ListHostsRequest) (*p
 
 	queries := make([]hostSetQuery, len(sets))
 	for i, set := range sets {
+		// Validate Id
+		if set.GetId() == "" {
+			return nil, errors.New("set missing id")
+		}
+
 		setAttrs := set.GetAttributes()
 		if setAttrs == nil {
 			return nil, errors.New("set missing attributes")
@@ -427,7 +444,7 @@ type awsCatalogPersistedState struct {
 
 func awsCatalogPersistedStateFromProto(in *pb.HostCatalogPersisted) (*awsCatalogPersistedState, error) {
 	data := in.GetData()
-	if data != nil {
+	if data == nil {
 		return nil, errors.New("missing data")
 	}
 
@@ -441,7 +458,7 @@ func awsCatalogPersistedStateFromProto(in *pb.HostCatalogPersisted) (*awsCatalog
 		return nil, fmt.Errorf("persisted state integrity error: %w", err)
 	}
 
-	credsLastRotatedTime, err := getTimeValue(data, constDisableCredentialRotation)
+	credsLastRotatedTime, err := getTimeValue(data, constCredsLastRotatedTime)
 	if err != nil {
 		return nil, fmt.Errorf("persisted state integrity error: %w", err)
 	}
