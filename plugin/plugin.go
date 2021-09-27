@@ -45,7 +45,7 @@ func (p *AwsPlugin) OnCreateCatalog(ctx context.Context, req *pb.OnCreateCatalog
 	}
 
 	attrs := catalog.GetAttributes()
-	if secrets == nil {
+	if attrs == nil {
 		return nil, errors.New("attributes are required")
 	}
 

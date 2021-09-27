@@ -621,3 +621,120 @@ func requireCredentialsValid(t *testing.T, accessKeyId, secretAccessKey string) 
 	_, err = c.GetCallerIdentity()
 	require.NoError(err)
 }
+
+func TestOnCreateCatalogErr(t *testing.T) {
+	cases := []struct {
+		name     string
+		req      *pb.OnCreateCatalogRequest
+		expected string
+	}{
+		{
+			name:     "nil catalog",
+			req:      &pb.OnCreateCatalogRequest{},
+			expected: "catalog is nil",
+		},
+		{
+			name: "nil secrets",
+			req: &pb.OnCreateCatalogRequest{
+				Catalog: &hostcatalogs.HostCatalog{},
+			},
+			expected: "secrets are required",
+		},
+		{
+			name: "nil attributes",
+			req: &pb.OnCreateCatalogRequest{
+				Catalog: &hostcatalogs.HostCatalog{
+					Secrets: new(structpb.Struct),
+				},
+			},
+			expected: "attributes are required",
+		},
+		{
+			name: "invalid region",
+			req: &pb.OnCreateCatalogRequest{
+				Catalog: &hostcatalogs.HostCatalog{
+					Secrets: new(structpb.Struct),
+					Attributes: mustStruct(map[string]interface{}{
+						"region": "foobar",
+					}),
+				},
+			},
+			expected: "not a valid region: foobar",
+		},
+		{
+			name: "missing access key ID",
+			req: &pb.OnCreateCatalogRequest{
+				Catalog: &hostcatalogs.HostCatalog{
+					Secrets: new(structpb.Struct),
+					Attributes: mustStruct(map[string]interface{}{
+						"region": "us-west-2",
+					}),
+				},
+			},
+			expected: "missing required value \"access_key_id\"",
+		},
+		{
+			name: "missing secret access key",
+			req: &pb.OnCreateCatalogRequest{
+				Catalog: &hostcatalogs.HostCatalog{
+					Secrets: mustStruct(map[string]interface{}{
+						"access_key_id": "foobar",
+					}),
+					Attributes: mustStruct(map[string]interface{}{
+						"region": "us-west-2",
+					}),
+				},
+			},
+			expected: "missing required value \"secret_access_key\"",
+		},
+		{
+			name: "missing secret access key",
+			req: &pb.OnCreateCatalogRequest{
+				Catalog: &hostcatalogs.HostCatalog{
+					Secrets: mustStruct(map[string]interface{}{
+						"access_key_id": "foobar",
+					}),
+					Attributes: mustStruct(map[string]interface{}{
+						"region": "us-west-2",
+					}),
+				},
+			},
+			expected: "missing required value \"secret_access_key\"",
+		},
+		{
+			name: "invalid value for skipping rotation",
+			req: &pb.OnCreateCatalogRequest{
+				Catalog: &hostcatalogs.HostCatalog{
+					Secrets: mustStruct(map[string]interface{}{
+						"access_key_id":     "foobar",
+						"secret_access_key": "bazqux",
+					}),
+					Attributes: mustStruct(map[string]interface{}{
+						"region":                      "us-west-2",
+						"disable_credential_rotation": "sure",
+					}),
+				},
+			},
+			expected: "unexpected type for value \"disable_credential_rotation\": want bool, got string",
+		},
+	}
+
+	for _, tc := range cases {
+		tc := tc
+		t.Run(tc.name, func(t *testing.T) {
+			require := require.New(t)
+			p := &AwsPlugin{}
+			_, err := p.OnCreateCatalog(context.Background(), tc.req)
+			require.EqualError(err, tc.expected)
+		})
+	}
+}
+
+func mustStruct(in map[string]interface{}) *structpb.Struct {
+	out, err := structpb.NewStruct(in)
+	if err != nil {
+		panic(err)
+	}
+
+	return out
+}
