@@ -4,8 +4,6 @@ import (
 	"context"
 	"fmt"
 	"os"
-	"sort"
-	"strings"
 	"testing"
 	"time"
 
@@ -187,9 +185,9 @@ func testPluginOnCreateCatalog(ctx context.Context, t *testing.T, p *AwsPlugin, 
 	require.NotNil(response)
 	persisted := response.GetPersisted()
 	require.NotNil(persisted)
-	persistedData := persisted.GetData()
-	require.NotNil(persistedData)
-	persistedAccessKeyId, err := getStringValue(persistedData, constAccessKeyId, true)
+	persistedSecrets := persisted.GetSecrets()
+	require.NotNil(persistedSecrets)
+	persistedAccessKeyId, err := getStringValue(persistedSecrets, constAccessKeyId, true)
 	require.NoError(err)
 	require.NotZero(persistedAccessKeyId)
 	if rotate {
@@ -198,7 +196,7 @@ func testPluginOnCreateCatalog(ctx context.Context, t *testing.T, p *AwsPlugin, 
 		require.Equal(accessKeyId, persistedAccessKeyId)
 	}
 
-	persistedSecretAccessKey, err := getStringValue(persistedData, constSecretAccessKey, true)
+	persistedSecretAccessKey, err := getStringValue(persistedSecrets, constSecretAccessKey, true)
 	require.NoError(err)
 	require.NotZero(persistedSecretAccessKey)
 	if rotate {
@@ -207,7 +205,7 @@ func testPluginOnCreateCatalog(ctx context.Context, t *testing.T, p *AwsPlugin, 
 		require.Equal(secretAccessKey, persistedSecretAccessKey)
 	}
 
-	persistedCredsLastRotatedTime, err := getTimeValue(persistedData, constCredsLastRotatedTime)
+	persistedCredsLastRotatedTime, err := getTimeValue(persistedSecrets, constCredsLastRotatedTime)
 	require.NoError(err)
 	if rotate {
 		require.NotZero(persistedCredsLastRotatedTime)
@@ -251,7 +249,7 @@ func testPluginOnUpdateCatalog(
 		})
 		require.NoError(err)
 	}
-	reqPersistedData, err := structpb.NewStruct(map[string]interface{}{
+	reqPersistedSecrets, err := structpb.NewStruct(map[string]interface{}{
 		constAccessKeyId:     currentAccessKeyId,
 		constSecretAccessKey: currentSecretAccessKey,
 		constCredsLastRotatedTime: func() string {
@@ -263,7 +261,7 @@ func testPluginOnUpdateCatalog(
 		}(),
 	})
 	require.NoError(err)
-	require.NotNil(reqPersistedData)
+	require.NotNil(reqPersistedSecrets)
 	request := &pb.OnUpdateCatalogRequest{
 		CurrentCatalog: &hostcatalogs.HostCatalog{
 			Attributes: reqCurrentAttrs,
@@ -273,7 +271,7 @@ func testPluginOnUpdateCatalog(
 			Secrets:    reqSecrets,
 		},
 		Persisted: &pb.HostCatalogPersisted{
-			Data: reqPersistedData,
+			Secrets: reqPersistedSecrets,
 		},
 	}
 	response, err := p.OnUpdateCatalog(ctx, request)
@@ -281,17 +279,17 @@ func testPluginOnUpdateCatalog(
 	require.NotNil(response)
 	persisted := response.GetPersisted()
 	require.NotNil(persisted)
-	persistedData := persisted.GetData()
-	require.NotNil(persistedData)
+	persistedSecrets := persisted.GetSecrets()
+	require.NotNil(persistedSecrets)
 
 	// Complex checks based on the scenarios.
-	persistedAccessKeyId, err := getStringValue(persistedData, constAccessKeyId, true)
+	persistedAccessKeyId, err := getStringValue(persistedSecrets, constAccessKeyId, true)
 	require.NoError(err)
 	require.NotZero(persistedAccessKeyId)
-	persistedSecretAccessKey, err := getStringValue(persistedData, constSecretAccessKey, true)
+	persistedSecretAccessKey, err := getStringValue(persistedSecrets, constSecretAccessKey, true)
 	require.NoError(err)
 	require.NotZero(persistedSecretAccessKey)
-	persistedCredsLastRotatedTime, err := getTimeValue(persistedData, constCredsLastRotatedTime)
+	persistedCredsLastRotatedTime, err := getTimeValue(persistedSecrets, constCredsLastRotatedTime)
 	require.NoError(err)
 
 	// Our test scenarios are complex due the multi-dimensional nature
@@ -410,7 +408,7 @@ func testPluginOnDeleteCatalog(ctx context.Context, t *testing.T, p *AwsPlugin, 
 		constSecretAccessKey: secretAccessKey,
 	})
 	require.NoError(err)
-	reqPersistedData, err := structpb.NewStruct(map[string]interface{}{
+	reqPersistedSecrets, err := structpb.NewStruct(map[string]interface{}{
 		constAccessKeyId:     accessKeyId,
 		constSecretAccessKey: secretAccessKey,
 		constCredsLastRotatedTime: func() string {
@@ -428,7 +426,7 @@ func testPluginOnDeleteCatalog(ctx context.Context, t *testing.T, p *AwsPlugin, 
 			Secrets:    reqSecrets,
 		},
 		Persisted: &pb.HostCatalogPersisted{
-			Data: reqPersistedData,
+			Secrets: reqPersistedSecrets,
 		},
 	}
 	response, err := p.OnDeleteCatalog(ctx, request)
@@ -469,7 +467,7 @@ func testPluginOnCreateUpdateSet(ctx context.Context, t *testing.T, p *AwsPlugin
 		},
 	})
 	require.NoError(err)
-	reqPersistedData, err := structpb.NewStruct(map[string]interface{}{
+	reqPersistedSecrets, err := structpb.NewStruct(map[string]interface{}{
 		constAccessKeyId:          accessKeyId,
 		constSecretAccessKey:      secretAccessKey,
 		constCredsLastRotatedTime: (time.Time{}).Format(time.RFC3339Nano),
@@ -483,7 +481,7 @@ func testPluginOnCreateUpdateSet(ctx context.Context, t *testing.T, p *AwsPlugin
 			Attributes: setAttrs,
 		},
 		Persisted: &pb.HostCatalogPersisted{
-			Data: reqPersistedData,
+			Secrets: reqPersistedSecrets,
 		},
 	}
 	createResponse, err := p.OnCreateSet(ctx, createRequest)
@@ -504,7 +502,7 @@ func testPluginOnCreateUpdateSet(ctx context.Context, t *testing.T, p *AwsPlugin
 			Attributes: setAttrs,
 		},
 		Persisted: &pb.HostCatalogPersisted{
-			Data: reqPersistedData,
+			Secrets: reqPersistedSecrets,
 		},
 	}
 	updateResponse, err := p.OnUpdateSet(ctx, updateRequest)
@@ -534,7 +532,7 @@ func testPluginListHosts(ctx context.Context, t *testing.T, p *AwsPlugin, region
 			Attributes: setAttrs,
 		}
 	}
-	reqPersistedData, err := structpb.NewStruct(map[string]interface{}{
+	reqPersistedSecrets, err := structpb.NewStruct(map[string]interface{}{
 		constAccessKeyId:          accessKeyId,
 		constSecretAccessKey:      secretAccessKey,
 		constCredsLastRotatedTime: (time.Time{}).Format(time.RFC3339Nano),
@@ -546,7 +544,7 @@ func testPluginListHosts(ctx context.Context, t *testing.T, p *AwsPlugin, region
 		},
 		Sets: sets,
 		Persisted: &pb.HostCatalogPersisted{
-			Data: reqPersistedData,
+			Secrets: reqPersistedSecrets,
 		},
 	}
 	response, err := p.ListHosts(ctx, request)
@@ -555,28 +553,23 @@ func testPluginListHosts(ctx context.Context, t *testing.T, p *AwsPlugin, region
 
 	// Validate the returned instances by ID. Assemble the instance
 	// details from the expected set.
-	expectedInstances := make(map[string]struct{})
-	for _, tag := range tags {
+	expectedInstances := make(map[string][]string)
+	for i, tag := range tags {
 		for _, instanceId := range expected[tag] {
-			expectedInstances[instanceId] = struct{}{}
+			expectedInstances[instanceId] = append(expectedInstances[instanceId], fmt.Sprintf("hostset-%d", i))
 		}
 	}
 
 	// Take the returned hosts by ID and create the same kind of map.
-	actualInstances := make(map[string]struct{})
+	actualInstances := make(map[string][]string)
 	for _, host := range response.GetHosts() {
-		actualInstances[host.ExternalId] = struct{}{}
+		actualInstances[host.ExternalId] = host.SetIds
 	}
 
 	// Compare
 	require.Equal(expectedInstances, actualInstances)
 	// Success
-	ids := make([]string, 0, len(expectedInstances))
-	for k := range expectedInstances {
-		ids = append(ids, k)
-	}
-	sort.Strings(ids)
-	t.Logf("testing ListHosts: success (region=%s, tags=%v, expected/actual=(len=%d, ids=%s))", region, tags, len(ids), strings.Join(ids, ","))
+	t.Logf("testing ListHosts: success (region=%s, tags=%v, expected/actual=(len=%d, ids=%s))", region, tags, len(actualInstances), actualInstances)
 }
 
 func requireCredentialsInvalid(t *testing.T, accessKeyId, secretAccessKey string) {

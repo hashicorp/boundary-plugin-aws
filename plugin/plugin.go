@@ -423,23 +423,35 @@ func (p *AwsPlugin) ListHosts(ctx context.Context, req *pb.ListHostsRequest) (*p
 		}
 	}
 
-	// Now de-duplicate the hosts for the output.
-	hostResults := make([]*pb.ListHostsResponseHost, 0, maxLen)
-	seenInstances := make(map[string]struct{})
+	// Now de-duplicate the hosts for the output. Maintain two sets:
+	// * A slice of hosts that will be used in the output
+	// * A map of hosts indexed by their external ID
+	//
+	// The map will is used in de-duplication to determine whether or
+	// not we've seen the host before to simply add the query's set ID
+	// to the list of set IDs that the host was seen in.
+	hostResultSlice := make([]*pb.ListHostsResponseHost, 0, maxLen)
+	hostResultMap := make(map[string]*pb.ListHostsResponseHost)
 	for _, query := range queries {
 		for _, host := range query.OutputHosts {
-			if _, ok := seenInstances[host.ExternalId]; ok {
+			if existingHost, ok := hostResultMap[host.ExternalId]; ok {
+				// Existing host, just add the set ID to the list of seen IDs
+				// and continue
+				existingHost.SetIds = append(existingHost.SetIds, query.Id)
 				continue
 			}
 
-			hostResults = append(hostResults, host)
-			seenInstances[host.ExternalId] = struct{}{}
+			// This will be the first seen entry, so append the set ID to
+			// this host, and add it.
+			host.SetIds = append(host.SetIds, query.Id)
+			hostResultSlice = append(hostResultSlice, host)
+			hostResultMap[host.ExternalId] = host
 		}
 	}
 
 	// Done!
 	return &pb.ListHostsResponse{
-		Hosts: hostResults,
+		Hosts: hostResultSlice,
 	}, nil
 }
 
@@ -450,9 +462,9 @@ type awsCatalogPersistedState struct {
 }
 
 func awsCatalogPersistedStateFromProto(in *pb.HostCatalogPersisted) (*awsCatalogPersistedState, error) {
-	data := in.GetData()
+	data := in.GetSecrets()
 	if data == nil {
-		return nil, errors.New("missing data")
+		return nil, errors.New("missing persisted secrets")
 	}
 
 	accessKeyId, err := getStringValue(data, constAccessKeyId, true)
@@ -487,7 +499,7 @@ func (s *awsCatalogPersistedState) ToProto() (*pb.HostCatalogPersisted, error) {
 		return nil, fmt.Errorf("error converting state to structpb.Struct: %w", err)
 	}
 
-	return &pb.HostCatalogPersisted{Data: data}, nil
+	return &pb.HostCatalogPersisted{Secrets: data}, nil
 }
 
 func (s *awsCatalogPersistedState) ValidateCreds() error {
