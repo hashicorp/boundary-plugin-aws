@@ -8,7 +8,7 @@ import (
 	"time"
 
 	"github.com/aws/aws-sdk-go/aws/awserr"
-	pluginTesting "github.com/hashicorp/boundary-host-plugin-aws/testing"
+	pluginTesting "github.com/hashicorp/boundary-plugin-host-aws/testing"
 	"github.com/hashicorp/boundary/sdk/pbs/controller/api/resources/hostcatalogs"
 	"github.com/hashicorp/boundary/sdk/pbs/controller/api/resources/hostsets"
 	pb "github.com/hashicorp/boundary/sdk/pbs/plugin"

@@ -1,4 +1,4 @@
-module github.com/hashicorp/boundary-host-plugin-aws
+module github.com/hashicorp/boundary-plugin-host-aws
 
 go 1.16
 
