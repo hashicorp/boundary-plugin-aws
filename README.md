@@ -28,8 +28,8 @@ client secret in use by this plugin.
 
 ## Required IAM Privileges
 
-The following IAM privileges, at the very least, is required to be attached to a
-configured IAM user for this provider:
+The following IAM privileges, at the very least, are required to be attached to
+a configured IAM user for this provider:
 
 * `ec2:DescribeInstances`, configured to `*` (`DescribeInstances` cannot be
   scoped to a resource ARN). Example policy:
