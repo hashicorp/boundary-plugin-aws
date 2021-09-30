@@ -50,7 +50,7 @@ configured IAM user for this provider:
 ```
 
 * `iam:GetUser`, `iam:CreateAccessKey`, and `iam:DeleteAccessKey`, configured to
-  the set IAM user to allow credential rotation. Example policy:
+  the IAM user to allow credential rotation. Example policy:
 
 ```
 {
@@ -73,14 +73,15 @@ configured IAM user for this provider:
 
 ### Host Catalog
 
-The following `attributes` are valid on an Azure host catalog resource:
+The following `attributes` are valid on an AWS host catalog resource:
 
 - `disable_credential_rotation` (bool): If `true`, credential rotation will not
-  be performed. See the Credential Rotation section above.
+  be performed. See the [Credential Rotation](#credential-rotation) section
+  above.
 - `region` (string): The region to configure the host catalog for. All host sets
   in this catalog will be configured for this region.
 
-The following `secrets` are valid on an Azure host catalog resource:
+The following `secrets` are valid on an AWS host catalog resource:
 
 - `access_key_id` (string): The access key ID for the IAM user to use with this
   host catalog.
@@ -89,7 +90,7 @@ The following `secrets` are valid on an Azure host catalog resource:
 
 ### Host Set
 
-The following attributes are valid on an Azure host Set resource:
+The following attributes are valid on an AWS host Set resource:
 
 - `filters` (string): An object of filters to filter off of. For a list of
   filter options, check out [describe-instances in the AWS CLI
