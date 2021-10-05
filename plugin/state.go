@@ -19,6 +19,9 @@ type awsCatalogPersistedState struct {
 	AccessKeyId          string
 	SecretAccessKey      string
 	CredsLastRotatedTime time.Time
+
+	// testOpts are options that should be used for testing only
+	testOpts []awsutil.Option
 }
 
 func awsCatalogPersistedStateFromProto(in *pb.HostCatalogPersisted) (*awsCatalogPersistedState, error) {
@@ -63,15 +66,15 @@ func (s *awsCatalogPersistedState) ToProto() (*pb.HostCatalogPersisted, error) {
 }
 
 func (s *awsCatalogPersistedState) ValidateCreds() error {
-	c, err := awsutil.NewCredentialsConfig(
+	c, err := awsutil.NewCredentialsConfig(append([]awsutil.Option{
 		awsutil.WithAccessKey(s.AccessKeyId),
 		awsutil.WithSecretKey(s.SecretAccessKey),
-	)
+	}, s.testOpts...)...)
 	if err != nil {
 		return fmt.Errorf("error loading credentials: %w", err)
 	}
 
-	if _, err := c.GetCallerIdentity(); err != nil {
+	if _, err := c.GetCallerIdentity(s.testOpts...); err != nil {
 		return fmt.Errorf("error validating credentials: %w", err)
 	}
 
@@ -79,15 +82,17 @@ func (s *awsCatalogPersistedState) ValidateCreds() error {
 }
 
 func (s *awsCatalogPersistedState) RotateCreds() error {
-	c, err := awsutil.NewCredentialsConfig(
+	c, err := awsutil.NewCredentialsConfig(append([]awsutil.Option{
 		awsutil.WithAccessKey(s.AccessKeyId),
 		awsutil.WithSecretKey(s.SecretAccessKey),
-	)
+	}, s.testOpts...)...)
 	if err != nil {
 		return fmt.Errorf("error loading credentials: %w", err)
 	}
 
-	if err := c.RotateKeys(awsutil.WithValidityCheckTimeout(rotationWaitTimeout)); err != nil {
+	if err := c.RotateKeys(append([]awsutil.Option{
+		awsutil.WithValidityCheckTimeout(rotationWaitTimeout),
+	}, s.testOpts...)...); err != nil {
 		return fmt.Errorf("error rotating credentials: %w", err)
 	}
 
@@ -134,22 +139,25 @@ func (s *awsCatalogPersistedState) ReplaceCreds(accessKeyId, secretAccessKey str
 // ID, secret access key, and rotation time fields are zeroed out in
 // the state just to ensure that they cannot be re-used after.
 func (s *awsCatalogPersistedState) DeleteCreds() error {
-	c, err := awsutil.NewCredentialsConfig(
+	c, err := awsutil.NewCredentialsConfig(append([]awsutil.Option{
 		awsutil.WithAccessKey(s.AccessKeyId),
 		awsutil.WithSecretKey(s.SecretAccessKey),
-	)
+	}, s.testOpts...)...)
 	if err != nil {
 		return fmt.Errorf("error loading credentials: %w", err)
 	}
 
-	if err := c.DeleteAccessKey(s.AccessKeyId); err != nil {
+	if err := c.DeleteAccessKey(s.AccessKeyId, s.testOpts...); err != nil {
 		// Determine if the deletion error was due to a missing
 		// resource. If it was, just pass it.
-		if awsErr, ok := err.(awserr.Error); ok && awsErr.Code() == iam.ErrCodeNoSuchEntityException {
-			s.AccessKeyId = ""
-			s.SecretAccessKey = ""
-			s.CredsLastRotatedTime = time.Time{}
-			return nil
+		var awsErr awserr.Error
+		if errors.As(err, &awsErr) {
+			if awsErr.Code() == iam.ErrCodeNoSuchEntityException {
+				s.AccessKeyId = ""
+				s.SecretAccessKey = ""
+				s.CredsLastRotatedTime = time.Time{}
+				return nil
+			}
 		}
 
 		// Otherwise treat it as an actual error.
@@ -165,10 +173,10 @@ func (s *awsCatalogPersistedState) DeleteCreds() error {
 // GetSession returns a configured AWS session for the credentials in
 // the state.
 func (s *awsCatalogPersistedState) GetSession() (*session.Session, error) {
-	c, err := awsutil.NewCredentialsConfig(
+	c, err := awsutil.NewCredentialsConfig(append([]awsutil.Option{
 		awsutil.WithAccessKey(s.AccessKeyId),
 		awsutil.WithSecretKey(s.SecretAccessKey),
-	)
+	}, s.testOpts...)...)
 	if err != nil {
 		return nil, err
 	}
