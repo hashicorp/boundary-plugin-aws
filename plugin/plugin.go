@@ -198,9 +198,9 @@ func (p *AwsPlugin) OnDeleteCatalog(ctx context.Context, req *pb.OnDeleteCatalog
 	// integrity. May need to be changed at later time if there are
 	// scenarios where we might be deleting things and any secret state
 	// may be corrupt/and or legitimately missing.
-	state, err := awsCatalogPersistedStateFromProto(req.GetPersisted())
+	state, err := awsCatalogPersistedStateFromProto(req.GetPersisted(), p.testStateOpts...)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("error loading persisted state: %w", err)
 	}
 
 	if !state.CredsLastRotatedTime.IsZero() {
@@ -208,7 +208,7 @@ func (p *AwsPlugin) OnDeleteCatalog(ctx context.Context, req *pb.OnDeleteCatalog
 		// credentials to ensure that it has the proper permissions to do
 		// it.
 		if err := state.DeleteCreds(); err != nil {
-			return nil, err
+			return nil, fmt.Errorf("error removing rotated credentials during catalog deletion: %w", err)
 		}
 	}
 
@@ -226,15 +226,15 @@ func (p *AwsPlugin) OnCreateSet(ctx context.Context, req *pb.OnCreateSetRequest)
 		return nil, errors.New("catalog missing attributes")
 	}
 
-	state, err := awsCatalogPersistedStateFromProto(req.GetPersisted())
+	state, err := awsCatalogPersistedStateFromProto(req.GetPersisted(), p.testStateOpts...)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("error loading persisted state: %w", err)
 	}
 
 	// Get/validate the region.
 	region, err := getValidateRegionValue(catalogAttrs)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("catalog validation error: %s", err)
 	}
 
 	set := req.GetSet()
@@ -281,15 +281,15 @@ func (p *AwsPlugin) OnUpdateSet(ctx context.Context, req *pb.OnUpdateSetRequest)
 		return nil, errors.New("catalog missing attributes")
 	}
 
-	state, err := awsCatalogPersistedStateFromProto(req.GetPersisted())
+	state, err := awsCatalogPersistedStateFromProto(req.GetPersisted(), p.testStateOpts...)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("error loading persisted state: %w", err)
 	}
 
 	// Get/validate the region.
 	region, err := getValidateRegionValue(catalogAttrs)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("catalog validation error: %s", err)
 	}
 
 	// As with catalog, we don't need to really look at the old host
@@ -344,15 +344,15 @@ func (p *AwsPlugin) ListHosts(ctx context.Context, req *pb.ListHostsRequest) (*p
 		return nil, errors.New("catalog missing attributes")
 	}
 
-	state, err := awsCatalogPersistedStateFromProto(req.GetPersisted())
+	state, err := awsCatalogPersistedStateFromProto(req.GetPersisted(), p.testStateOpts...)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("error loading persisted state: %w", err)
 	}
 
 	// Get/validate the region.
 	region, err := getValidateRegionValue(catalogAttrs)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("catalog validation error: %w", err)
 	}
 
 	sets := req.GetSets()

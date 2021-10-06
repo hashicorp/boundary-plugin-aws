@@ -11,6 +11,8 @@ import (
 	"google.golang.org/protobuf/types/known/structpb"
 )
 
+const testDescribeInstancesError = "DescribeInstances error"
+
 type testMockIAMState struct {
 	DeleteAccessKeyCalled bool
 }
@@ -100,8 +102,10 @@ func newTestMockEC2(state *testMockEC2State, opts ...testMockEC2Option) ec2APIFu
 }
 
 func (m *testMockEC2) DescribeInstances(input *ec2.DescribeInstancesInput) (*ec2.DescribeInstancesOutput, error) {
-	m.State.DescribeInstancesCalled = true
-	m.State.DescribeInstancesInputParams = input
+	if m.State != nil {
+		m.State.DescribeInstancesCalled = true
+		m.State.DescribeInstancesInputParams = input
+	}
 
 	if m.DescribeInstancesError != nil {
 		return nil, m.DescribeInstancesError
