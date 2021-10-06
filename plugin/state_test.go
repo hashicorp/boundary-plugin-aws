@@ -19,10 +19,98 @@ const testGetCallerIdentityErr = "test error for GetCallerIdentity"
 const testGetUserErr = "test error for GetUser"
 const testDeleteAccessKeyErr = "test error for DeleteAccessKey"
 
+func TestNewAwsCatalogPersistedState(t *testing.T) {
+	staticTime := time.Now()
+
+	cases := []struct {
+		name        string
+		opts        []awsCatalogPersistedStateOption
+		expected    *awsCatalogPersistedState
+		expectedErr string
+	}{
+		{
+			name: "error",
+			opts: []awsCatalogPersistedStateOption{
+				func(s *awsCatalogPersistedState) error {
+					return errors.New(testOptionErr)
+				},
+			},
+			expectedErr: testOptionErr,
+		},
+		{
+			name: "access key id",
+			opts: []awsCatalogPersistedStateOption{
+				withAccessKeyId("foobar"),
+			},
+			expected: &awsCatalogPersistedState{
+				AccessKeyId: "foobar",
+			},
+		},
+		{
+			name: "secret access key",
+			opts: []awsCatalogPersistedStateOption{
+				withSecretAccessKey("bazqux"),
+			},
+			expected: &awsCatalogPersistedState{
+				SecretAccessKey: "bazqux",
+			},
+		},
+		{
+			name: "rotation time",
+			opts: []awsCatalogPersistedStateOption{
+				withCredsLastRotatedTime(staticTime),
+			},
+			expected: &awsCatalogPersistedState{
+				CredsLastRotatedTime: staticTime,
+			},
+		},
+		{
+			name: "double set access key id",
+			opts: []awsCatalogPersistedStateOption{
+				withAccessKeyId("foobar"),
+				withAccessKeyId("onetwo"),
+			},
+			expectedErr: "access key id already set",
+		},
+		{
+			name: "secret access key",
+			opts: []awsCatalogPersistedStateOption{
+				withSecretAccessKey("bazqux"),
+				withSecretAccessKey("threefour"),
+			},
+			expectedErr: "secret access key already set",
+		},
+		{
+			name: "rotation time",
+			opts: []awsCatalogPersistedStateOption{
+				withCredsLastRotatedTime(staticTime),
+				withCredsLastRotatedTime(time.Now()),
+			},
+			expectedErr: "last rotation time already set",
+		},
+	}
+
+	for _, tc := range cases {
+		tc := tc
+		t.Run(tc.name, func(t *testing.T) {
+			require := require.New(t)
+			actual, err := newAwsCatalogPersistedState(tc.opts...)
+			if tc.expectedErr != "" {
+				require.EqualError(err, tc.expectedErr)
+				return
+			}
+
+			require.NoError(err)
+			require.Equal(tc.expected, actual)
+		})
+	}
+}
+
 func TestAwsCatalogPersistedStateFromProto(t *testing.T) {
 	cases := []struct {
 		name        string
 		in          *pb.HostCatalogPersisted
+		opts        []awsCatalogPersistedStateOption
 		expected    *awsCatalogPersistedState
 		expectedErr string
 	}{
@@ -64,6 +152,23 @@ func TestAwsCatalogPersistedStateFromProto(t *testing.T) {
 			expectedErr: "persisted state integrity error: could not parse time in value \"creds_last_rotated_time\": parsing time \"notatime\" as \"2006-01-02T15:04:05.999999999Z07:00\": cannot parse \"notatime\" as \"2006\"",
 		},
 		{
+			name: "option error",
+			in: &pb.HostCatalogPersisted{
+				// Nil should be the same as empty map here
+				Secrets: mustStruct(map[string]interface{}{
+					constAccessKeyId:          "foobar",
+					constSecretAccessKey:      "bazqux",
+					constCredsLastRotatedTime: "2006-01-02T15:04:05+07:00",
+				}),
+			},
+			opts: []awsCatalogPersistedStateOption{
+				func(s *awsCatalogPersistedState) error {
+					return errors.New(testOptionErr)
+				},
+			},
+			expectedErr: testOptionErr,
+		},
+		{
 			name: "good with non-zero timestamp",
 			in: &pb.HostCatalogPersisted{
 				// Nil should be the same as empty map here
@@ -102,13 +207,32 @@ func TestAwsCatalogPersistedStateFromProto(t *testing.T) {
 				CredsLastRotatedTime: time.Time{},
 			},
 		},
+		{
+			name: "good (ignoring non-test options)",
+			in: &pb.HostCatalogPersisted{
+				// Nil should be the same as empty map here
+				Secrets: mustStruct(map[string]interface{}{
+					constAccessKeyId:          "foobar",
+					constSecretAccessKey:      "bazqux",
+					constCredsLastRotatedTime: (time.Time{}).Format(time.RFC3339Nano),
+				}),
+			},
+			opts: []awsCatalogPersistedStateOption{
+				withAccessKeyId("ignored"),
+			},
+			expected: &awsCatalogPersistedState{
+				AccessKeyId:          "foobar",
+				SecretAccessKey:      "bazqux",
+				CredsLastRotatedTime: time.Time{},
+			},
+		},
 	}
 
 	for _, tc := range cases {
 		tc := tc
 		t.Run(tc.name, func(t *testing.T) {
 			require := require.New(t)
-			actual, err := awsCatalogPersistedStateFromProto(tc.in)
+			actual, err := awsCatalogPersistedStateFromProto(tc.in, tc.opts...)
 			if tc.expectedErr != "" {
 				require.EqualError(err, tc.expectedErr)
 				return
@@ -365,7 +489,7 @@ func TestAwsCatalogPersistedStateReplaceCreds(t *testing.T) {
 			},
 			accessKeyId:     "one",
 			secretAccessKey: "two",
-			expectedErr:     fmt.Sprintf("error deleting old access key: error deleting old access key: %s", testDeleteAccessKeyErr),
+			expectedErr:     fmt.Sprintf("error deleting old access key: %s", testDeleteAccessKeyErr),
 		},
 		{
 			name: "good with delete of old rotated",
@@ -450,7 +574,7 @@ func TestAwsCatalogPersistedStateDeleteCreds(t *testing.T) {
 					),
 				},
 			},
-			expectedErr: fmt.Sprintf("error deleting old access key: error deleting old access key: %s", testDeleteAccessKeyErr),
+			expectedErr: fmt.Sprintf("error deleting old access key: %s", testDeleteAccessKeyErr),
 		},
 		{
 			name: "deletion error, but OK because key was just gone",
@@ -512,10 +636,27 @@ func TestAwsCatalogPersistedStateGetSessionErr(t *testing.T) {
 
 func TestAwsCatalogPersistedStateEC2ClientErr(t *testing.T) {
 	require := require.New(t)
-	state := &awsCatalogPersistedState{
-		testOpts: []awsutil.Option{awsutil.MockOptionErr(errors.New(testOptionErr))},
-	}
+	state, err := newAwsCatalogPersistedState(
+		withStateTestOpts([]awsutil.Option{awsutil.MockOptionErr(errors.New(testOptionErr))}),
+	)
+	require.NoError(err)
 
-	_, err := state.EC2Client("someregion")
+	_, err = state.EC2Client("someregion")
 	require.EqualError(err, fmt.Sprintf("error getting AWS session: error reading options in NewCredentialsConfig: %s", testOptionErr))
+}
+
+func TestAwsCatalogPersistedStateEC2ClientGood(t *testing.T) {
+	require := require.New(t)
+	state, err := newAwsCatalogPersistedState(
+		withTestEC2APIFunc(newTestMockEC2(nil)),
+	)
+	require.NoError(err)
+
+	clientRaw, err := state.EC2Client("someregion")
+	require.NoError(err)
+	require.NotNil(clientRaw)
+	client, ok := clientRaw.(*testMockEC2)
+	require.True(ok)
+	require.NotNil(client)
+	require.Equal("someregion", client.Region)
 }

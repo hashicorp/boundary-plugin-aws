@@ -9,11 +9,67 @@ import (
 	"github.com/aws/aws-sdk-go/aws/awserr"
 	"github.com/aws/aws-sdk-go/aws/session"
 	"github.com/aws/aws-sdk-go/service/ec2"
+	"github.com/aws/aws-sdk-go/service/ec2/ec2iface"
 	"github.com/aws/aws-sdk-go/service/iam"
 	pb "github.com/hashicorp/boundary/sdk/pbs/plugin"
 	"github.com/hashicorp/go-secure-stdlib/awsutil"
 	"google.golang.org/protobuf/types/known/structpb"
 )
+
+type ec2APIFunc func(*session.Session, ...*aws.Config) (ec2iface.EC2API, error)
+
+type awsCatalogPersistedStateOption func(s *awsCatalogPersistedState) error
+
+func withStateTestOpts(opts []awsutil.Option) awsCatalogPersistedStateOption {
+	return func(s *awsCatalogPersistedState) error {
+		s.testOpts = opts
+		return nil
+	}
+}
+
+func withTestEC2APIFunc(f ec2APIFunc) awsCatalogPersistedStateOption {
+	return func(s *awsCatalogPersistedState) error {
+		if s.testEC2APIFunc != nil {
+			return errors.New("test API function already set")
+		}
+
+		s.testEC2APIFunc = f
+		return nil
+	}
+}
+
+func withAccessKeyId(x string) awsCatalogPersistedStateOption {
+	return func(s *awsCatalogPersistedState) error {
+		if s.AccessKeyId != "" {
+			return errors.New("access key id already set")
+		}
+
+		s.AccessKeyId = x
+		return nil
+	}
+}
+
+func withSecretAccessKey(x string) awsCatalogPersistedStateOption {
+	return func(s *awsCatalogPersistedState) error {
+		if s.SecretAccessKey != "" {
+			return errors.New("secret access key already set")
+		}
+
+		s.SecretAccessKey = x
+		return nil
+	}
+}
+
+func withCredsLastRotatedTime(t time.Time) awsCatalogPersistedStateOption {
+	return func(s *awsCatalogPersistedState) error {
+		if !s.CredsLastRotatedTime.IsZero() {
+			return errors.New("last rotation time already set")
+		}
+
+		s.CredsLastRotatedTime = t
+		return nil
+	}
+}
 
 type awsCatalogPersistedState struct {
 	AccessKeyId          string
@@ -22,9 +78,23 @@ type awsCatalogPersistedState struct {
 
 	// testOpts are options that should be used for testing only
 	testOpts []awsutil.Option
+
+	// testEC2APIFunc provides a way to provide a factory for a mock EC2 client
+	testEC2APIFunc ec2APIFunc
 }
 
-func awsCatalogPersistedStateFromProto(in *pb.HostCatalogPersisted) (*awsCatalogPersistedState, error) {
+func newAwsCatalogPersistedState(opts ...awsCatalogPersistedStateOption) (*awsCatalogPersistedState, error) {
+	s := new(awsCatalogPersistedState)
+	for _, opt := range opts {
+		if err := opt(s); err != nil {
+			return nil, err
+		}
+	}
+
+	return s, nil
+}
+
+func awsCatalogPersistedStateFromProto(in *pb.HostCatalogPersisted, opts ...awsCatalogPersistedStateOption) (*awsCatalogPersistedState, error) {
 	data := in.GetSecrets()
 	if data == nil {
 		return nil, errors.New("missing persisted secrets")
@@ -45,11 +115,16 @@ func awsCatalogPersistedStateFromProto(in *pb.HostCatalogPersisted) (*awsCatalog
 		return nil, fmt.Errorf("persisted state integrity error: %w", err)
 	}
 
-	return &awsCatalogPersistedState{
-		AccessKeyId:          accessKeyId,
-		SecretAccessKey:      secretAccessKey,
-		CredsLastRotatedTime: credsLastRotatedTime,
-	}, nil
+	s, err := newAwsCatalogPersistedState(opts...)
+	if err != nil {
+		return nil, err
+	}
+
+	s.AccessKeyId = accessKeyId
+	s.SecretAccessKey = secretAccessKey
+	s.CredsLastRotatedTime = credsLastRotatedTime
+
+	return s, nil
 }
 
 func (s *awsCatalogPersistedState) ToProto() (*pb.HostCatalogPersisted, error) {
@@ -161,7 +236,7 @@ func (s *awsCatalogPersistedState) DeleteCreds() error {
 		}
 
 		// Otherwise treat it as an actual error.
-		return fmt.Errorf("error deleting old access key: %w", err)
+		return err
 	}
 
 	s.AccessKeyId = ""
@@ -186,10 +261,14 @@ func (s *awsCatalogPersistedState) GetSession() (*session.Session, error) {
 
 // EC2Client returns a configured EC2 client based on the session
 // information stored in the state.
-func (s *awsCatalogPersistedState) EC2Client(region string) (*ec2.EC2, error) {
+func (s *awsCatalogPersistedState) EC2Client(region string) (ec2iface.EC2API, error) {
 	sess, err := s.GetSession()
 	if err != nil {
 		return nil, fmt.Errorf("error getting AWS session: %w", err)
+	}
+
+	if s.testEC2APIFunc != nil {
+		return s.testEC2APIFunc(sess, aws.NewConfig().WithRegion(region))
 	}
 
 	return ec2.New(sess, aws.NewConfig().WithRegion(region)), nil

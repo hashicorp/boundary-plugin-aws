@@ -23,6 +23,9 @@ const rotationWaitTimeout = time.Second * 30
 // AWS plugin.
 type AwsPlugin struct {
 	pb.UnimplementedHostPluginServiceServer
+
+	// testStateOpts are passed in to the stored state to control test behavior
+	testStateOpts []awsCatalogPersistedStateOption
 }
 
 // Ensure that we are implementing HostPluginServiceServer
@@ -66,9 +69,12 @@ func (p *AwsPlugin) OnCreateCatalog(ctx context.Context, req *pb.OnCreateCatalog
 	}
 
 	// Set up the creds in our persisted state.
-	state := &awsCatalogPersistedState{
-		AccessKeyId:     accessKeyId,
-		SecretAccessKey: secretAccessKey,
+	state, err := newAwsCatalogPersistedState(append([]awsCatalogPersistedStateOption{
+		withAccessKeyId(accessKeyId),
+		withSecretAccessKey(secretAccessKey),
+	}, p.testStateOpts...)...)
+	if err != nil {
+		return nil, fmt.Errorf("error setting up persisted state: %w", err)
 	}
 
 	// Try to rotate the credentials if we're not skipping them.
@@ -128,9 +134,9 @@ func (p *AwsPlugin) OnUpdateCatalog(ctx context.Context, req *pb.OnUpdateCatalog
 	// (implicitly through awsCatalogPersistedStateFromProto) is that
 	// the state will exist and be populated. Personally I think this
 	// is fine and important, but this may change in the future.
-	state, err := awsCatalogPersistedStateFromProto(req.GetPersisted())
+	state, err := awsCatalogPersistedStateFromProto(req.GetPersisted(), p.testStateOpts...)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("error loading persisted state: %w", err)
 	}
 
 	skipRotate, err := getBoolValue(attrs, constDisableCredentialRotation, false)
