@@ -98,7 +98,7 @@ The following attributes are valid on an AWS host Set resource:
 
 #### Supplying Filters on the Boundary CLI
 
-As `filters` is part of a host set's attributes and may contain dashes where are
+As `filters` is part of a host set's attributes and may contain dashes which are
 not identifier-friendly, it's recommended you that supply attributes for AWS
 host sets as a full JSON string. Example:
 
