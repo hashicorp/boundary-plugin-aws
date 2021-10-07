@@ -122,3 +122,9 @@ func mustStruct(in map[string]interface{}) *structpb.Struct {
 
 	return out
 }
+
+type ec2FilterSorter []*ec2.Filter
+
+func (s ec2FilterSorter) Len() int           { return len(s) }
+func (s ec2FilterSorter) Less(i, j int) bool { return *s[i].Name < *s[j].Name }
+func (s ec2FilterSorter) Swap(i, j int)      { s[i], s[j] = s[j], s[i] }

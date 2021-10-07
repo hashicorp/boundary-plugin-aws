@@ -571,7 +571,7 @@ func buildFilters(in *structpb.Struct) ([]*ec2.Filter, error) {
 		for _, e := range w {
 			f, ok := e.(string)
 			if !ok {
-				return nil, fmt.Errorf("unexpected type for filter value %v: want array, got %T", e, e)
+				return nil, fmt.Errorf("unexpected type for filter element value %v: want string, got %T", e, e)
 			}
 
 			filterValues = append(filterValues, aws.String(f))

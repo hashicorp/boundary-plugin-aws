@@ -4,8 +4,11 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"sort"
 	"testing"
+	"time"
 
+	"github.com/aws/aws-sdk-go/aws"
 	"github.com/aws/aws-sdk-go/service/ec2"
 	"github.com/hashicorp/boundary/sdk/pbs/controller/api/resources/hostcatalogs"
 	"github.com/hashicorp/boundary/sdk/pbs/controller/api/resources/hostsets"
@@ -15,7 +18,7 @@ import (
 	"google.golang.org/protobuf/types/known/structpb"
 )
 
-func TestOnCreateCatalogErr(t *testing.T) {
+func TestPluginOnCreateCatalogErr(t *testing.T) {
 	cases := []struct {
 		name        string
 		req         *pb.OnCreateCatalogRequest
@@ -181,7 +184,7 @@ func TestOnCreateCatalogErr(t *testing.T) {
 	}
 }
 
-func TestOnUpdateCatalogErr(t *testing.T) {
+func TestPluginOnUpdateCatalogErr(t *testing.T) {
 	cases := []struct {
 		name        string
 		req         *pb.OnUpdateCatalogRequest
@@ -387,7 +390,7 @@ func TestOnUpdateCatalogErr(t *testing.T) {
 	}
 }
 
-func TestOnDeleteCatalogErr(t *testing.T) {
+func TestPluginOnDeleteCatalogErr(t *testing.T) {
 	cases := []struct {
 		name        string
 		req         *pb.OnDeleteCatalogRequest
@@ -459,7 +462,7 @@ func TestOnDeleteCatalogErr(t *testing.T) {
 	}
 }
 
-func TestOnCreateSetErr(t *testing.T) {
+func TestPluginOnCreateSetErr(t *testing.T) {
 	cases := []struct {
 		name        string
 		req         *pb.OnCreateSetRequest
@@ -689,7 +692,7 @@ func TestOnCreateSetErr(t *testing.T) {
 	}
 }
 
-func TestOnUpdateSetErr(t *testing.T) {
+func TestPluginOnUpdateSetErr(t *testing.T) {
 	cases := []struct {
 		name        string
 		req         *pb.OnUpdateSetRequest
@@ -919,7 +922,7 @@ func TestOnUpdateSetErr(t *testing.T) {
 	}
 }
 
-func TestListHostsErr(t *testing.T) {
+func TestPluginListHostsErr(t *testing.T) {
 	cases := []struct {
 		name        string
 		req         *pb.ListHostsRequest
@@ -1193,6 +1196,736 @@ func TestListHostsErr(t *testing.T) {
 			}
 			_, err := p.ListHosts(context.Background(), tc.req)
 			require.EqualError(err, tc.expectedErr)
+		})
+	}
+}
+
+func TestGetStringValue(t *testing.T) {
+	cases := []struct {
+		name        string
+		in          *structpb.Struct
+		key         string
+		required    bool
+		expected    string
+		expectedErr string
+	}{
+		{
+			name:        "required missing",
+			in:          mustStruct(map[string]interface{}{}),
+			key:         "foo",
+			required:    true,
+			expectedErr: "missing required value \"foo\"",
+		},
+		{
+			name:     "optional missing",
+			in:       mustStruct(map[string]interface{}{}),
+			key:      "foo",
+			expected: "",
+		},
+		{
+			name: "non-string value",
+			in: mustStruct(map[string]interface{}{
+				"foo": 1,
+			}),
+			key:         "foo",
+			expectedErr: "unexpected type for value \"foo\": want string, got float64",
+		},
+		{
+			name: "required empty",
+			in: mustStruct(map[string]interface{}{
+				"foo": "",
+			}),
+			key:         "foo",
+			required:    true,
+			expectedErr: "value \"foo\" cannot be empty",
+		},
+		{
+			name: "good",
+			in: mustStruct(map[string]interface{}{
+				"foo": "bar",
+			}),
+			key:      "foo",
+			expected: "bar",
+		},
+	}
+
+	for _, tc := range cases {
+		tc := tc
+		t.Run(tc.name, func(t *testing.T) {
+			require := require.New(t)
+			actual, err := getStringValue(tc.in, tc.key, tc.required)
+			if tc.expectedErr != "" {
+				require.EqualError(err, tc.expectedErr)
+				return
+			}
+
+			require.NoError(err)
+			require.Equal(tc.expected, actual)
+		})
+	}
+}
+
+func TestGetBoolValue(t *testing.T) {
+	cases := []struct {
+		name        string
+		in          *structpb.Struct
+		key         string
+		required    bool
+		expected    bool
+		expectedErr string
+	}{
+		{
+			name:        "required missing",
+			in:          mustStruct(map[string]interface{}{}),
+			key:         "foo",
+			required:    true,
+			expectedErr: "missing required value \"foo\"",
+		},
+		{
+			name:     "optional missing",
+			in:       mustStruct(map[string]interface{}{}),
+			key:      "foo",
+			expected: false,
+		},
+		{
+			name: "non-bool value",
+			in: mustStruct(map[string]interface{}{
+				"foo": "bar",
+			}),
+			key:         "foo",
+			expectedErr: "unexpected type for value \"foo\": want bool, got string",
+		},
+		{
+			name: "good",
+			in: mustStruct(map[string]interface{}{
+				"foo": true,
+			}),
+			key:      "foo",
+			expected: true,
+		},
+	}
+
+	for _, tc := range cases {
+		tc := tc
+		t.Run(tc.name, func(t *testing.T) {
+			require := require.New(t)
+			actual, err := getBoolValue(tc.in, tc.key, tc.required)
+			if tc.expectedErr != "" {
+				require.EqualError(err, tc.expectedErr)
+				return
+			}
+
+			require.NoError(err)
+			require.Equal(tc.expected, actual)
+		})
+	}
+}
+
+func TestGetTimeValue(t *testing.T) {
+	staticTime := time.Now()
+
+	cases := []struct {
+		name        string
+		in          *structpb.Struct
+		key         string
+		expected    time.Time
+		expectedErr string
+	}{
+		{
+			name:     "missing",
+			in:       mustStruct(map[string]interface{}{}),
+			key:      "foo",
+			expected: time.Time{},
+		},
+		{
+			name: "non-time value",
+			in: mustStruct(map[string]interface{}{
+				"foo": 1,
+			}),
+			key:         "foo",
+			expectedErr: "unexpected type for value \"foo\": want string, got float64",
+		},
+		{
+			name: "bad parse",
+			in: mustStruct(map[string]interface{}{
+				"foo": "bar",
+			}),
+			key:         "foo",
+			expectedErr: "could not parse time in value \"foo\": parsing time \"bar\" as \"2006-01-02T15:04:05.999999999Z07:00\": cannot parse \"bar\" as \"2006\"",
+		},
+		{
+			name: "good",
+			in: mustStruct(map[string]interface{}{
+				"foo": staticTime.Format(time.RFC3339Nano),
+			}),
+			key: "foo",
+			expected: func() time.Time {
+				u, err := time.Parse(time.RFC3339Nano, staticTime.Format(time.RFC3339Nano))
+				if err != nil {
+					panic(err)
+				}
+
+				return u
+			}(),
+		},
+	}
+
+	for _, tc := range cases {
+		tc := tc
+		t.Run(tc.name, func(t *testing.T) {
+			require := require.New(t)
+			actual, err := getTimeValue(tc.in, tc.key)
+			if tc.expectedErr != "" {
+				require.EqualError(err, tc.expectedErr)
+				return
+			}
+
+			require.NoError(err)
+			require.Equal(tc.expected, actual)
+		})
+	}
+}
+
+func TestGetMapValue(t *testing.T) {
+	cases := []struct {
+		name        string
+		in          *structpb.Struct
+		key         string
+		expected    map[string]interface{}
+		expectedErr string
+	}{
+		{
+			name:     "missing",
+			in:       mustStruct(map[string]interface{}{}),
+			key:      "foo",
+			expected: make(map[string]interface{}),
+		},
+		{
+			name: "non-map value",
+			in: mustStruct(map[string]interface{}{
+				"foo": "bar",
+			}),
+			key:         "foo",
+			expectedErr: "unexpected type for value \"foo\": want map, got string",
+		},
+		{
+			name: "good",
+			in: mustStruct(map[string]interface{}{
+				"foo": map[string]interface{}{
+					"one": "two",
+				},
+			}),
+			key: "foo",
+			expected: map[string]interface{}{
+				"one": "two",
+			},
+		},
+	}
+
+	for _, tc := range cases {
+		tc := tc
+		t.Run(tc.name, func(t *testing.T) {
+			require := require.New(t)
+			actual, err := getMapValue(tc.in, tc.key)
+			if tc.expectedErr != "" {
+				require.EqualError(err, tc.expectedErr)
+				return
+			}
+
+			require.NoError(err)
+			require.Equal(tc.expected, actual)
+		})
+	}
+}
+
+func TestGetValidateRegionValue(t *testing.T) {
+	cases := []struct {
+		name        string
+		in          *structpb.Struct
+		key         string
+		expected    string
+		expectedErr string
+	}{
+		{
+			name:        "missing",
+			in:          mustStruct(map[string]interface{}{}),
+			key:         "region",
+			expectedErr: fmt.Sprintf("missing required value %q", constRegion),
+		},
+		{
+			name: "invalid region",
+			in: mustStruct(map[string]interface{}{
+				constRegion: "foobar",
+			}),
+			expectedErr: "not a valid region: foobar",
+		},
+		{
+			name: "good",
+			in: mustStruct(map[string]interface{}{
+				constRegion: "us-west-2",
+			}),
+			expected: "us-west-2",
+		},
+	}
+
+	for _, tc := range cases {
+		tc := tc
+		t.Run(tc.name, func(t *testing.T) {
+			require := require.New(t)
+			actual, err := getValidateRegionValue(tc.in)
+			if tc.expectedErr != "" {
+				require.EqualError(err, tc.expectedErr)
+				return
+			}
+
+			require.NoError(err)
+			require.Equal(tc.expected, actual)
+		})
+	}
+}
+
+func TestBuildFilters(t *testing.T) {
+	cases := []struct {
+		name        string
+		in          *structpb.Struct
+		expected    []*ec2.Filter
+		expectedErr string
+	}{
+		{
+			name: "map value error",
+			in: mustStruct(map[string]interface{}{
+				constDescribeInstancesFilters: "foo",
+			}),
+			expectedErr: fmt.Sprintf("unexpected type for value %q: want map, got string", constDescribeInstancesFilters),
+		},
+		{
+			name: "bad filter values",
+			in: mustStruct(map[string]interface{}{
+				constDescribeInstancesFilters: map[string]interface{}{
+					"foo": "bar",
+				},
+			}),
+			expectedErr: "unexpected type for filter values in \"foo\": want array, got string",
+		},
+		{
+			name: "bad filter element value",
+			in: mustStruct(map[string]interface{}{
+				constDescribeInstancesFilters: map[string]interface{}{
+					"foo": []interface{}{1},
+				},
+			}),
+			expectedErr: "unexpected type for filter element value 1: want string, got float64",
+		},
+		{
+			name: "good without instance-state-name",
+			in: mustStruct(map[string]interface{}{
+				constDescribeInstancesFilters: map[string]interface{}{
+					"foo": []interface{}{"bar"},
+				},
+			}),
+			expected: []*ec2.Filter{
+				&ec2.Filter{
+					Name:   aws.String("foo"),
+					Values: aws.StringSlice([]string{"bar"}),
+				},
+				&ec2.Filter{
+					Name:   aws.String("instance-state-name"),
+					Values: aws.StringSlice([]string{ec2.InstanceStateNameRunning}),
+				},
+			},
+		},
+		{
+			name: "good with instance-state-name",
+			in: mustStruct(map[string]interface{}{
+				constDescribeInstancesFilters: map[string]interface{}{
+					"foo":                 []interface{}{"bar"},
+					"instance-state-name": []interface{}{"static"},
+				},
+			}),
+			expected: []*ec2.Filter{
+				&ec2.Filter{
+					Name:   aws.String("foo"),
+					Values: aws.StringSlice([]string{"bar"}),
+				},
+				&ec2.Filter{
+					Name:   aws.String("instance-state-name"),
+					Values: aws.StringSlice([]string{"static"}),
+				},
+			},
+		},
+		{
+			name: "empty filter set",
+			in: mustStruct(map[string]interface{}{
+				constDescribeInstancesFilters: map[string]interface{}{},
+			}),
+			expected: []*ec2.Filter{
+				&ec2.Filter{
+					Name:   aws.String("instance-state-name"),
+					Values: aws.StringSlice([]string{ec2.InstanceStateNameRunning}),
+				},
+			},
+		},
+	}
+
+	for _, tc := range cases {
+		tc := tc
+		t.Run(tc.name, func(t *testing.T) {
+			require := require.New(t)
+			actual, err := buildFilters(tc.in)
+			if tc.expectedErr != "" {
+				require.EqualError(err, tc.expectedErr)
+				return
+			}
+
+			require.NoError(err)
+			sort.Sort(ec2FilterSorter(actual))
+			require.Equal(tc.expected, actual)
+		})
+	}
+}
+
+func TestBuildDescribeInstancesInput(t *testing.T) {
+	cases := []struct {
+		name        string
+		in          *structpb.Struct
+		dryRun      bool
+		expected    *ec2.DescribeInstancesInput
+		expectedErr string
+	}{
+		{
+			name: "buildFilters error",
+			in: mustStruct(map[string]interface{}{
+				constDescribeInstancesFilters: "foo",
+			}),
+			expectedErr: fmt.Sprintf("error building filters: unexpected type for value %q: want map, got string", constDescribeInstancesFilters),
+		},
+		{
+			name: "good, dry run",
+			in: mustStruct(map[string]interface{}{
+				constDescribeInstancesFilters: map[string]interface{}{
+					"foo": []interface{}{"bar"},
+				},
+			}),
+			dryRun: true,
+			expected: &ec2.DescribeInstancesInput{
+				DryRun: aws.Bool(true),
+				Filters: []*ec2.Filter{
+					&ec2.Filter{
+						Name:   aws.String("foo"),
+						Values: aws.StringSlice([]string{"bar"}),
+					},
+					&ec2.Filter{
+						Name:   aws.String("instance-state-name"),
+						Values: aws.StringSlice([]string{ec2.InstanceStateNameRunning}),
+					},
+				},
+			},
+		},
+		{
+			name: "good, real run",
+			in: mustStruct(map[string]interface{}{
+				constDescribeInstancesFilters: map[string]interface{}{
+					"foo": []interface{}{"bar"},
+				},
+			}),
+			dryRun: false,
+			expected: &ec2.DescribeInstancesInput{
+				DryRun: aws.Bool(false),
+				Filters: []*ec2.Filter{
+					&ec2.Filter{
+						Name:   aws.String("foo"),
+						Values: aws.StringSlice([]string{"bar"}),
+					},
+					&ec2.Filter{
+						Name:   aws.String("instance-state-name"),
+						Values: aws.StringSlice([]string{ec2.InstanceStateNameRunning}),
+					},
+				},
+			},
+		},
+	}
+
+	for _, tc := range cases {
+		tc := tc
+		t.Run(tc.name, func(t *testing.T) {
+			require := require.New(t)
+			actual, err := buildDescribeInstancesInput(tc.in, tc.dryRun)
+			if tc.expectedErr != "" {
+				require.EqualError(err, tc.expectedErr)
+				return
+			}
+
+			require.NoError(err)
+			require.Equal(tc.expected, actual)
+		})
+	}
+}
+
+func TestAwsInstanceToHost(t *testing.T) {
+	cases := []struct {
+		name        string
+		instance    *ec2.Instance
+		expected    *pb.ListHostsResponseHost
+		expectedErr string
+	}{
+		{
+			name:        "nil instance",
+			instance:    nil,
+			expectedErr: "response integrity error: missing instance entry",
+		},
+		{
+			name:        "nil instance state",
+			instance:    &ec2.Instance{},
+			expectedErr: "response integrity error: missing instance state",
+		},
+		{
+			name: "missing instance state name",
+			instance: &ec2.Instance{
+				State: &ec2.InstanceState{},
+			},
+			expectedErr: "response integrity error: missing instance state name",
+		},
+		{
+			name: "missing instance id",
+			instance: &ec2.Instance{
+				State: &ec2.InstanceState{
+					Name: aws.String(ec2.InstanceStateNameRunning),
+				},
+			},
+			expectedErr: "response integrity error: missing instance id",
+		},
+		{
+			name: "instance not running",
+			instance: &ec2.Instance{
+				State: &ec2.InstanceState{
+					Name: aws.String(ec2.InstanceStateNameTerminated),
+				},
+				InstanceId: aws.String("foobar"),
+			},
+			expected: nil,
+		},
+		{
+			name: "nil interface entry",
+			instance: &ec2.Instance{
+				State: &ec2.InstanceState{
+					Name: aws.String(ec2.InstanceStateNameRunning),
+				},
+				InstanceId:        aws.String("foobar"),
+				NetworkInterfaces: []*ec2.InstanceNetworkInterface{nil},
+			},
+			expectedErr: "response integrity error: interface entry is nil",
+		},
+		{
+			name: "nil interface address entry",
+			instance: &ec2.Instance{
+				State: &ec2.InstanceState{
+					Name: aws.String(ec2.InstanceStateNameRunning),
+				},
+				InstanceId: aws.String("foobar"),
+				NetworkInterfaces: []*ec2.InstanceNetworkInterface{
+					&ec2.InstanceNetworkInterface{
+						PrivateIpAddresses: []*ec2.InstancePrivateIpAddress{nil},
+					},
+				},
+			},
+			expectedErr: "response integrity error: interface address entry is nil",
+		},
+		{
+			name: "good, single IP w/public addr",
+			instance: &ec2.Instance{
+				State: &ec2.InstanceState{
+					Name: aws.String(ec2.InstanceStateNameRunning),
+				},
+				InstanceId:       aws.String("foobar"),
+				PrivateIpAddress: aws.String("10.0.0.1"),
+				PublicIpAddress:  aws.String("1.1.1.1"),
+				NetworkInterfaces: []*ec2.InstanceNetworkInterface{
+					&ec2.InstanceNetworkInterface{
+						PrivateIpAddresses: []*ec2.InstancePrivateIpAddress{
+							&ec2.InstancePrivateIpAddress{
+								Association: &ec2.InstanceNetworkInterfaceAssociation{
+									PublicIp: aws.String("1.1.1.1"),
+								},
+								PrivateIpAddress: aws.String("10.0.0.1"),
+							},
+						},
+					},
+				},
+			},
+			expected: &pb.ListHostsResponseHost{
+				ExternalId:  "foobar",
+				IpAddresses: []string{"10.0.0.1", "1.1.1.1"},
+			},
+		},
+		{
+			name: "good, private",
+			instance: &ec2.Instance{
+				State: &ec2.InstanceState{
+					Name: aws.String(ec2.InstanceStateNameRunning),
+				},
+				InstanceId:       aws.String("foobar"),
+				PrivateIpAddress: aws.String("10.0.0.1"),
+				NetworkInterfaces: []*ec2.InstanceNetworkInterface{
+					&ec2.InstanceNetworkInterface{
+						PrivateIpAddresses: []*ec2.InstancePrivateIpAddress{
+							&ec2.InstancePrivateIpAddress{
+								PrivateIpAddress: aws.String("10.0.0.1"),
+							},
+						},
+					},
+				},
+			},
+			expected: &pb.ListHostsResponseHost{
+				ExternalId:  "foobar",
+				IpAddresses: []string{"10.0.0.1"},
+			},
+		},
+		{
+			name: "good, multiple interfaces",
+			instance: &ec2.Instance{
+				State: &ec2.InstanceState{
+					Name: aws.String(ec2.InstanceStateNameRunning),
+				},
+				InstanceId:       aws.String("foobar"),
+				PrivateIpAddress: aws.String("10.0.0.1"),
+				PublicIpAddress:  aws.String("1.1.1.1"),
+				NetworkInterfaces: []*ec2.InstanceNetworkInterface{
+					&ec2.InstanceNetworkInterface{
+						PrivateIpAddresses: []*ec2.InstancePrivateIpAddress{
+							&ec2.InstancePrivateIpAddress{
+								PrivateIpAddress: aws.String("10.0.0.2"),
+							},
+						},
+					},
+					&ec2.InstanceNetworkInterface{
+						PrivateIpAddresses: []*ec2.InstancePrivateIpAddress{
+							&ec2.InstancePrivateIpAddress{
+								Association: &ec2.InstanceNetworkInterfaceAssociation{
+									PublicIp: aws.String("1.1.1.1"),
+								},
+								PrivateIpAddress: aws.String("10.0.0.1"),
+							},
+						},
+					},
+				},
+			},
+			expected: &pb.ListHostsResponseHost{
+				ExternalId:  "foobar",
+				IpAddresses: []string{"10.0.0.1", "1.1.1.1", "10.0.0.2"},
+			},
+		},
+		{
+			name: "good, multiple public interfaces",
+			instance: &ec2.Instance{
+				State: &ec2.InstanceState{
+					Name: aws.String(ec2.InstanceStateNameRunning),
+				},
+				InstanceId:       aws.String("foobar"),
+				PrivateIpAddress: aws.String("10.0.0.1"),
+				PublicIpAddress:  aws.String("1.1.1.1"),
+				NetworkInterfaces: []*ec2.InstanceNetworkInterface{
+					&ec2.InstanceNetworkInterface{
+						PrivateIpAddresses: []*ec2.InstancePrivateIpAddress{
+							&ec2.InstancePrivateIpAddress{
+								Association: &ec2.InstanceNetworkInterfaceAssociation{
+									PublicIp: aws.String("1.1.1.2"),
+								},
+								PrivateIpAddress: aws.String("10.0.0.2"),
+							},
+						},
+					},
+					&ec2.InstanceNetworkInterface{
+						PrivateIpAddresses: []*ec2.InstancePrivateIpAddress{
+							&ec2.InstancePrivateIpAddress{
+								Association: &ec2.InstanceNetworkInterfaceAssociation{
+									PublicIp: aws.String("1.1.1.1"),
+								},
+								PrivateIpAddress: aws.String("10.0.0.1"),
+							},
+						},
+					},
+				},
+			},
+			expected: &pb.ListHostsResponseHost{
+				ExternalId:  "foobar",
+				IpAddresses: []string{"10.0.0.1", "1.1.1.1", "10.0.0.2", "1.1.1.2"},
+			},
+		},
+		{
+			name: "good, multiple addresses on single interface",
+			instance: &ec2.Instance{
+				State: &ec2.InstanceState{
+					Name: aws.String(ec2.InstanceStateNameRunning),
+				},
+				InstanceId:       aws.String("foobar"),
+				PrivateIpAddress: aws.String("10.0.0.1"),
+				PublicIpAddress:  aws.String("1.1.1.1"),
+				NetworkInterfaces: []*ec2.InstanceNetworkInterface{
+					&ec2.InstanceNetworkInterface{
+						PrivateIpAddresses: []*ec2.InstancePrivateIpAddress{
+							&ec2.InstancePrivateIpAddress{
+								Association: &ec2.InstanceNetworkInterfaceAssociation{
+									PublicIp: aws.String("1.1.1.1"),
+								},
+								PrivateIpAddress: aws.String("10.0.0.1"),
+							},
+							&ec2.InstancePrivateIpAddress{
+								PrivateIpAddress: aws.String("10.0.0.2"),
+							},
+						},
+					},
+				},
+			},
+			expected: &pb.ListHostsResponseHost{
+				ExternalId:  "foobar",
+				IpAddresses: []string{"10.0.0.1", "1.1.1.1", "10.0.0.2"},
+			},
+		},
+		{
+			name: "good, single IP w/public addr and IPv6",
+			instance: &ec2.Instance{
+				State: &ec2.InstanceState{
+					Name: aws.String(ec2.InstanceStateNameRunning),
+				},
+				InstanceId:       aws.String("foobar"),
+				PrivateIpAddress: aws.String("10.0.0.1"),
+				PublicIpAddress:  aws.String("1.1.1.1"),
+				NetworkInterfaces: []*ec2.InstanceNetworkInterface{
+					&ec2.InstanceNetworkInterface{
+						PrivateIpAddresses: []*ec2.InstancePrivateIpAddress{
+							&ec2.InstancePrivateIpAddress{
+								Association: &ec2.InstanceNetworkInterfaceAssociation{
+									PublicIp: aws.String("1.1.1.1"),
+								},
+								PrivateIpAddress: aws.String("10.0.0.1"),
+							},
+						},
+						Ipv6Addresses: []*ec2.InstanceIpv6Address{
+							nil, // Just coverage for nil assertion which is skipped
+							&ec2.InstanceIpv6Address{Ipv6Address: aws.String("some::fake::address")},
+						},
+					},
+				},
+			},
+			expected: &pb.ListHostsResponseHost{
+				ExternalId:  "foobar",
+				IpAddresses: []string{"10.0.0.1", "1.1.1.1", "some::fake::address"},
+			},
+		},
+	}
+
+	for _, tc := range cases {
+		tc := tc
+		t.Run(tc.name, func(t *testing.T) {
+			require := require.New(t)
+			actual, err := awsInstanceToHost(tc.instance)
+			if tc.expectedErr != "" {
+				require.EqualError(err, tc.expectedErr)
+				return
+			}
+
+			require.NoError(err)
+			require.Equal(tc.expected, actual)
 		})
 	}
 }
