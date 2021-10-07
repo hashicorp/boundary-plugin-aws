@@ -92,6 +92,16 @@ The following `secrets` are valid on an AWS host catalog resource:
 
 The following attributes are valid on an AWS host Set resource:
 
-- `filters` (string): An object of filters to filter off of. For a list of
+- `filters` (object): An object of filters to filter off of. For a list of
   filter options, check out [describe-instances in the AWS CLI
   reference](https://docs.aws.amazon.com/cli/latest/reference/ec2/describe-instances.html).
+
+#### Supplying Filters on the Boundary CLI
+
+As `filters` is part of a host set's attributes and may contain dashes where are
+not identifier-friendly, it's recommended you that supply attributes for AWS
+host sets as a full JSON string. Example:
+
+```
+boundary host-sets create plugin -host-catalog-id hc_1234567890 --attributes '{"filters":{"tag-name":["foo"]}}'
+```
