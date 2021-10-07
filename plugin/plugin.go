@@ -414,12 +414,6 @@ func (p *AwsPlugin) ListHosts(ctx context.Context, req *pb.ListHostsRequest) (*p
 					return nil, fmt.Errorf("error processing host results for host set id %q: %w", query.Id, err)
 				}
 
-				if host == nil {
-					// Nil result means we don't include the host (instance not
-					// running, or some other issue).
-					continue
-				}
-
 				queries[i].OutputHosts = append(queries[i].OutputHosts, host)
 				maxLen++ // Increment maximum counter for allocation later
 			}
@@ -612,9 +606,6 @@ func buildDescribeInstancesInput(attrs *structpb.Struct, dryRun bool) (*ec2.Desc
 // awsInstanceToHost processes data from an ec2.Instance and returns
 // a ListHostsResponseHost with the ID and network addresses
 // populated.
-//
-// Returns nil if the instance is not ready (ie: powered down,
-// hibernated, or terminated).
 func awsInstanceToHost(instance *ec2.Instance) (*pb.ListHostsResponseHost, error) {
 	// Integrity check: some fields should always be non-nil. Check
 	// those.
@@ -622,21 +613,8 @@ func awsInstanceToHost(instance *ec2.Instance) (*pb.ListHostsResponseHost, error
 		return nil, errors.New("response integrity error: missing instance entry")
 	}
 
-	if instance.State == nil {
-		return nil, errors.New("response integrity error: missing instance state")
-	}
-
-	if aws.StringValue(instance.State.Name) == "" {
-		return nil, errors.New("response integrity error: missing instance state name")
-	}
-
 	if aws.StringValue(instance.InstanceId) == "" {
 		return nil, errors.New("response integrity error: missing instance id")
-	}
-
-	// Abort this if the instance is not ready
-	if aws.StringValue(instance.State.Name) != ec2.InstanceStateNameRunning {
-		return nil, nil
 	}
 
 	result := new(pb.ListHostsResponseHost)

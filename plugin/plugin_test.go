@@ -1183,7 +1183,7 @@ func TestPluginListHostsErr(t *testing.T) {
 					),
 				)),
 			},
-			expectedErr: "error processing host results for host set id \"foobar\": response integrity error: missing instance state",
+			expectedErr: "error processing host results for host set id \"foobar\": response integrity error: missing instance id",
 		},
 	}
 
@@ -1674,42 +1674,13 @@ func TestAwsInstanceToHost(t *testing.T) {
 			expectedErr: "response integrity error: missing instance entry",
 		},
 		{
-			name:        "nil instance state",
+			name:        "missing instance id",
 			instance:    &ec2.Instance{},
-			expectedErr: "response integrity error: missing instance state",
-		},
-		{
-			name: "missing instance state name",
-			instance: &ec2.Instance{
-				State: &ec2.InstanceState{},
-			},
-			expectedErr: "response integrity error: missing instance state name",
-		},
-		{
-			name: "missing instance id",
-			instance: &ec2.Instance{
-				State: &ec2.InstanceState{
-					Name: aws.String(ec2.InstanceStateNameRunning),
-				},
-			},
 			expectedErr: "response integrity error: missing instance id",
-		},
-		{
-			name: "instance not running",
-			instance: &ec2.Instance{
-				State: &ec2.InstanceState{
-					Name: aws.String(ec2.InstanceStateNameTerminated),
-				},
-				InstanceId: aws.String("foobar"),
-			},
-			expected: nil,
 		},
 		{
 			name: "nil interface entry",
 			instance: &ec2.Instance{
-				State: &ec2.InstanceState{
-					Name: aws.String(ec2.InstanceStateNameRunning),
-				},
 				InstanceId:        aws.String("foobar"),
 				NetworkInterfaces: []*ec2.InstanceNetworkInterface{nil},
 			},
@@ -1718,9 +1689,6 @@ func TestAwsInstanceToHost(t *testing.T) {
 		{
 			name: "nil interface address entry",
 			instance: &ec2.Instance{
-				State: &ec2.InstanceState{
-					Name: aws.String(ec2.InstanceStateNameRunning),
-				},
 				InstanceId: aws.String("foobar"),
 				NetworkInterfaces: []*ec2.InstanceNetworkInterface{
 					&ec2.InstanceNetworkInterface{
@@ -1733,9 +1701,6 @@ func TestAwsInstanceToHost(t *testing.T) {
 		{
 			name: "good, single IP w/public addr",
 			instance: &ec2.Instance{
-				State: &ec2.InstanceState{
-					Name: aws.String(ec2.InstanceStateNameRunning),
-				},
 				InstanceId:       aws.String("foobar"),
 				PrivateIpAddress: aws.String("10.0.0.1"),
 				PublicIpAddress:  aws.String("1.1.1.1"),
@@ -1760,9 +1725,6 @@ func TestAwsInstanceToHost(t *testing.T) {
 		{
 			name: "good, private",
 			instance: &ec2.Instance{
-				State: &ec2.InstanceState{
-					Name: aws.String(ec2.InstanceStateNameRunning),
-				},
 				InstanceId:       aws.String("foobar"),
 				PrivateIpAddress: aws.String("10.0.0.1"),
 				NetworkInterfaces: []*ec2.InstanceNetworkInterface{
@@ -1783,9 +1745,6 @@ func TestAwsInstanceToHost(t *testing.T) {
 		{
 			name: "good, multiple interfaces",
 			instance: &ec2.Instance{
-				State: &ec2.InstanceState{
-					Name: aws.String(ec2.InstanceStateNameRunning),
-				},
 				InstanceId:       aws.String("foobar"),
 				PrivateIpAddress: aws.String("10.0.0.1"),
 				PublicIpAddress:  aws.String("1.1.1.1"),
@@ -1817,9 +1776,6 @@ func TestAwsInstanceToHost(t *testing.T) {
 		{
 			name: "good, multiple public interfaces",
 			instance: &ec2.Instance{
-				State: &ec2.InstanceState{
-					Name: aws.String(ec2.InstanceStateNameRunning),
-				},
 				InstanceId:       aws.String("foobar"),
 				PrivateIpAddress: aws.String("10.0.0.1"),
 				PublicIpAddress:  aws.String("1.1.1.1"),
@@ -1854,9 +1810,6 @@ func TestAwsInstanceToHost(t *testing.T) {
 		{
 			name: "good, multiple addresses on single interface",
 			instance: &ec2.Instance{
-				State: &ec2.InstanceState{
-					Name: aws.String(ec2.InstanceStateNameRunning),
-				},
 				InstanceId:       aws.String("foobar"),
 				PrivateIpAddress: aws.String("10.0.0.1"),
 				PublicIpAddress:  aws.String("1.1.1.1"),
@@ -1884,9 +1837,6 @@ func TestAwsInstanceToHost(t *testing.T) {
 		{
 			name: "good, single IP w/public addr and IPv6",
 			instance: &ec2.Instance{
-				State: &ec2.InstanceState{
-					Name: aws.String(ec2.InstanceStateNameRunning),
-				},
 				InstanceId:       aws.String("foobar"),
 				PrivateIpAddress: aws.String("10.0.0.1"),
 				PublicIpAddress:  aws.String("1.1.1.1"),
