@@ -5,7 +5,7 @@ go 1.16
 require (
 	github.com/aws/aws-sdk-go v1.40.55
 	github.com/fatih/color v1.13.0 // indirect
-	github.com/hashicorp/boundary/sdk v0.0.12-0.20211014161407-f01a8060a066
+	github.com/hashicorp/boundary/sdk v0.0.12-0.20211028194642-6eba8a478703
 	github.com/hashicorp/go-secure-stdlib/awsutil v0.1.6
 	github.com/hashicorp/terraform-json v0.12.0
 	github.com/mattn/go-colorable v0.1.11 // indirect
