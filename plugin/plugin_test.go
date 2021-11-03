@@ -1386,38 +1386,42 @@ func TestGetTimeValue(t *testing.T) {
 	}
 }
 
-func TestGetMapValue(t *testing.T) {
+func TestGetSetAttributes(t *testing.T) {
 	cases := []struct {
-		name        string
-		in          *structpb.Struct
-		key         string
-		expected    map[string]interface{}
-		expectedErr string
+		name                string
+		in                  *structpb.Struct
+		expected            *SetAttributes
+		expectedErrContains string
 	}{
 		{
 			name:     "missing",
 			in:       mustStruct(map[string]interface{}{}),
-			key:      "foo",
-			expected: make(map[string]interface{}),
+			expected: &SetAttributes{},
 		},
 		{
-			name: "non-map value",
+			name: "non-string-slice value",
 			in: mustStruct(map[string]interface{}{
-				"foo": "bar",
+				constDescribeInstancesFilters: "bar",
 			}),
-			key:         "foo",
-			expectedErr: "unexpected type for value \"foo\": want map, got string",
+			expectedErrContains: "source data must be an array or slice, got string",
+		},
+		{
+			name: "bad filter element value",
+			in: mustStruct(map[string]interface{}{
+				constDescribeInstancesFilters: []interface{}{1},
+			}),
+			expectedErrContains: "expected type 'string', got unconvertible type 'float64'",
 		},
 		{
 			name: "good",
 			in: mustStruct(map[string]interface{}{
-				"foo": map[string]interface{}{
-					"one": "two",
+				constDescribeInstancesFilters: []interface{}{
+					"foo=bar",
+					"zip=zap",
 				},
 			}),
-			key: "foo",
-			expected: map[string]interface{}{
-				"one": "two",
+			expected: &SetAttributes{
+				Filters: []string{"foo=bar", "zip=zap"},
 			},
 		},
 	}
@@ -1426,9 +1430,9 @@ func TestGetMapValue(t *testing.T) {
 		tc := tc
 		t.Run(tc.name, func(t *testing.T) {
 			require := require.New(t)
-			actual, err := getMapValue(tc.in, tc.key)
-			if tc.expectedErr != "" {
-				require.EqualError(err, tc.expectedErr)
+			actual, err := getSetAttributes(tc.in)
+			if tc.expectedErrContains != "" {
+				require.Contains(err.Error(), tc.expectedErrContains)
 				return
 			}
 
@@ -1486,41 +1490,17 @@ func TestGetValidateRegionValue(t *testing.T) {
 
 func TestBuildFilters(t *testing.T) {
 	cases := []struct {
-		name        string
-		in          *structpb.Struct
-		expected    []*ec2.Filter
-		expectedErr string
+		name                string
+		in                  *structpb.Struct
+		expected            []*ec2.Filter
+		expectedErrContains string
 	}{
-		{
-			name: "map value error",
-			in: mustStruct(map[string]interface{}{
-				constDescribeInstancesFilters: "foo",
-			}),
-			expectedErr: fmt.Sprintf("unexpected type for value %q: want map, got string", constDescribeInstancesFilters),
-		},
-		{
-			name: "bad filter values",
-			in: mustStruct(map[string]interface{}{
-				constDescribeInstancesFilters: map[string]interface{}{
-					"foo": "bar",
-				},
-			}),
-			expectedErr: "unexpected type for filter values in \"foo\": want array, got string",
-		},
-		{
-			name: "bad filter element value",
-			in: mustStruct(map[string]interface{}{
-				constDescribeInstancesFilters: map[string]interface{}{
-					"foo": []interface{}{1},
-				},
-			}),
-			expectedErr: "unexpected type for filter element value 1: want string, got float64",
-		},
+
 		{
 			name: "good without instance-state-name",
 			in: mustStruct(map[string]interface{}{
-				constDescribeInstancesFilters: map[string]interface{}{
-					"foo": []interface{}{"bar"},
+				constDescribeInstancesFilters: []interface{}{
+					"foo=bar",
 				},
 			}),
 			expected: []*ec2.Filter{
@@ -1537,9 +1517,9 @@ func TestBuildFilters(t *testing.T) {
 		{
 			name: "good with instance-state-name",
 			in: mustStruct(map[string]interface{}{
-				constDescribeInstancesFilters: map[string]interface{}{
-					"foo":                 []interface{}{"bar"},
-					"instance-state-name": []interface{}{"static"},
+				constDescribeInstancesFilters: []interface{}{
+					"foo=bar",
+					"instance-state-name=static",
 				},
 			}),
 			expected: []*ec2.Filter{
@@ -1554,9 +1534,27 @@ func TestBuildFilters(t *testing.T) {
 			},
 		},
 		{
+			name: "good with multiple values",
+			in: mustStruct(map[string]interface{}{
+				constDescribeInstancesFilters: []interface{}{
+					"foo=bar,baz",
+				},
+			}),
+			expected: []*ec2.Filter{
+				&ec2.Filter{
+					Name:   aws.String("foo"),
+					Values: aws.StringSlice([]string{"bar", "baz"}),
+				},
+				&ec2.Filter{
+					Name:   aws.String("instance-state-name"),
+					Values: aws.StringSlice([]string{ec2.InstanceStateNameRunning}),
+				},
+			},
+		},
+		{
 			name: "empty filter set",
 			in: mustStruct(map[string]interface{}{
-				constDescribeInstancesFilters: map[string]interface{}{},
+				constDescribeInstancesFilters: []interface{}{},
 			}),
 			expected: []*ec2.Filter{
 				&ec2.Filter{
@@ -1571,9 +1569,11 @@ func TestBuildFilters(t *testing.T) {
 		tc := tc
 		t.Run(tc.name, func(t *testing.T) {
 			require := require.New(t)
-			actual, err := buildFilters(tc.in)
-			if tc.expectedErr != "" {
-				require.EqualError(err, tc.expectedErr)
+			attrs, err := getSetAttributes(tc.in)
+			require.NoError(err)
+			actual, err := buildFilters(attrs)
+			if tc.expectedErrContains != "" {
+				require.Contains(err.Error(), tc.expectedErrContains)
 				return
 			}
 
@@ -1593,17 +1593,10 @@ func TestBuildDescribeInstancesInput(t *testing.T) {
 		expectedErr string
 	}{
 		{
-			name: "buildFilters error",
-			in: mustStruct(map[string]interface{}{
-				constDescribeInstancesFilters: "foo",
-			}),
-			expectedErr: fmt.Sprintf("error building filters: unexpected type for value %q: want map, got string", constDescribeInstancesFilters),
-		},
-		{
 			name: "good, dry run",
 			in: mustStruct(map[string]interface{}{
-				constDescribeInstancesFilters: map[string]interface{}{
-					"foo": []interface{}{"bar"},
+				constDescribeInstancesFilters: []interface{}{
+					"foo=bar",
 				},
 			}),
 			dryRun: true,
@@ -1624,8 +1617,8 @@ func TestBuildDescribeInstancesInput(t *testing.T) {
 		{
 			name: "good, real run",
 			in: mustStruct(map[string]interface{}{
-				constDescribeInstancesFilters: map[string]interface{}{
-					"foo": []interface{}{"bar"},
+				constDescribeInstancesFilters: []interface{}{
+					"foo=bar",
 				},
 			}),
 			dryRun: false,
@@ -1649,7 +1642,9 @@ func TestBuildDescribeInstancesInput(t *testing.T) {
 		tc := tc
 		t.Run(tc.name, func(t *testing.T) {
 			require := require.New(t)
-			actual, err := buildDescribeInstancesInput(tc.in, tc.dryRun)
+			attrs, err := getSetAttributes(tc.in)
+			require.NoError(err)
+			actual, err := buildDescribeInstancesInput(attrs, tc.dryRun)
 			if tc.expectedErr != "" {
 				require.EqualError(err, tc.expectedErr)
 				return
