@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"strings"
 	"time"
 
 	"github.com/aws/aws-sdk-go/aws"
@@ -11,6 +12,7 @@ import (
 	"github.com/aws/aws-sdk-go/aws/endpoints"
 	"github.com/aws/aws-sdk-go/service/ec2"
 	pb "github.com/hashicorp/boundary/sdk/pbs/plugin"
+	"github.com/mitchellh/mapstructure"
 	"google.golang.org/protobuf/types/known/structpb"
 )
 
@@ -32,6 +34,12 @@ type AwsPlugin struct {
 var (
 	_ pb.HostPluginServiceServer = (*AwsPlugin)(nil)
 )
+
+// SetAttributes is a Go-native representation of the Attributes map that can be
+// used for decoding the incoming map via mapstructure.
+type SetAttributes struct {
+	Filters []string
+}
 
 func (p *AwsPlugin) OnCreateCatalog(ctx context.Context, req *pb.OnCreateCatalogRequest) (*pb.OnCreateCatalogResponse, error) {
 	catalog := req.GetCatalog()
@@ -242,9 +250,12 @@ func (p *AwsPlugin) OnCreateSet(ctx context.Context, req *pb.OnCreateSetRequest)
 		return nil, errors.New("set is nil")
 	}
 
-	setAttrs := set.GetAttributes()
-	if setAttrs == nil {
+	if set.GetAttributes() == nil {
 		return nil, errors.New("set missing attributes")
+	}
+	setAttrs, err := getSetAttributes(set.GetAttributes())
+	if err != nil {
+		return nil, fmt.Errorf("error parsing set attributes: %w", err)
 	}
 
 	ec2Client, err := state.EC2Client(region)
@@ -299,9 +310,12 @@ func (p *AwsPlugin) OnUpdateSet(ctx context.Context, req *pb.OnUpdateSetRequest)
 		return nil, errors.New("new set is nil")
 	}
 
-	setAttrs := set.GetAttributes()
-	if setAttrs == nil {
-		return nil, errors.New("new set missing attributes")
+	if set.GetAttributes() == nil {
+		return nil, errors.New("set missing attributes")
+	}
+	setAttrs, err := getSetAttributes(set.GetAttributes())
+	if err != nil {
+		return nil, fmt.Errorf("error parsing set attributes: %w", err)
 	}
 
 	ec2Client, err := state.EC2Client(region)
@@ -375,9 +389,12 @@ func (p *AwsPlugin) ListHosts(ctx context.Context, req *pb.ListHostsRequest) (*p
 			return nil, errors.New("set missing id")
 		}
 
-		setAttrs := set.GetAttributes()
-		if setAttrs == nil {
+		if set.GetAttributes() == nil {
 			return nil, errors.New("set missing attributes")
+		}
+		setAttrs, err := getSetAttributes(set.GetAttributes())
+		if err != nil {
+			return nil, fmt.Errorf("error parsing set attributes: %w", err)
 		}
 
 		input, err := buildDescribeInstancesInput(setAttrs, false)
@@ -514,19 +531,14 @@ func getTimeValue(in *structpb.Struct, k string) (time.Time, error) {
 	return t, nil
 }
 
-func getMapValue(in *structpb.Struct, k string) (map[string]interface{}, error) {
-	mv := in.AsMap()
-	v, ok := mv[k]
-	if !ok {
-		return make(map[string]interface{}), nil
+func getSetAttributes(in *structpb.Struct) (*SetAttributes, error) {
+	var setAttrs SetAttributes
+
+	if err := mapstructure.Decode(in.AsMap(), &setAttrs); err != nil {
+		return nil, fmt.Errorf("error decoding set attributes: %w", err)
 	}
 
-	m, ok := v.(map[string]interface{})
-	if !ok {
-		return nil, fmt.Errorf("unexpected type for value %q: want map, got %T", k, v)
-	}
-
-	return m, nil
+	return &setAttrs, nil
 }
 
 func getValidateRegionValue(in *structpb.Struct) (string, error) {
@@ -543,36 +555,33 @@ func getValidateRegionValue(in *structpb.Struct) (string, error) {
 	return region, nil
 }
 
-func buildFilters(in *structpb.Struct) ([]*ec2.Filter, error) {
+func buildFilters(attrs *SetAttributes) ([]*ec2.Filter, error) {
 	var filters []*ec2.Filter
-	m, err := getMapValue(in, constDescribeInstancesFilters)
-	if err != nil {
-		return nil, err
-	}
-
 	var foundStateFilter bool
-	for k, v := range m {
-		if k == "instance-state-code" || k == "instance-state-name" {
+	for _, filterAttr := range attrs.Filters {
+		// Each filter arrives in "k=v1,v2" format. First, split on equal sign.
+		splitFilter := strings.Split(filterAttr, "=")
+		switch {
+		case len(splitFilter) != 2:
+			return nil, fmt.Errorf("expected filter %q to contain a single equal sign", filterAttr)
+		case len(splitFilter[0]) == 0:
+			return nil, fmt.Errorf("filter %q contains an empty filter key", filterAttr)
+		case len(splitFilter[1]) == 0:
+			return nil, fmt.Errorf("filter %q contains an empty value", filterAttr)
+		}
+
+		filterKey, filterValue := splitFilter[0], splitFilter[1]
+		if filterKey == "instance-state-code" || filterKey == "instance-state-name" {
 			foundStateFilter = true
 		}
 
-		w, ok := v.([]interface{})
-		if !ok {
-			return nil, fmt.Errorf("unexpected type for filter values in %q: want array, got %T", k, v)
-		}
-
 		var filterValues []*string
-		for _, e := range w {
-			f, ok := e.(string)
-			if !ok {
-				return nil, fmt.Errorf("unexpected type for filter element value %v: want string, got %T", e, e)
-			}
-
-			filterValues = append(filterValues, aws.String(f))
+		for _, val := range strings.Split(filterValue, ",") {
+			filterValues = append(filterValues, aws.String(val))
 		}
 
 		filters = append(filters, &ec2.Filter{
-			Name:   aws.String(k),
+			Name:   aws.String(filterKey),
 			Values: filterValues,
 		})
 	}
@@ -591,7 +600,7 @@ func buildFilters(in *structpb.Struct) ([]*ec2.Filter, error) {
 	return filters, nil
 }
 
-func buildDescribeInstancesInput(attrs *structpb.Struct, dryRun bool) (*ec2.DescribeInstancesInput, error) {
+func buildDescribeInstancesInput(attrs *SetAttributes, dryRun bool) (*ec2.DescribeInstancesInput, error) {
 	filters, err := buildFilters(attrs)
 	if err != nil {
 		return nil, fmt.Errorf("error building filters: %w", err)

@@ -92,8 +92,10 @@ The following `secrets` are valid on an AWS host catalog resource:
 
 The following attributes are valid on an AWS host Set resource:
 
-- `filters` (object): An object of filters to filter off of. For a list of
-  filter options, check out [describe-instances in the AWS CLI
+- `filters` (array of strings): An array of string filters in the format
+  `key=val1,val2`. The key corresponds to a filter option, and the value(s) are
+  a comma-separated list. For a list of filter options, check out
+  [describe-instances in the AWS CLI
   reference](https://docs.aws.amazon.com/cli/latest/reference/ec2/describe-instances.html).
 
 #### Supplying Filters on the Boundary CLI
