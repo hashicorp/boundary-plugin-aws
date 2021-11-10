@@ -4,7 +4,7 @@ go 1.17
 
 require (
 	github.com/aws/aws-sdk-go v1.42.2
-	github.com/hashicorp/boundary/sdk v0.0.12-0.20211110160429-2229d1a819a6
+	github.com/hashicorp/boundary/sdk v0.0.12-0.20211110201157-962c9463fdb3
 	github.com/hashicorp/go-secure-stdlib/awsutil v0.1.6
 	github.com/hashicorp/terraform-json v0.13.0
 	github.com/mitchellh/mapstructure v1.4.2
