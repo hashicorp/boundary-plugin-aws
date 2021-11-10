@@ -344,7 +344,7 @@ func (p *AwsPlugin) OnUpdateSet(ctx context.Context, req *pb.OnUpdateSetRequest)
 func (p *AwsPlugin) OnDeleteSet(ctx context.Context, req *pb.OnDeleteSetRequest) (*pb.OnDeleteSetResponse, error) {
 	// No-op, AWS host set does not maintain anything that requires
 	// cleanup
-	return nil, nil
+	return &pb.OnDeleteSetResponse{}, nil
 }
 
 func (p *AwsPlugin) ListHosts(ctx context.Context, req *pb.ListHostsRequest) (*pb.ListHostsResponse, error) {
