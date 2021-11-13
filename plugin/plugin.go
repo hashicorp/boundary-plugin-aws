@@ -311,7 +311,7 @@ func (p *AwsPlugin) OnUpdateSet(ctx context.Context, req *pb.OnUpdateSetRequest)
 	}
 
 	if set.GetAttributes() == nil {
-		return nil, errors.New("set missing attributes")
+		return nil, errors.New("new set missing attributes")
 	}
 	setAttrs, err := getSetAttributes(set.GetAttributes())
 	if err != nil {
@@ -534,7 +534,18 @@ func getTimeValue(in *structpb.Struct, k string) (time.Time, error) {
 func getSetAttributes(in *structpb.Struct) (*SetAttributes, error) {
 	var setAttrs SetAttributes
 
-	if err := mapstructure.Decode(in.AsMap(), &setAttrs); err != nil {
+	// Mapstructure complains if it expects a slice as output and sees a scalar
+	// value. Rather than use WeakDecode and risk unintended consequences, I'm
+	// manually making this change if necessary.
+	inMap := in.AsMap()
+	if filtersRaw, ok := inMap[constDescribeInstancesFilters]; ok {
+		switch filterVal := filtersRaw.(type) {
+		case string:
+			inMap[constDescribeInstancesFilters] = []string{filterVal}
+		}
+	}
+
+	if err := mapstructure.Decode(inMap, &setAttrs); err != nil {
 		return nil, fmt.Errorf("error decoding set attributes: %w", err)
 	}
 
