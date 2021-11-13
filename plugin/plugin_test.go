@@ -578,9 +578,7 @@ func TestPluginOnCreateSetErr(t *testing.T) {
 				},
 				Set: &hostsets.HostSet{
 					Attributes: mustStruct(map[string]interface{}{
-						constDescribeInstancesFilters: map[string]interface{}{
-							"tag-key": []interface{}{"foo"},
-						},
+						constDescribeInstancesFilters: []interface{}{"tag-key=foo"},
 					}),
 				},
 			},
@@ -590,31 +588,6 @@ func TestPluginOnCreateSetErr(t *testing.T) {
 				}),
 			},
 			expectedErr: fmt.Sprintf("error getting EC2 client: error getting AWS session: error reading options in NewCredentialsConfig: %s", testOptionErr),
-		},
-		{
-			name: "buildDescribeInstancesInput error",
-			req: &pb.OnCreateSetRequest{
-				Catalog: &hostcatalogs.HostCatalog{
-					Attributes: mustStruct(map[string]interface{}{
-						constRegion: "us-west-2",
-					}),
-				},
-				Persisted: &pb.HostCatalogPersisted{
-					Secrets: mustStruct(map[string]interface{}{
-						constAccessKeyId:          "foobar",
-						constSecretAccessKey:      "bazqux",
-						constCredsLastRotatedTime: "2006-01-02T15:04:05+07:00",
-					}),
-				},
-				Set: &hostsets.HostSet{
-					Attributes: mustStruct(map[string]interface{}{
-						constDescribeInstancesFilters: map[string]interface{}{
-							"tag-key": "foo",
-						},
-					}),
-				},
-			},
-			expectedErr: "error building DescribeInstances parameters: error building filters: unexpected type for filter values in \"tag-key\": want array, got string",
 		},
 		{
 			name: "DescribeInstances error",
@@ -633,9 +606,7 @@ func TestPluginOnCreateSetErr(t *testing.T) {
 				},
 				Set: &hostsets.HostSet{
 					Attributes: mustStruct(map[string]interface{}{
-						constDescribeInstancesFilters: map[string]interface{}{
-							"tag-key": []interface{}{"foo"},
-						},
+						constDescribeInstancesFilters: []interface{}{"tag-key=foo"},
 					}),
 				},
 			},
@@ -648,7 +619,7 @@ func TestPluginOnCreateSetErr(t *testing.T) {
 			expectedErr: fmt.Sprintf("error performing dry run of DescribeInstances: %s", testDescribeInstancesError),
 		},
 		{
-			name: "DescribeInstances non-error",
+			name: "DescribeInstances non-error array filter",
 			req: &pb.OnCreateSetRequest{
 				Catalog: &hostcatalogs.HostCatalog{
 					Attributes: mustStruct(map[string]interface{}{
@@ -664,9 +635,35 @@ func TestPluginOnCreateSetErr(t *testing.T) {
 				},
 				Set: &hostsets.HostSet{
 					Attributes: mustStruct(map[string]interface{}{
-						constDescribeInstancesFilters: map[string]interface{}{
-							"tag-key": []interface{}{"foo"},
-						},
+						constDescribeInstancesFilters: []interface{}{"tag-key=foo"},
+					}),
+				},
+			},
+			opts: []awsCatalogPersistedStateOption{
+				withTestEC2APIFunc(newTestMockEC2(
+					nil,
+				)),
+			},
+			expectedErr: "query error: DescribeInstances DryRun should have returned error, but none was found",
+		},
+		{
+			name: "DescribeInstances non-error string filter",
+			req: &pb.OnCreateSetRequest{
+				Catalog: &hostcatalogs.HostCatalog{
+					Attributes: mustStruct(map[string]interface{}{
+						constRegion: "us-west-2",
+					}),
+				},
+				Persisted: &pb.HostCatalogPersisted{
+					Secrets: mustStruct(map[string]interface{}{
+						constAccessKeyId:          "foobar",
+						constSecretAccessKey:      "bazqux",
+						constCredsLastRotatedTime: "2006-01-02T15:04:05+07:00",
+					}),
+				},
+				Set: &hostsets.HostSet{
+					Attributes: mustStruct(map[string]interface{}{
+						constDescribeInstancesFilters: "tag-key=foo",
 					}),
 				},
 			},
@@ -808,9 +805,7 @@ func TestPluginOnUpdateSetErr(t *testing.T) {
 				},
 				NewSet: &hostsets.HostSet{
 					Attributes: mustStruct(map[string]interface{}{
-						constDescribeInstancesFilters: map[string]interface{}{
-							"tag-key": []interface{}{"foo"},
-						},
+						constDescribeInstancesFilters: []interface{}{"tag-key=foo"},
 					}),
 				},
 			},
@@ -820,31 +815,6 @@ func TestPluginOnUpdateSetErr(t *testing.T) {
 				}),
 			},
 			expectedErr: fmt.Sprintf("error getting EC2 client: error getting AWS session: error reading options in NewCredentialsConfig: %s", testOptionErr),
-		},
-		{
-			name: "buildDescribeInstancesInput error",
-			req: &pb.OnUpdateSetRequest{
-				Catalog: &hostcatalogs.HostCatalog{
-					Attributes: mustStruct(map[string]interface{}{
-						constRegion: "us-west-2",
-					}),
-				},
-				Persisted: &pb.HostCatalogPersisted{
-					Secrets: mustStruct(map[string]interface{}{
-						constAccessKeyId:          "foobar",
-						constSecretAccessKey:      "bazqux",
-						constCredsLastRotatedTime: "2006-01-02T15:04:05+07:00",
-					}),
-				},
-				NewSet: &hostsets.HostSet{
-					Attributes: mustStruct(map[string]interface{}{
-						constDescribeInstancesFilters: map[string]interface{}{
-							"tag-key": "foo",
-						},
-					}),
-				},
-			},
-			expectedErr: "error building DescribeInstances parameters: error building filters: unexpected type for filter values in \"tag-key\": want array, got string",
 		},
 		{
 			name: "DescribeInstances error",
@@ -863,9 +833,7 @@ func TestPluginOnUpdateSetErr(t *testing.T) {
 				},
 				NewSet: &hostsets.HostSet{
 					Attributes: mustStruct(map[string]interface{}{
-						constDescribeInstancesFilters: map[string]interface{}{
-							"tag-key": []interface{}{"foo"},
-						},
+						constDescribeInstancesFilters: []interface{}{"tag-key=foo"},
 					}),
 				},
 			},
@@ -894,9 +862,7 @@ func TestPluginOnUpdateSetErr(t *testing.T) {
 				},
 				NewSet: &hostsets.HostSet{
 					Attributes: mustStruct(map[string]interface{}{
-						constDescribeInstancesFilters: map[string]interface{}{
-							"tag-key": []interface{}{"foo"},
-						},
+						constDescribeInstancesFilters: []interface{}{"tag-key=foo"},
 					}),
 				},
 			},
@@ -1045,34 +1011,6 @@ func TestPluginListHostsErr(t *testing.T) {
 			expectedErr: "set missing attributes",
 		},
 		{
-			name: "buildDescribeInstancesInput error",
-			req: &pb.ListHostsRequest{
-				Catalog: &hostcatalogs.HostCatalog{
-					Attributes: mustStruct(map[string]interface{}{
-						constRegion: "us-west-2",
-					}),
-				},
-				Persisted: &pb.HostCatalogPersisted{
-					Secrets: mustStruct(map[string]interface{}{
-						constAccessKeyId:          "foobar",
-						constSecretAccessKey:      "bazqux",
-						constCredsLastRotatedTime: "2006-01-02T15:04:05+07:00",
-					}),
-				},
-				Sets: []*hostsets.HostSet{
-					&hostsets.HostSet{
-						Id: "foobar",
-						Attributes: mustStruct(map[string]interface{}{
-							constDescribeInstancesFilters: map[string]interface{}{
-								"tag-key": "foo",
-							},
-						}),
-					},
-				},
-			},
-			expectedErr: "error building DescribeInstances parameters for host set id \"foobar\": error building filters: unexpected type for filter values in \"tag-key\": want array, got string",
-		},
-		{
 			name: "client load error",
 			req: &pb.ListHostsRequest{
 				Catalog: &hostcatalogs.HostCatalog{
@@ -1088,12 +1026,10 @@ func TestPluginListHostsErr(t *testing.T) {
 					}),
 				},
 				Sets: []*hostsets.HostSet{
-					&hostsets.HostSet{
+					{
 						Id: "foobar",
 						Attributes: mustStruct(map[string]interface{}{
-							constDescribeInstancesFilters: map[string]interface{}{
-								"tag-key": []interface{}{"foo"},
-							},
+							constDescribeInstancesFilters: []interface{}{"tag-key=foo"},
 						}),
 					},
 				},
@@ -1121,12 +1057,10 @@ func TestPluginListHostsErr(t *testing.T) {
 					}),
 				},
 				Sets: []*hostsets.HostSet{
-					&hostsets.HostSet{
+					{
 						Id: "foobar",
 						Attributes: mustStruct(map[string]interface{}{
-							constDescribeInstancesFilters: map[string]interface{}{
-								"tag-key": []interface{}{"foo"},
-							},
+							constDescribeInstancesFilters: []interface{}{"tag-key=foo"},
 						}),
 					},
 				},
@@ -1155,12 +1089,10 @@ func TestPluginListHostsErr(t *testing.T) {
 					}),
 				},
 				Sets: []*hostsets.HostSet{
-					&hostsets.HostSet{
+					{
 						Id: "foobar",
 						Attributes: mustStruct(map[string]interface{}{
-							constDescribeInstancesFilters: map[string]interface{}{
-								"tag-key": []interface{}{"foo"},
-							},
+							constDescribeInstancesFilters: []interface{}{"tag-key=foo"},
 						}),
 					},
 				},
@@ -1401,9 +1333,11 @@ func TestGetSetAttributes(t *testing.T) {
 		{
 			name: "non-string-slice value",
 			in: mustStruct(map[string]interface{}{
-				constDescribeInstancesFilters: "bar",
+				constDescribeInstancesFilters: "zip=foo,bar",
 			}),
-			expectedErrContains: "source data must be an array or slice, got string",
+			expected: &SetAttributes{
+				Filters: []string{"zip=foo,bar"},
+			},
 		},
 		{
 			name: "bad filter element value",
@@ -1432,6 +1366,7 @@ func TestGetSetAttributes(t *testing.T) {
 			require := require.New(t)
 			actual, err := getSetAttributes(tc.in)
 			if tc.expectedErrContains != "" {
+				require.Error(err)
 				require.Contains(err.Error(), tc.expectedErrContains)
 				return
 			}
@@ -1504,11 +1439,11 @@ func TestBuildFilters(t *testing.T) {
 				},
 			}),
 			expected: []*ec2.Filter{
-				&ec2.Filter{
+				{
 					Name:   aws.String("foo"),
 					Values: aws.StringSlice([]string{"bar"}),
 				},
-				&ec2.Filter{
+				{
 					Name:   aws.String("instance-state-name"),
 					Values: aws.StringSlice([]string{ec2.InstanceStateNameRunning}),
 				},
@@ -1523,11 +1458,11 @@ func TestBuildFilters(t *testing.T) {
 				},
 			}),
 			expected: []*ec2.Filter{
-				&ec2.Filter{
+				{
 					Name:   aws.String("foo"),
 					Values: aws.StringSlice([]string{"bar"}),
 				},
-				&ec2.Filter{
+				{
 					Name:   aws.String("instance-state-name"),
 					Values: aws.StringSlice([]string{"static"}),
 				},
@@ -1541,11 +1476,11 @@ func TestBuildFilters(t *testing.T) {
 				},
 			}),
 			expected: []*ec2.Filter{
-				&ec2.Filter{
+				{
 					Name:   aws.String("foo"),
 					Values: aws.StringSlice([]string{"bar", "baz"}),
 				},
-				&ec2.Filter{
+				{
 					Name:   aws.String("instance-state-name"),
 					Values: aws.StringSlice([]string{ec2.InstanceStateNameRunning}),
 				},
@@ -1557,7 +1492,7 @@ func TestBuildFilters(t *testing.T) {
 				constDescribeInstancesFilters: []interface{}{},
 			}),
 			expected: []*ec2.Filter{
-				&ec2.Filter{
+				{
 					Name:   aws.String("instance-state-name"),
 					Values: aws.StringSlice([]string{ec2.InstanceStateNameRunning}),
 				},
@@ -1603,11 +1538,11 @@ func TestBuildDescribeInstancesInput(t *testing.T) {
 			expected: &ec2.DescribeInstancesInput{
 				DryRun: aws.Bool(true),
 				Filters: []*ec2.Filter{
-					&ec2.Filter{
+					{
 						Name:   aws.String("foo"),
 						Values: aws.StringSlice([]string{"bar"}),
 					},
-					&ec2.Filter{
+					{
 						Name:   aws.String("instance-state-name"),
 						Values: aws.StringSlice([]string{ec2.InstanceStateNameRunning}),
 					},
@@ -1625,11 +1560,11 @@ func TestBuildDescribeInstancesInput(t *testing.T) {
 			expected: &ec2.DescribeInstancesInput{
 				DryRun: aws.Bool(false),
 				Filters: []*ec2.Filter{
-					&ec2.Filter{
+					{
 						Name:   aws.String("foo"),
 						Values: aws.StringSlice([]string{"bar"}),
 					},
-					&ec2.Filter{
+					{
 						Name:   aws.String("instance-state-name"),
 						Values: aws.StringSlice([]string{ec2.InstanceStateNameRunning}),
 					},
