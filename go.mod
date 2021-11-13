@@ -4,7 +4,7 @@ go 1.17
 
 require (
 	github.com/aws/aws-sdk-go v1.42.2
-	github.com/hashicorp/boundary/sdk v0.0.12-0.20211110201157-962c9463fdb3
+	github.com/hashicorp/boundary/sdk v0.0.12-0.20211112235128-46a1edcb3b7b
 	github.com/hashicorp/go-secure-stdlib/awsutil v0.1.6
 	github.com/hashicorp/terraform-json v0.13.0
 	github.com/mitchellh/mapstructure v1.4.2
@@ -17,7 +17,7 @@ require (
 	github.com/fatih/color v1.13.0 // indirect
 	github.com/golang/protobuf v1.5.2 // indirect
 	github.com/hashicorp/errwrap v1.1.0 // indirect
-	github.com/hashicorp/eventlogger v0.1.1-0.20211104100552-e1e801e50144 // indirect
+	github.com/hashicorp/eventlogger v0.1.1-0.20211106154408-4ff8da3a890c // indirect
 	github.com/hashicorp/eventlogger/filters/encrypt v0.1.6-0.20211027211326-5db60a48f239 // indirect
 	github.com/hashicorp/go-cleanhttp v0.5.2 // indirect
 	github.com/hashicorp/go-hclog v0.16.2 // indirect
