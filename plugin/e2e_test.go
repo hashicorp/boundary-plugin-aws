@@ -358,11 +358,9 @@ func testPluginOnUpdateCatalog(
 
 	case newAccessKeyId == "" && rotated && !rotate:
 		// No new credentials have been provided, and we have previously
-		// rotated the credentials. This is actually an error.
-		//
-		// TODO: validate this scenario through unit testing. For now if
-		// we for some reason try to test this with this function, return
-		// an error.
+		// rotated the credentials. This is actually an error, but we
+		// don't test it here; it's covered in unit testing (see
+		// plugin_test.go).
 		require.FailNow("testing rotated-to-not-rotated scenario not implemented by this helper")
 
 	case newAccessKeyId == "" && !rotated && rotate:
