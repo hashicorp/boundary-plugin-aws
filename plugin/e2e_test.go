@@ -510,9 +510,9 @@ func testPluginListHosts(ctx context.Context, t *testing.T, p *AwsPlugin, region
 	})
 	require.NoError(err)
 	sets := make([]*hostsets.HostSet, len(tags))
-	for i := range tags {
+	for i, tag := range tags {
 		setAttrs, err := structpb.NewStruct(map[string]interface{}{
-			constDescribeInstancesFilters: []interface{}{fmt.Sprintf("tag-key=%s", strings.Join(tags, ","))},
+			constDescribeInstancesFilters: []interface{}{fmt.Sprintf("tag-key=%s", tag)},
 		})
 		require.NoError(err)
 		sets[i] = &hostsets.HostSet{
