@@ -108,7 +108,7 @@ func getSetAttributes(in *structpb.Struct) (*SetAttributes, error) {
 }
 
 func getStringValue(in *structpb.Struct, k string, required bool) (string, error) {
-	mv := in.AsMap()
+	mv := in.GetFields()
 	v, ok := mv[k]
 	if !ok {
 		if required {
@@ -118,9 +118,9 @@ func getStringValue(in *structpb.Struct, k string, required bool) (string, error
 		return "", nil
 	}
 
-	s, ok := v.(string)
+	s, ok := v.AsInterface().(string)
 	if !ok {
-		return "", fmt.Errorf("unexpected type for value %q: want string, got %T", k, v)
+		return "", fmt.Errorf("unexpected type for value %q: want string, got %T", k, v.AsInterface())
 	}
 
 	if s == "" && required {
@@ -131,7 +131,7 @@ func getStringValue(in *structpb.Struct, k string, required bool) (string, error
 }
 
 func getBoolValue(in *structpb.Struct, k string, required bool) (bool, error) {
-	mv := in.AsMap()
+	mv := in.GetFields()
 	v, ok := mv[k]
 	if !ok {
 		if required {
@@ -141,24 +141,24 @@ func getBoolValue(in *structpb.Struct, k string, required bool) (bool, error) {
 		return false, nil
 	}
 
-	b, ok := v.(bool)
+	b, ok := v.AsInterface().(bool)
 	if !ok {
-		return false, fmt.Errorf("unexpected type for value %q: want bool, got %T", k, v)
+		return false, fmt.Errorf("unexpected type for value %q: want bool, got %T", k, v.AsInterface())
 	}
 
 	return b, nil
 }
 
 func getTimeValue(in *structpb.Struct, k string) (time.Time, error) {
-	mv := in.AsMap()
+	mv := in.GetFields()
 	v, ok := mv[k]
 	if !ok {
 		return time.Time{}, nil
 	}
 
-	tRaw, ok := v.(string)
+	tRaw, ok := v.AsInterface().(string)
 	if !ok {
-		return time.Time{}, fmt.Errorf("unexpected type for value %q: want string, got %T", k, v)
+		return time.Time{}, fmt.Errorf("unexpected type for value %q: want string, got %T", k, v.AsInterface())
 	}
 
 	t, err := time.Parse(time.RFC3339Nano, tRaw)
