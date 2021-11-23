@@ -6,7 +6,6 @@ import (
 	"fmt"
 	"sort"
 	"testing"
-	"time"
 
 	"github.com/aws/aws-sdk-go/aws"
 	"github.com/aws/aws-sdk-go/service/ec2"
@@ -47,19 +46,17 @@ func TestPluginOnCreateCatalogErr(t *testing.T) {
 			expectedErr: "attributes are required",
 		},
 		{
-			name: "invalid region",
+			name: "error reading attributes",
 			req: &pb.OnCreateCatalogRequest{
 				Catalog: &hostcatalogs.HostCatalog{
-					Secrets: new(structpb.Struct),
-					Attributes: mustStruct(map[string]interface{}{
-						constRegion: "foobar",
-					}),
+					Secrets:    new(structpb.Struct),
+					Attributes: new(structpb.Struct),
 				},
 			},
-			expectedErr: "not a valid region: foobar",
+			expectedErr: "missing required value \"region\"",
 		},
 		{
-			name: "missing access key ID",
+			name: "error reading secrets",
 			req: &pb.OnCreateCatalogRequest{
 				Catalog: &hostcatalogs.HostCatalog{
 					Secrets: new(structpb.Struct),
@@ -71,21 +68,7 @@ func TestPluginOnCreateCatalogErr(t *testing.T) {
 			expectedErr: "missing required value \"access_key_id\"",
 		},
 		{
-			name: "missing secret access key",
-			req: &pb.OnCreateCatalogRequest{
-				Catalog: &hostcatalogs.HostCatalog{
-					Secrets: mustStruct(map[string]interface{}{
-						constAccessKeyId: "foobar",
-					}),
-					Attributes: mustStruct(map[string]interface{}{
-						constRegion: "us-west-2",
-					}),
-				},
-			},
-			expectedErr: "missing required value \"secret_access_key\"",
-		},
-		{
-			name: "invalid value for skipping rotation",
+			name: "invalid region",
 			req: &pb.OnCreateCatalogRequest{
 				Catalog: &hostcatalogs.HostCatalog{
 					Secrets: mustStruct(map[string]interface{}{
@@ -93,12 +76,11 @@ func TestPluginOnCreateCatalogErr(t *testing.T) {
 						constSecretAccessKey: "bazqux",
 					}),
 					Attributes: mustStruct(map[string]interface{}{
-						constRegion:                    "us-west-2",
-						constDisableCredentialRotation: "sure",
+						constRegion: "foobar",
 					}),
 				},
 			},
-			expectedErr: "unexpected type for value \"disable_credential_rotation\": want bool, got string",
+			expectedErr: "not a valid region: foobar",
 		},
 		{
 			name: "persisted state setup error",
@@ -206,6 +188,16 @@ func TestPluginOnUpdateCatalogErr(t *testing.T) {
 			expectedErr: "new catalog missing attributes",
 		},
 		{
+			name: "error reading attributes",
+			req: &pb.OnUpdateCatalogRequest{
+				NewCatalog: &hostcatalogs.HostCatalog{
+					Secrets:    new(structpb.Struct),
+					Attributes: new(structpb.Struct),
+				},
+			},
+			expectedErr: "missing required value \"region\"",
+		},
+		{
 			name: "invalid region",
 			req: &pb.OnUpdateCatalogRequest{
 				NewCatalog: &hostcatalogs.HostCatalog{
@@ -240,25 +232,6 @@ func TestPluginOnUpdateCatalogErr(t *testing.T) {
 			expectedErr: fmt.Sprintf("error loading persisted state: %s", testOptionErr),
 		},
 		{
-			name: "invalid value for credential rotation",
-			req: &pb.OnUpdateCatalogRequest{
-				NewCatalog: &hostcatalogs.HostCatalog{
-					Attributes: mustStruct(map[string]interface{}{
-						constRegion:                    "us-west-2",
-						constDisableCredentialRotation: "sure",
-					}),
-				},
-				Persisted: &pb.HostCatalogPersisted{
-					Secrets: mustStruct(map[string]interface{}{
-						constAccessKeyId:          "foobar",
-						constSecretAccessKey:      "bazqux",
-						constCredsLastRotatedTime: "2006-01-02T15:04:05+07:00",
-					}),
-				},
-			},
-			expectedErr: "unexpected type for value \"disable_credential_rotation\": want bool, got string",
-		},
-		{
 			name: "cannot disable rotation for already rotated credentials",
 			req: &pb.OnUpdateCatalogRequest{
 				NewCatalog: &hostcatalogs.HostCatalog{
@@ -278,7 +251,7 @@ func TestPluginOnUpdateCatalogErr(t *testing.T) {
 			expectedErr: "cannot disable rotation for already-rotated credentials",
 		},
 		{
-			name: "updating secrets, missing access key id",
+			name: "error reading secrets",
 			req: &pb.OnUpdateCatalogRequest{
 				NewCatalog: &hostcatalogs.HostCatalog{
 					Secrets: new(structpb.Struct),
@@ -295,27 +268,6 @@ func TestPluginOnUpdateCatalogErr(t *testing.T) {
 				},
 			},
 			expectedErr: "missing required value \"access_key_id\"",
-		},
-		{
-			name: "updating secrets, missing secret access key",
-			req: &pb.OnUpdateCatalogRequest{
-				NewCatalog: &hostcatalogs.HostCatalog{
-					Secrets: mustStruct(map[string]interface{}{
-						constAccessKeyId: "foobar",
-					}),
-					Attributes: mustStruct(map[string]interface{}{
-						constRegion: "us-west-2",
-					}),
-				},
-				Persisted: &pb.HostCatalogPersisted{
-					Secrets: mustStruct(map[string]interface{}{
-						constAccessKeyId:          "foobar",
-						constSecretAccessKey:      "bazqux",
-						constCredsLastRotatedTime: "2006-01-02T15:04:05+07:00",
-					}),
-				},
-			},
-			expectedErr: "missing required value \"secret_access_key\"",
 		},
 		{
 			name: "updating secrets, replace error",
@@ -484,6 +436,27 @@ func TestPluginOnCreateSetErr(t *testing.T) {
 			expectedErr: "catalog missing attributes",
 		},
 		{
+			name: "error reading catalog attributes",
+			req: &pb.OnCreateSetRequest{
+				Catalog: &hostcatalogs.HostCatalog{
+					Secrets:    new(structpb.Struct),
+					Attributes: new(structpb.Struct),
+				},
+			},
+			expectedErr: "integrity error in host catalog attributes: missing required value \"region\"",
+		},
+		{
+			name: "invalid region",
+			req: &pb.OnCreateSetRequest{
+				Catalog: &hostcatalogs.HostCatalog{
+					Attributes: mustStruct(map[string]interface{}{
+						constRegion: "foobar",
+					}),
+				},
+			},
+			expectedErr: "integrity error in host catalog attributes: not a valid region: foobar",
+		},
+		{
 			name: "persisted state setup error",
 			req: &pb.OnCreateSetRequest{
 				Catalog: &hostcatalogs.HostCatalog{
@@ -505,24 +478,6 @@ func TestPluginOnCreateSetErr(t *testing.T) {
 				},
 			},
 			expectedErr: fmt.Sprintf("error loading persisted state: %s", testOptionErr),
-		},
-		{
-			name: "invalid region",
-			req: &pb.OnCreateSetRequest{
-				Catalog: &hostcatalogs.HostCatalog{
-					Attributes: mustStruct(map[string]interface{}{
-						constRegion: "foobar",
-					}),
-				},
-				Persisted: &pb.HostCatalogPersisted{
-					Secrets: mustStruct(map[string]interface{}{
-						constAccessKeyId:          "foobar",
-						constSecretAccessKey:      "bazqux",
-						constCredsLastRotatedTime: "2006-01-02T15:04:05+07:00",
-					}),
-				},
-			},
-			expectedErr: "catalog validation error: not a valid region: foobar",
 		},
 		{
 			name: "nil set",
@@ -560,6 +515,30 @@ func TestPluginOnCreateSetErr(t *testing.T) {
 				Set: &hostsets.HostSet{},
 			},
 			expectedErr: "set missing attributes",
+		},
+		{
+			name: "set attribute load error",
+			req: &pb.OnCreateSetRequest{
+				Catalog: &hostcatalogs.HostCatalog{
+					Attributes: mustStruct(map[string]interface{}{
+						constRegion: "us-west-2",
+					}),
+				},
+				Persisted: &pb.HostCatalogPersisted{
+					Secrets: mustStruct(map[string]interface{}{
+						constAccessKeyId:          "foobar",
+						constSecretAccessKey:      "bazqux",
+						constCredsLastRotatedTime: "2006-01-02T15:04:05+07:00",
+					}),
+				},
+				Set: &hostsets.HostSet{
+					Attributes: mustStruct(map[string]interface{}{
+						"foo": true,
+						"bar": true,
+					}),
+				},
+			},
+			expectedErr: "error parsing set attributes: unknown set attribute fields provided: bar, foo",
 		},
 		{
 			name: "client load error",
@@ -711,6 +690,28 @@ func TestPluginOnUpdateSetErr(t *testing.T) {
 			expectedErr: "catalog missing attributes",
 		},
 		{
+			name: "catalog attribute load error",
+			req: &pb.OnUpdateSetRequest{
+				Catalog: &hostcatalogs.HostCatalog{
+					Secrets:    new(structpb.Struct),
+					Attributes: new(structpb.Struct),
+				},
+			},
+			expectedErr: "integrity error in host catalog attributes: missing required value \"region\"",
+		},
+		{
+			name: "invalid region",
+			req: &pb.OnUpdateSetRequest{
+				Catalog: &hostcatalogs.HostCatalog{
+					Secrets: new(structpb.Struct),
+					Attributes: mustStruct(map[string]interface{}{
+						constRegion: "foobar",
+					}),
+				},
+			},
+			expectedErr: "integrity error in host catalog attributes: not a valid region: foobar",
+		},
+		{
 			name: "persisted state setup error",
 			req: &pb.OnUpdateSetRequest{
 				Catalog: &hostcatalogs.HostCatalog{
@@ -732,24 +733,6 @@ func TestPluginOnUpdateSetErr(t *testing.T) {
 				},
 			},
 			expectedErr: fmt.Sprintf("error loading persisted state: %s", testOptionErr),
-		},
-		{
-			name: "invalid region",
-			req: &pb.OnUpdateSetRequest{
-				Catalog: &hostcatalogs.HostCatalog{
-					Attributes: mustStruct(map[string]interface{}{
-						constRegion: "foobar",
-					}),
-				},
-				Persisted: &pb.HostCatalogPersisted{
-					Secrets: mustStruct(map[string]interface{}{
-						constAccessKeyId:          "foobar",
-						constSecretAccessKey:      "bazqux",
-						constCredsLastRotatedTime: "2006-01-02T15:04:05+07:00",
-					}),
-				},
-			},
-			expectedErr: "catalog validation error: not a valid region: foobar",
 		},
 		{
 			name: "nil set",
@@ -787,6 +770,30 @@ func TestPluginOnUpdateSetErr(t *testing.T) {
 				NewSet: &hostsets.HostSet{},
 			},
 			expectedErr: "new set missing attributes",
+		},
+		{
+			name: "set attribute load error",
+			req: &pb.OnUpdateSetRequest{
+				Catalog: &hostcatalogs.HostCatalog{
+					Attributes: mustStruct(map[string]interface{}{
+						constRegion: "us-west-2",
+					}),
+				},
+				Persisted: &pb.HostCatalogPersisted{
+					Secrets: mustStruct(map[string]interface{}{
+						constAccessKeyId:          "foobar",
+						constSecretAccessKey:      "bazqux",
+						constCredsLastRotatedTime: "2006-01-02T15:04:05+07:00",
+					}),
+				},
+				NewSet: &hostsets.HostSet{
+					Attributes: mustStruct(map[string]interface{}{
+						"foo": true,
+						"bar": true,
+					}),
+				},
+			},
+			expectedErr: "error parsing set attributes: unknown set attribute fields provided: bar, foo",
 		},
 		{
 			name: "client load error",
@@ -910,6 +917,28 @@ func TestPluginListHostsErr(t *testing.T) {
 			expectedErr: "catalog missing attributes",
 		},
 		{
+			name: "error reading catalog attributes",
+			req: &pb.ListHostsRequest{
+				Catalog: &hostcatalogs.HostCatalog{
+					Secrets:    new(structpb.Struct),
+					Attributes: new(structpb.Struct),
+				},
+			},
+			expectedErr: "integrity error in host catalog attributes: missing required value \"region\"",
+		},
+		{
+			name: "invalid region",
+			req: &pb.ListHostsRequest{
+				Catalog: &hostcatalogs.HostCatalog{
+					Secrets: new(structpb.Struct),
+					Attributes: mustStruct(map[string]interface{}{
+						constRegion: "foobar",
+					}),
+				},
+			},
+			expectedErr: "integrity error in host catalog attributes: not a valid region: foobar",
+		},
+		{
 			name: "persisted state setup error",
 			req: &pb.ListHostsRequest{
 				Catalog: &hostcatalogs.HostCatalog{
@@ -931,24 +960,6 @@ func TestPluginListHostsErr(t *testing.T) {
 				},
 			},
 			expectedErr: fmt.Sprintf("error loading persisted state: %s", testOptionErr),
-		},
-		{
-			name: "invalid region",
-			req: &pb.ListHostsRequest{
-				Catalog: &hostcatalogs.HostCatalog{
-					Attributes: mustStruct(map[string]interface{}{
-						constRegion: "foobar",
-					}),
-				},
-				Persisted: &pb.HostCatalogPersisted{
-					Secrets: mustStruct(map[string]interface{}{
-						constAccessKeyId:          "foobar",
-						constSecretAccessKey:      "bazqux",
-						constCredsLastRotatedTime: "2006-01-02T15:04:05+07:00",
-					}),
-				},
-			},
-			expectedErr: "catalog validation error: not a valid region: foobar",
 		},
 		{
 			name: "nil sets",
@@ -1009,6 +1020,33 @@ func TestPluginListHostsErr(t *testing.T) {
 				},
 			},
 			expectedErr: "set missing attributes",
+		},
+		{
+			name: "set attribute load error",
+			req: &pb.ListHostsRequest{
+				Catalog: &hostcatalogs.HostCatalog{
+					Attributes: mustStruct(map[string]interface{}{
+						constRegion: "us-west-2",
+					}),
+				},
+				Persisted: &pb.HostCatalogPersisted{
+					Secrets: mustStruct(map[string]interface{}{
+						constAccessKeyId:          "foobar",
+						constSecretAccessKey:      "bazqux",
+						constCredsLastRotatedTime: "2006-01-02T15:04:05+07:00",
+					}),
+				},
+				Sets: []*hostsets.HostSet{
+					&hostsets.HostSet{
+						Id: "foobar",
+						Attributes: mustStruct(map[string]interface{}{
+							"foo": true,
+							"bar": true,
+						}),
+					},
+				},
+			},
+			expectedErr: "error parsing set attributes: unknown set attribute fields provided: bar, foo",
 		},
 		{
 			name: "client load error",
@@ -1128,297 +1166,6 @@ func TestPluginListHostsErr(t *testing.T) {
 			}
 			_, err := p.ListHosts(context.Background(), tc.req)
 			require.EqualError(err, tc.expectedErr)
-		})
-	}
-}
-
-func TestGetStringValue(t *testing.T) {
-	cases := []struct {
-		name        string
-		in          *structpb.Struct
-		key         string
-		required    bool
-		expected    string
-		expectedErr string
-	}{
-		{
-			name:        "required missing",
-			in:          mustStruct(map[string]interface{}{}),
-			key:         "foo",
-			required:    true,
-			expectedErr: "missing required value \"foo\"",
-		},
-		{
-			name:     "optional missing",
-			in:       mustStruct(map[string]interface{}{}),
-			key:      "foo",
-			expected: "",
-		},
-		{
-			name: "non-string value",
-			in: mustStruct(map[string]interface{}{
-				"foo": 1,
-			}),
-			key:         "foo",
-			expectedErr: "unexpected type for value \"foo\": want string, got float64",
-		},
-		{
-			name: "required empty",
-			in: mustStruct(map[string]interface{}{
-				"foo": "",
-			}),
-			key:         "foo",
-			required:    true,
-			expectedErr: "value \"foo\" cannot be empty",
-		},
-		{
-			name: "good",
-			in: mustStruct(map[string]interface{}{
-				"foo": "bar",
-			}),
-			key:      "foo",
-			expected: "bar",
-		},
-	}
-
-	for _, tc := range cases {
-		tc := tc
-		t.Run(tc.name, func(t *testing.T) {
-			require := require.New(t)
-			actual, err := getStringValue(tc.in, tc.key, tc.required)
-			if tc.expectedErr != "" {
-				require.EqualError(err, tc.expectedErr)
-				return
-			}
-
-			require.NoError(err)
-			require.Equal(tc.expected, actual)
-		})
-	}
-}
-
-func TestGetBoolValue(t *testing.T) {
-	cases := []struct {
-		name        string
-		in          *structpb.Struct
-		key         string
-		required    bool
-		expected    bool
-		expectedErr string
-	}{
-		{
-			name:        "required missing",
-			in:          mustStruct(map[string]interface{}{}),
-			key:         "foo",
-			required:    true,
-			expectedErr: "missing required value \"foo\"",
-		},
-		{
-			name:     "optional missing",
-			in:       mustStruct(map[string]interface{}{}),
-			key:      "foo",
-			expected: false,
-		},
-		{
-			name: "non-bool value",
-			in: mustStruct(map[string]interface{}{
-				"foo": "bar",
-			}),
-			key:         "foo",
-			expectedErr: "unexpected type for value \"foo\": want bool, got string",
-		},
-		{
-			name: "good",
-			in: mustStruct(map[string]interface{}{
-				"foo": true,
-			}),
-			key:      "foo",
-			expected: true,
-		},
-	}
-
-	for _, tc := range cases {
-		tc := tc
-		t.Run(tc.name, func(t *testing.T) {
-			require := require.New(t)
-			actual, err := getBoolValue(tc.in, tc.key, tc.required)
-			if tc.expectedErr != "" {
-				require.EqualError(err, tc.expectedErr)
-				return
-			}
-
-			require.NoError(err)
-			require.Equal(tc.expected, actual)
-		})
-	}
-}
-
-func TestGetTimeValue(t *testing.T) {
-	staticTime := time.Now()
-
-	cases := []struct {
-		name        string
-		in          *structpb.Struct
-		key         string
-		expected    time.Time
-		expectedErr string
-	}{
-		{
-			name:     "missing",
-			in:       mustStruct(map[string]interface{}{}),
-			key:      "foo",
-			expected: time.Time{},
-		},
-		{
-			name: "non-time value",
-			in: mustStruct(map[string]interface{}{
-				"foo": 1,
-			}),
-			key:         "foo",
-			expectedErr: "unexpected type for value \"foo\": want string, got float64",
-		},
-		{
-			name: "bad parse",
-			in: mustStruct(map[string]interface{}{
-				"foo": "bar",
-			}),
-			key:         "foo",
-			expectedErr: "could not parse time in value \"foo\": parsing time \"bar\" as \"2006-01-02T15:04:05.999999999Z07:00\": cannot parse \"bar\" as \"2006\"",
-		},
-		{
-			name: "good",
-			in: mustStruct(map[string]interface{}{
-				"foo": staticTime.Format(time.RFC3339Nano),
-			}),
-			key: "foo",
-			expected: func() time.Time {
-				u, err := time.Parse(time.RFC3339Nano, staticTime.Format(time.RFC3339Nano))
-				if err != nil {
-					panic(err)
-				}
-
-				return u
-			}(),
-		},
-	}
-
-	for _, tc := range cases {
-		tc := tc
-		t.Run(tc.name, func(t *testing.T) {
-			require := require.New(t)
-			actual, err := getTimeValue(tc.in, tc.key)
-			if tc.expectedErr != "" {
-				require.EqualError(err, tc.expectedErr)
-				return
-			}
-
-			require.NoError(err)
-			require.Equal(tc.expected, actual)
-		})
-	}
-}
-
-func TestGetSetAttributes(t *testing.T) {
-	cases := []struct {
-		name                string
-		in                  *structpb.Struct
-		expected            *SetAttributes
-		expectedErrContains string
-	}{
-		{
-			name:     "missing",
-			in:       mustStruct(map[string]interface{}{}),
-			expected: &SetAttributes{},
-		},
-		{
-			name: "non-string-slice value",
-			in: mustStruct(map[string]interface{}{
-				constDescribeInstancesFilters: "zip=foo,bar",
-			}),
-			expected: &SetAttributes{
-				Filters: []string{"zip=foo,bar"},
-			},
-		},
-		{
-			name: "bad filter element value",
-			in: mustStruct(map[string]interface{}{
-				constDescribeInstancesFilters: []interface{}{1},
-			}),
-			expectedErrContains: "expected type 'string', got unconvertible type 'float64'",
-		},
-		{
-			name: "good",
-			in: mustStruct(map[string]interface{}{
-				constDescribeInstancesFilters: []interface{}{
-					"foo=bar",
-					"zip=zap",
-				},
-			}),
-			expected: &SetAttributes{
-				Filters: []string{"foo=bar", "zip=zap"},
-			},
-		},
-	}
-
-	for _, tc := range cases {
-		tc := tc
-		t.Run(tc.name, func(t *testing.T) {
-			require := require.New(t)
-			actual, err := getSetAttributes(tc.in)
-			if tc.expectedErrContains != "" {
-				require.Error(err)
-				require.Contains(err.Error(), tc.expectedErrContains)
-				return
-			}
-
-			require.NoError(err)
-			require.Equal(tc.expected, actual)
-		})
-	}
-}
-
-func TestGetValidateRegionValue(t *testing.T) {
-	cases := []struct {
-		name        string
-		in          *structpb.Struct
-		key         string
-		expected    string
-		expectedErr string
-	}{
-		{
-			name:        "missing",
-			in:          mustStruct(map[string]interface{}{}),
-			key:         "region",
-			expectedErr: fmt.Sprintf("missing required value %q", constRegion),
-		},
-		{
-			name: "invalid region",
-			in: mustStruct(map[string]interface{}{
-				constRegion: "foobar",
-			}),
-			expectedErr: "not a valid region: foobar",
-		},
-		{
-			name: "good",
-			in: mustStruct(map[string]interface{}{
-				constRegion: "us-west-2",
-			}),
-			expected: "us-west-2",
-		},
-	}
-
-	for _, tc := range cases {
-		tc := tc
-		t.Run(tc.name, func(t *testing.T) {
-			require := require.New(t)
-			actual, err := getValidateRegionValue(tc.in)
-			if tc.expectedErr != "" {
-				require.EqualError(err, tc.expectedErr)
-				return
-			}
-
-			require.NoError(err)
-			require.Equal(tc.expected, actual)
 		})
 	}
 }

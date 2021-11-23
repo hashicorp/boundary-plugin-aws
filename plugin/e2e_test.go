@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"os"
+	"strings"
 	"testing"
 	"time"
 
@@ -453,16 +454,7 @@ func testPluginOnCreateUpdateSet(ctx context.Context, t *testing.T, p *AwsPlugin
 	})
 	require.NoError(err)
 	setAttrs, err := structpb.NewStruct(map[string]interface{}{
-		constDescribeInstancesFilters: map[string]interface{}{
-			"tag-key": func() []interface{} {
-				result := make([]interface{}, len(tags))
-				for i, tag := range tags {
-					result[i] = tag
-				}
-
-				return result
-			}(),
-		},
+		constDescribeInstancesFilters: []interface{}{fmt.Sprintf("tag-key=%s", strings.Join(tags, ","))},
 	})
 	require.NoError(err)
 	reqPersistedSecrets, err := structpb.NewStruct(map[string]interface{}{
@@ -520,9 +512,7 @@ func testPluginListHosts(ctx context.Context, t *testing.T, p *AwsPlugin, region
 	sets := make([]*hostsets.HostSet, len(tags))
 	for i, tag := range tags {
 		setAttrs, err := structpb.NewStruct(map[string]interface{}{
-			constDescribeInstancesFilters: map[string]interface{}{
-				"tag-key": []interface{}{tag},
-			},
+			constDescribeInstancesFilters: []interface{}{fmt.Sprintf("tag-key=%s", tag)},
 		})
 		require.NoError(err)
 		sets[i] = &hostsets.HostSet{

@@ -12,8 +12,6 @@ import (
 	"github.com/aws/aws-sdk-go/aws/endpoints"
 	"github.com/aws/aws-sdk-go/service/ec2"
 	pb "github.com/hashicorp/boundary/sdk/pbs/plugin"
-	"github.com/mitchellh/mapstructure"
-	"google.golang.org/protobuf/types/known/structpb"
 )
 
 // rotationWaitTimeout controls the time we wait for credential rotation to
@@ -35,12 +33,6 @@ var (
 	_ pb.HostPluginServiceServer = (*AwsPlugin)(nil)
 )
 
-// SetAttributes is a Go-native representation of the Attributes map that can be
-// used for decoding the incoming map via mapstructure.
-type SetAttributes struct {
-	Filters []string
-}
-
 func (p *AwsPlugin) OnCreateCatalog(ctx context.Context, req *pb.OnCreateCatalogRequest) (*pb.OnCreateCatalogResponse, error) {
 	catalog := req.GetCatalog()
 	if catalog == nil {
@@ -57,36 +49,30 @@ func (p *AwsPlugin) OnCreateCatalog(ctx context.Context, req *pb.OnCreateCatalog
 		return nil, errors.New("attributes are required")
 	}
 
-	if _, err := getValidateRegionValue(attrs); err != nil {
+	catalogAttributes, err := getCatalogAttributes(attrs)
+	if err != nil {
 		return nil, err
 	}
-
-	accessKeyId, err := getStringValue(secrets, constAccessKeyId, true)
+	catalogSecrets, err := getCatalogSecrets(secrets)
 	if err != nil {
 		return nil, err
 	}
 
-	secretAccessKey, err := getStringValue(secrets, constSecretAccessKey, true)
-	if err != nil {
-		return nil, err
-	}
-
-	skipRotate, err := getBoolValue(attrs, constDisableCredentialRotation, false)
-	if err != nil {
+	if err := validateRegion(catalogAttributes.Region); err != nil {
 		return nil, err
 	}
 
 	// Set up the creds in our persisted state.
 	state, err := newAwsCatalogPersistedState(append([]awsCatalogPersistedStateOption{
-		withAccessKeyId(accessKeyId),
-		withSecretAccessKey(secretAccessKey),
+		withAccessKeyId(catalogSecrets.AccessKeyId),
+		withSecretAccessKey(catalogSecrets.SecretAccessKey),
 	}, p.testStateOpts...)...)
 	if err != nil {
 		return nil, fmt.Errorf("error setting up persisted state: %w", err)
 	}
 
 	// Try to rotate the credentials if we're not skipping them.
-	if !skipRotate {
+	if !catalogAttributes.DisableCredentialRotation {
 		if err := state.RotateCreds(); err != nil {
 			return nil, fmt.Errorf("error during credential rotation: %w", err)
 		}
@@ -129,8 +115,12 @@ func (p *AwsPlugin) OnUpdateCatalog(ctx context.Context, req *pb.OnUpdateCatalog
 		return nil, errors.New("new catalog missing attributes")
 	}
 
-	// Validate the region.
-	if _, err := getValidateRegionValue(attrs); err != nil {
+	catalogAttributes, err := getCatalogAttributes(attrs)
+	if err != nil {
+		return nil, err
+	}
+
+	if err := validateRegion(catalogAttributes.Region); err != nil {
 		return nil, err
 	}
 
@@ -147,12 +137,7 @@ func (p *AwsPlugin) OnUpdateCatalog(ctx context.Context, req *pb.OnUpdateCatalog
 		return nil, fmt.Errorf("error loading persisted state: %w", err)
 	}
 
-	skipRotate, err := getBoolValue(attrs, constDisableCredentialRotation, false)
-	if err != nil {
-		return nil, err
-	}
-
-	if skipRotate && !updateSecrets {
+	if catalogAttributes.DisableCredentialRotation && !updateSecrets {
 		// This is a validate check to make sure that we aren't disabling
 		// rotation for credentials currently being managed by rotation.
 		// This is not allowed.
@@ -162,12 +147,7 @@ func (p *AwsPlugin) OnUpdateCatalog(ctx context.Context, req *pb.OnUpdateCatalog
 	}
 
 	if updateSecrets {
-		accessKeyId, err := getStringValue(secrets, constAccessKeyId, true)
-		if err != nil {
-			return nil, err
-		}
-
-		secretAccessKey, err := getStringValue(secrets, constSecretAccessKey, true)
+		catalogSecrets, err := getCatalogSecrets(secrets)
 		if err != nil {
 			return nil, err
 		}
@@ -175,12 +155,12 @@ func (p *AwsPlugin) OnUpdateCatalog(ctx context.Context, req *pb.OnUpdateCatalog
 		// Replace the credentials. This checks the timestamp on the last
 		// rotation time as well and deletes the credentials if we are
 		// managing them (ie: if we've rotated them before).
-		if err := state.ReplaceCreds(accessKeyId, secretAccessKey); err != nil {
+		if err := state.ReplaceCreds(catalogSecrets.AccessKeyId, catalogSecrets.SecretAccessKey); err != nil {
 			return nil, fmt.Errorf("error attempting to replace credentials: %w", err)
 		}
 	}
 
-	if !skipRotate && state.CredsLastRotatedTime.IsZero() {
+	if !catalogAttributes.DisableCredentialRotation && state.CredsLastRotatedTime.IsZero() {
 		// If we're enabling rotation now but didn't before, or have
 		// freshly replaced credentials, we can rotate here.
 		if err := state.RotateCreds(); err != nil {
@@ -229,20 +209,23 @@ func (p *AwsPlugin) OnCreateSet(ctx context.Context, req *pb.OnCreateSetRequest)
 		return nil, errors.New("catalog is nil")
 	}
 
-	catalogAttrs := catalog.GetAttributes()
-	if catalogAttrs == nil {
+	catalogAttrsRaw := catalog.GetAttributes()
+	if catalogAttrsRaw == nil {
 		return nil, errors.New("catalog missing attributes")
+	}
+
+	catalogAttributes, err := getCatalogAttributes(catalogAttrsRaw)
+	if err != nil {
+		return nil, fmt.Errorf("integrity error in host catalog attributes: %w", err)
+	}
+
+	if err := validateRegion(catalogAttributes.Region); err != nil {
+		return nil, fmt.Errorf("integrity error in host catalog attributes: %w", err)
 	}
 
 	state, err := awsCatalogPersistedStateFromProto(req.GetPersisted(), p.testStateOpts...)
 	if err != nil {
 		return nil, fmt.Errorf("error loading persisted state: %w", err)
-	}
-
-	// Get/validate the region.
-	region, err := getValidateRegionValue(catalogAttrs)
-	if err != nil {
-		return nil, fmt.Errorf("catalog validation error: %s", err)
 	}
 
 	set := req.GetSet()
@@ -258,7 +241,7 @@ func (p *AwsPlugin) OnCreateSet(ctx context.Context, req *pb.OnCreateSetRequest)
 		return nil, fmt.Errorf("error parsing set attributes: %w", err)
 	}
 
-	ec2Client, err := state.EC2Client(region)
+	ec2Client, err := state.EC2Client(catalogAttributes.Region)
 	if err != nil {
 		return nil, fmt.Errorf("error getting EC2 client: %w", err)
 	}
@@ -287,20 +270,23 @@ func (p *AwsPlugin) OnUpdateSet(ctx context.Context, req *pb.OnUpdateSetRequest)
 		return nil, errors.New("catalog is nil")
 	}
 
-	catalogAttrs := catalog.GetAttributes()
-	if catalogAttrs == nil {
+	catalogAttrsRaw := catalog.GetAttributes()
+	if catalogAttrsRaw == nil {
 		return nil, errors.New("catalog missing attributes")
+	}
+
+	catalogAttributes, err := getCatalogAttributes(catalogAttrsRaw)
+	if err != nil {
+		return nil, fmt.Errorf("integrity error in host catalog attributes: %w", err)
+	}
+
+	if err := validateRegion(catalogAttributes.Region); err != nil {
+		return nil, fmt.Errorf("integrity error in host catalog attributes: %w", err)
 	}
 
 	state, err := awsCatalogPersistedStateFromProto(req.GetPersisted(), p.testStateOpts...)
 	if err != nil {
 		return nil, fmt.Errorf("error loading persisted state: %w", err)
-	}
-
-	// Get/validate the region.
-	region, err := getValidateRegionValue(catalogAttrs)
-	if err != nil {
-		return nil, fmt.Errorf("catalog validation error: %s", err)
 	}
 
 	// As with catalog, we don't need to really look at the old host
@@ -318,7 +304,7 @@ func (p *AwsPlugin) OnUpdateSet(ctx context.Context, req *pb.OnUpdateSetRequest)
 		return nil, fmt.Errorf("error parsing set attributes: %w", err)
 	}
 
-	ec2Client, err := state.EC2Client(region)
+	ec2Client, err := state.EC2Client(catalogAttributes.Region)
 	if err != nil {
 		return nil, fmt.Errorf("error getting EC2 client: %w", err)
 	}
@@ -353,20 +339,23 @@ func (p *AwsPlugin) ListHosts(ctx context.Context, req *pb.ListHostsRequest) (*p
 		return nil, errors.New("catalog is nil")
 	}
 
-	catalogAttrs := catalog.GetAttributes()
-	if catalogAttrs == nil {
+	catalogAttrsRaw := catalog.GetAttributes()
+	if catalogAttrsRaw == nil {
 		return nil, errors.New("catalog missing attributes")
+	}
+
+	catalogAttributes, err := getCatalogAttributes(catalogAttrsRaw)
+	if err != nil {
+		return nil, fmt.Errorf("integrity error in host catalog attributes: %w", err)
+	}
+
+	if err := validateRegion(catalogAttributes.Region); err != nil {
+		return nil, fmt.Errorf("integrity error in host catalog attributes: %w", err)
 	}
 
 	state, err := awsCatalogPersistedStateFromProto(req.GetPersisted(), p.testStateOpts...)
 	if err != nil {
 		return nil, fmt.Errorf("error loading persisted state: %w", err)
-	}
-
-	// Get/validate the region.
-	region, err := getValidateRegionValue(catalogAttrs)
-	if err != nil {
-		return nil, fmt.Errorf("catalog validation error: %w", err)
 	}
 
 	sets := req.GetSets()
@@ -407,7 +396,7 @@ func (p *AwsPlugin) ListHosts(ctx context.Context, req *pb.ListHostsRequest) (*p
 		}
 	}
 
-	ec2Client, err := state.EC2Client(region)
+	ec2Client, err := state.EC2Client(catalogAttributes.Region)
 	if err != nil {
 		return nil, fmt.Errorf("error getting EC2 client: %w", err)
 	}
@@ -469,101 +458,13 @@ func (p *AwsPlugin) ListHosts(ctx context.Context, req *pb.ListHostsRequest) (*p
 	}, nil
 }
 
-func getStringValue(in *structpb.Struct, k string, required bool) (string, error) {
-	mv := in.AsMap()
-	v, ok := mv[k]
-	if !ok {
-		if required {
-			return "", fmt.Errorf("missing required value %q", k)
-		}
-
-		return "", nil
-	}
-
-	s, ok := v.(string)
-	if !ok {
-		return "", fmt.Errorf("unexpected type for value %q: want string, got %T", k, v)
-	}
-
-	if s == "" && required {
-		return "", fmt.Errorf("value %q cannot be empty", k)
-	}
-
-	return s, nil
-}
-
-func getBoolValue(in *structpb.Struct, k string, required bool) (bool, error) {
-	mv := in.AsMap()
-	v, ok := mv[k]
-	if !ok {
-		if required {
-			return false, fmt.Errorf("missing required value %q", k)
-		}
-
-		return false, nil
-	}
-
-	b, ok := v.(bool)
-	if !ok {
-		return false, fmt.Errorf("unexpected type for value %q: want bool, got %T", k, v)
-	}
-
-	return b, nil
-}
-
-func getTimeValue(in *structpb.Struct, k string) (time.Time, error) {
-	mv := in.AsMap()
-	v, ok := mv[k]
-	if !ok {
-		return time.Time{}, nil
-	}
-
-	tRaw, ok := v.(string)
-	if !ok {
-		return time.Time{}, fmt.Errorf("unexpected type for value %q: want string, got %T", k, v)
-	}
-
-	t, err := time.Parse(time.RFC3339Nano, tRaw)
-	if err != nil {
-		return time.Time{}, fmt.Errorf("could not parse time in value %q: %w", k, err)
-	}
-
-	return t, nil
-}
-
-func getSetAttributes(in *structpb.Struct) (*SetAttributes, error) {
-	var setAttrs SetAttributes
-
-	// Mapstructure complains if it expects a slice as output and sees a scalar
-	// value. Rather than use WeakDecode and risk unintended consequences, I'm
-	// manually making this change if necessary.
-	inMap := in.AsMap()
-	if filtersRaw, ok := inMap[constDescribeInstancesFilters]; ok {
-		switch filterVal := filtersRaw.(type) {
-		case string:
-			inMap[constDescribeInstancesFilters] = []string{filterVal}
-		}
-	}
-
-	if err := mapstructure.Decode(inMap, &setAttrs); err != nil {
-		return nil, fmt.Errorf("error decoding set attributes: %w", err)
-	}
-
-	return &setAttrs, nil
-}
-
-func getValidateRegionValue(in *structpb.Struct) (string, error) {
-	region, err := getStringValue(in, constRegion, true)
-	if err != nil {
-		return "", err
-	}
-
+func validateRegion(region string) error {
 	_, found := endpoints.PartitionForRegion(endpoints.DefaultPartitions(), region)
 	if !found {
-		return "", fmt.Errorf("not a valid region: %s", region)
+		return fmt.Errorf("not a valid region: %s", region)
 	}
 
-	return region, nil
+	return nil
 }
 
 func buildFilters(attrs *SetAttributes) ([]*ec2.Filter, error) {
