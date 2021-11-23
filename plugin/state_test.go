@@ -169,20 +169,6 @@ func TestAwsCatalogPersistedStateFromProto(t *testing.T) {
 			expectedErr: testOptionErr,
 		},
 		{
-			name: "unknown fields",
-			in: &pb.HostCatalogPersisted{
-				// Nil should be the same as empty map here
-				Secrets: mustStruct(map[string]interface{}{
-					constAccessKeyId:          "foobar",
-					constSecretAccessKey:      "bazqux",
-					constCredsLastRotatedTime: (time.Time{}).Format(time.RFC3339Nano),
-					"foo":                     true,
-					"bar":                     true,
-				}),
-			},
-			expectedErr: "one or more unrecognized persisted secret attributes found",
-		},
-		{
 			name: "good with non-zero timestamp",
 			in: &pb.HostCatalogPersisted{
 				// Nil should be the same as empty map here

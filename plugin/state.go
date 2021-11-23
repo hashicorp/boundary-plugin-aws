@@ -100,28 +100,19 @@ func awsCatalogPersistedStateFromProto(in *pb.HostCatalogPersisted, opts ...awsC
 		return nil, errors.New("missing persisted secrets")
 	}
 
-	unknownFields := structFields(data)
-
 	accessKeyId, err := getStringValue(data, constAccessKeyId, true)
 	if err != nil {
 		return nil, fmt.Errorf("persisted state integrity error: %w", err)
 	}
-	delete(unknownFields, constAccessKeyId)
 
 	secretAccessKey, err := getStringValue(data, constSecretAccessKey, true)
 	if err != nil {
 		return nil, fmt.Errorf("persisted state integrity error: %w", err)
 	}
-	delete(unknownFields, constSecretAccessKey)
 
 	credsLastRotatedTime, err := getTimeValue(data, constCredsLastRotatedTime)
 	if err != nil {
 		return nil, fmt.Errorf("persisted state integrity error: %w", err)
-	}
-	delete(unknownFields, constCredsLastRotatedTime)
-
-	if len(unknownFields) != 0 {
-		return nil, errors.New("one or more unrecognized persisted secret attributes found")
 	}
 
 	s, err := newAwsCatalogPersistedState(opts...)
