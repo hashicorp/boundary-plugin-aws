@@ -543,15 +543,21 @@ func awsInstanceToHost(instance *ec2.Instance) (*pb.ListHostsResponseHost, error
 	// External ID is the instance ID.
 	result.ExternalId = aws.StringValue(instance.InstanceId)
 
-	// First IP address is always the private IP address field if it's
-	// populated
+	// First IP address/dns name are always the private fields if they
+	// are populated
 	if aws.StringValue(instance.PrivateIpAddress) != "" {
 		result.IpAddresses = append(result.IpAddresses, aws.StringValue(instance.PrivateIpAddress))
 	}
+	if aws.StringValue(instance.PrivateDnsName) != "" {
+		result.DnsNames = append(result.DnsNames, aws.StringValue(instance.PrivateDnsName))
+	}
 
-	// Public IP address is next.
+	// Public IP address/dns names are next
 	if aws.StringValue(instance.PublicIpAddress) != "" {
 		result.IpAddresses = append(result.IpAddresses, aws.StringValue(instance.PublicIpAddress))
+	}
+	if aws.StringValue(instance.PublicDnsName) != "" {
+		result.DnsNames = append(result.DnsNames, aws.StringValue(instance.PublicDnsName))
 	}
 
 	// Now go through all of the interfaces and log the IP address of
@@ -569,20 +575,30 @@ func awsInstanceToHost(instance *ec2.Instance) (*pb.ListHostsResponseHost, error
 				return nil, errors.New("response integrity error: interface address entry is nil")
 			}
 
-			// Check to see if the PrivateIpAddress matches the one
-			// reported at the top-level of the instance (let's call it the
-			// "default address"). If it doesn't, add it.
+			// Check to see if the PrivateIpAddress/PrivateDnsName fields
+			// match the ones reported at the top-level of the instance.
+			// If they don't, add them.
 			if aws.StringValue(addr.PrivateIpAddress) != "" {
 				if aws.StringValue(instance.PrivateIpAddress) != aws.StringValue(addr.PrivateIpAddress) {
 					result.IpAddresses = append(result.IpAddresses, aws.StringValue(addr.PrivateIpAddress))
 				}
 			}
+			if aws.StringValue(addr.PrivateDnsName) != "" {
+				if aws.StringValue(instance.PrivateDnsName) != aws.StringValue(addr.PrivateDnsName) {
+					result.DnsNames = append(result.DnsNames, aws.StringValue(addr.PrivateDnsName))
+				}
+			}
 
-			// Do the same for the default public IP address and the
-			// public association on the interface.
-			if addr.Association != nil && addr.Association.PublicIp != nil && aws.StringValue(addr.Association.PublicIp) != "" {
-				if instance.PublicIpAddress != nil && aws.StringValue(instance.PublicIpAddress) != aws.StringValue(addr.Association.PublicIp) {
+			// Do the same for the top-level public IP address/DNS name and
+			// the public association on the interface.
+			if addr.Association != nil && aws.StringValue(addr.Association.PublicIp) != "" {
+				if aws.StringValue(instance.PublicIpAddress) != aws.StringValue(addr.Association.PublicIp) {
 					result.IpAddresses = append(result.IpAddresses, aws.StringValue(addr.Association.PublicIp))
+				}
+			}
+			if addr.Association != nil && aws.StringValue(addr.Association.PublicDnsName) != "" {
+				if aws.StringValue(instance.PublicDnsName) != aws.StringValue(addr.Association.PublicDnsName) {
+					result.DnsNames = append(result.DnsNames, aws.StringValue(addr.Association.PublicDnsName))
 				}
 			}
 		}
