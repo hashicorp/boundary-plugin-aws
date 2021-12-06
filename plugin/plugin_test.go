@@ -1385,6 +1385,8 @@ func TestAwsInstanceToHost(t *testing.T) {
 				PublicDnsName:    aws.String("test.example.com"),
 				NetworkInterfaces: []*ec2.InstanceNetworkInterface{
 					&ec2.InstanceNetworkInterface{
+						PrivateIpAddress: aws.String("10.0.0.1"),
+						PrivateDnsName:   aws.String("test.example.internal"),
 						PrivateIpAddresses: []*ec2.InstancePrivateIpAddress{
 							&ec2.InstancePrivateIpAddress{
 								Association: &ec2.InstanceNetworkInterfaceAssociation{
@@ -1412,6 +1414,8 @@ func TestAwsInstanceToHost(t *testing.T) {
 				PrivateDnsName:   aws.String("test.example.internal"),
 				NetworkInterfaces: []*ec2.InstanceNetworkInterface{
 					&ec2.InstanceNetworkInterface{
+						PrivateIpAddress: aws.String("10.0.0.1"),
+						PrivateDnsName:   aws.String("test.example.internal"),
 						PrivateIpAddresses: []*ec2.InstancePrivateIpAddress{
 							&ec2.InstancePrivateIpAddress{
 								PrivateIpAddress: aws.String("10.0.0.1"),
@@ -1437,6 +1441,8 @@ func TestAwsInstanceToHost(t *testing.T) {
 				PublicDnsName:    aws.String("test.example.com"),
 				NetworkInterfaces: []*ec2.InstanceNetworkInterface{
 					&ec2.InstanceNetworkInterface{
+						PrivateIpAddress: aws.String("10.0.0.2"),
+						PrivateDnsName:   aws.String("test2.example.internal"),
 						PrivateIpAddresses: []*ec2.InstancePrivateIpAddress{
 							&ec2.InstancePrivateIpAddress{
 								PrivateIpAddress: aws.String("10.0.0.2"),
@@ -1445,6 +1451,8 @@ func TestAwsInstanceToHost(t *testing.T) {
 						},
 					},
 					&ec2.InstanceNetworkInterface{
+						PrivateIpAddress: aws.String("10.0.0.1"),
+						PrivateDnsName:   aws.String("test.example.internal"),
 						PrivateIpAddresses: []*ec2.InstancePrivateIpAddress{
 							&ec2.InstancePrivateIpAddress{
 								Association: &ec2.InstanceNetworkInterfaceAssociation{
@@ -1474,6 +1482,8 @@ func TestAwsInstanceToHost(t *testing.T) {
 				PublicDnsName:    aws.String("test.example.com"),
 				NetworkInterfaces: []*ec2.InstanceNetworkInterface{
 					&ec2.InstanceNetworkInterface{
+						PrivateIpAddress: aws.String("10.0.0.2"),
+						PrivateDnsName:   aws.String("test2.example.internal"),
 						PrivateIpAddresses: []*ec2.InstancePrivateIpAddress{
 							&ec2.InstancePrivateIpAddress{
 								Association: &ec2.InstanceNetworkInterfaceAssociation{
@@ -1486,6 +1496,8 @@ func TestAwsInstanceToHost(t *testing.T) {
 						},
 					},
 					&ec2.InstanceNetworkInterface{
+						PrivateIpAddress: aws.String("10.0.0.1"),
+						PrivateDnsName:   aws.String("test.example.internal"),
 						PrivateIpAddresses: []*ec2.InstancePrivateIpAddress{
 							&ec2.InstancePrivateIpAddress{
 								Association: &ec2.InstanceNetworkInterfaceAssociation{
@@ -1515,6 +1527,8 @@ func TestAwsInstanceToHost(t *testing.T) {
 				PublicDnsName:    aws.String("test.example.com"),
 				NetworkInterfaces: []*ec2.InstanceNetworkInterface{
 					&ec2.InstanceNetworkInterface{
+						PrivateIpAddress: aws.String("10.0.0.1"),
+						PrivateDnsName:   aws.String("test.example.internal"),
 						PrivateIpAddresses: []*ec2.InstancePrivateIpAddress{
 							&ec2.InstancePrivateIpAddress{
 								Association: &ec2.InstanceNetworkInterfaceAssociation{
@@ -1548,6 +1562,7 @@ func TestAwsInstanceToHost(t *testing.T) {
 				PublicDnsName:    aws.String("test.example.com"),
 				NetworkInterfaces: []*ec2.InstanceNetworkInterface{
 					&ec2.InstanceNetworkInterface{
+						PrivateIpAddress: aws.String("10.0.0.1"),
 						PrivateIpAddresses: []*ec2.InstancePrivateIpAddress{
 							&ec2.InstancePrivateIpAddress{
 								Association: &ec2.InstanceNetworkInterfaceAssociation{
