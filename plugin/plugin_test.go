@@ -1380,15 +1380,21 @@ func TestAwsInstanceToHost(t *testing.T) {
 			instance: &ec2.Instance{
 				InstanceId:       aws.String("foobar"),
 				PrivateIpAddress: aws.String("10.0.0.1"),
+				PrivateDnsName:   aws.String("test.example.internal"),
 				PublicIpAddress:  aws.String("1.1.1.1"),
+				PublicDnsName:    aws.String("test.example.com"),
 				NetworkInterfaces: []*ec2.InstanceNetworkInterface{
 					&ec2.InstanceNetworkInterface{
+						PrivateIpAddress: aws.String("10.0.0.1"),
+						PrivateDnsName:   aws.String("test.example.internal"),
 						PrivateIpAddresses: []*ec2.InstancePrivateIpAddress{
 							&ec2.InstancePrivateIpAddress{
 								Association: &ec2.InstanceNetworkInterfaceAssociation{
-									PublicIp: aws.String("1.1.1.1"),
+									PublicIp:      aws.String("1.1.1.1"),
+									PublicDnsName: aws.String("test.example.com"),
 								},
 								PrivateIpAddress: aws.String("10.0.0.1"),
+								PrivateDnsName:   aws.String("test.example.internal"),
 							},
 						},
 					},
@@ -1397,6 +1403,7 @@ func TestAwsInstanceToHost(t *testing.T) {
 			expected: &pb.ListHostsResponseHost{
 				ExternalId:  "foobar",
 				IpAddresses: []string{"10.0.0.1", "1.1.1.1"},
+				DnsNames:    []string{"test.example.internal", "test.example.com"},
 			},
 		},
 		{
@@ -1404,11 +1411,15 @@ func TestAwsInstanceToHost(t *testing.T) {
 			instance: &ec2.Instance{
 				InstanceId:       aws.String("foobar"),
 				PrivateIpAddress: aws.String("10.0.0.1"),
+				PrivateDnsName:   aws.String("test.example.internal"),
 				NetworkInterfaces: []*ec2.InstanceNetworkInterface{
 					&ec2.InstanceNetworkInterface{
+						PrivateIpAddress: aws.String("10.0.0.1"),
+						PrivateDnsName:   aws.String("test.example.internal"),
 						PrivateIpAddresses: []*ec2.InstancePrivateIpAddress{
 							&ec2.InstancePrivateIpAddress{
 								PrivateIpAddress: aws.String("10.0.0.1"),
+								PrivateDnsName:   aws.String("test.example.internal"),
 							},
 						},
 					},
@@ -1417,6 +1428,7 @@ func TestAwsInstanceToHost(t *testing.T) {
 			expected: &pb.ListHostsResponseHost{
 				ExternalId:  "foobar",
 				IpAddresses: []string{"10.0.0.1"},
+				DnsNames:    []string{"test.example.internal"},
 			},
 		},
 		{
@@ -1424,22 +1436,31 @@ func TestAwsInstanceToHost(t *testing.T) {
 			instance: &ec2.Instance{
 				InstanceId:       aws.String("foobar"),
 				PrivateIpAddress: aws.String("10.0.0.1"),
+				PrivateDnsName:   aws.String("test.example.internal"),
 				PublicIpAddress:  aws.String("1.1.1.1"),
+				PublicDnsName:    aws.String("test.example.com"),
 				NetworkInterfaces: []*ec2.InstanceNetworkInterface{
 					&ec2.InstanceNetworkInterface{
+						PrivateIpAddress: aws.String("10.0.0.2"),
+						PrivateDnsName:   aws.String("test2.example.internal"),
 						PrivateIpAddresses: []*ec2.InstancePrivateIpAddress{
 							&ec2.InstancePrivateIpAddress{
 								PrivateIpAddress: aws.String("10.0.0.2"),
+								PrivateDnsName:   aws.String("test2.example.internal"),
 							},
 						},
 					},
 					&ec2.InstanceNetworkInterface{
+						PrivateIpAddress: aws.String("10.0.0.1"),
+						PrivateDnsName:   aws.String("test.example.internal"),
 						PrivateIpAddresses: []*ec2.InstancePrivateIpAddress{
 							&ec2.InstancePrivateIpAddress{
 								Association: &ec2.InstanceNetworkInterfaceAssociation{
-									PublicIp: aws.String("1.1.1.1"),
+									PublicIp:      aws.String("1.1.1.1"),
+									PublicDnsName: aws.String("test.example.com"),
 								},
 								PrivateIpAddress: aws.String("10.0.0.1"),
+								PrivateDnsName:   aws.String("test.example.internal"),
 							},
 						},
 					},
@@ -1448,6 +1469,7 @@ func TestAwsInstanceToHost(t *testing.T) {
 			expected: &pb.ListHostsResponseHost{
 				ExternalId:  "foobar",
 				IpAddresses: []string{"10.0.0.1", "1.1.1.1", "10.0.0.2"},
+				DnsNames:    []string{"test.example.internal", "test.example.com", "test2.example.internal"},
 			},
 		},
 		{
@@ -1455,25 +1477,35 @@ func TestAwsInstanceToHost(t *testing.T) {
 			instance: &ec2.Instance{
 				InstanceId:       aws.String("foobar"),
 				PrivateIpAddress: aws.String("10.0.0.1"),
+				PrivateDnsName:   aws.String("test.example.internal"),
 				PublicIpAddress:  aws.String("1.1.1.1"),
+				PublicDnsName:    aws.String("test.example.com"),
 				NetworkInterfaces: []*ec2.InstanceNetworkInterface{
 					&ec2.InstanceNetworkInterface{
+						PrivateIpAddress: aws.String("10.0.0.2"),
+						PrivateDnsName:   aws.String("test2.example.internal"),
 						PrivateIpAddresses: []*ec2.InstancePrivateIpAddress{
 							&ec2.InstancePrivateIpAddress{
 								Association: &ec2.InstanceNetworkInterfaceAssociation{
-									PublicIp: aws.String("1.1.1.2"),
+									PublicIp:      aws.String("1.1.1.2"),
+									PublicDnsName: aws.String("test2.example.com"),
 								},
 								PrivateIpAddress: aws.String("10.0.0.2"),
+								PrivateDnsName:   aws.String("test2.example.internal"),
 							},
 						},
 					},
 					&ec2.InstanceNetworkInterface{
+						PrivateIpAddress: aws.String("10.0.0.1"),
+						PrivateDnsName:   aws.String("test.example.internal"),
 						PrivateIpAddresses: []*ec2.InstancePrivateIpAddress{
 							&ec2.InstancePrivateIpAddress{
 								Association: &ec2.InstanceNetworkInterfaceAssociation{
-									PublicIp: aws.String("1.1.1.1"),
+									PublicIp:      aws.String("1.1.1.1"),
+									PublicDnsName: aws.String("test.example.com"),
 								},
 								PrivateIpAddress: aws.String("10.0.0.1"),
+								PrivateDnsName:   aws.String("test.example.internal"),
 							},
 						},
 					},
@@ -1482,6 +1514,7 @@ func TestAwsInstanceToHost(t *testing.T) {
 			expected: &pb.ListHostsResponseHost{
 				ExternalId:  "foobar",
 				IpAddresses: []string{"10.0.0.1", "1.1.1.1", "10.0.0.2", "1.1.1.2"},
+				DnsNames:    []string{"test.example.internal", "test.example.com", "test2.example.internal", "test2.example.com"},
 			},
 		},
 		{
@@ -1489,18 +1522,25 @@ func TestAwsInstanceToHost(t *testing.T) {
 			instance: &ec2.Instance{
 				InstanceId:       aws.String("foobar"),
 				PrivateIpAddress: aws.String("10.0.0.1"),
+				PrivateDnsName:   aws.String("test.example.internal"),
 				PublicIpAddress:  aws.String("1.1.1.1"),
+				PublicDnsName:    aws.String("test.example.com"),
 				NetworkInterfaces: []*ec2.InstanceNetworkInterface{
 					&ec2.InstanceNetworkInterface{
+						PrivateIpAddress: aws.String("10.0.0.1"),
+						PrivateDnsName:   aws.String("test.example.internal"),
 						PrivateIpAddresses: []*ec2.InstancePrivateIpAddress{
 							&ec2.InstancePrivateIpAddress{
 								Association: &ec2.InstanceNetworkInterfaceAssociation{
-									PublicIp: aws.String("1.1.1.1"),
+									PublicIp:      aws.String("1.1.1.1"),
+									PublicDnsName: aws.String("test.example.com"),
 								},
 								PrivateIpAddress: aws.String("10.0.0.1"),
+								PrivateDnsName:   aws.String("test.example.internal"),
 							},
 							&ec2.InstancePrivateIpAddress{
 								PrivateIpAddress: aws.String("10.0.0.2"),
+								PrivateDnsName:   aws.String("test2.example.internal"),
 							},
 						},
 					},
@@ -1509,6 +1549,7 @@ func TestAwsInstanceToHost(t *testing.T) {
 			expected: &pb.ListHostsResponseHost{
 				ExternalId:  "foobar",
 				IpAddresses: []string{"10.0.0.1", "1.1.1.1", "10.0.0.2"},
+				DnsNames:    []string{"test.example.internal", "test.example.com", "test2.example.internal"},
 			},
 		},
 		{
@@ -1516,9 +1557,12 @@ func TestAwsInstanceToHost(t *testing.T) {
 			instance: &ec2.Instance{
 				InstanceId:       aws.String("foobar"),
 				PrivateIpAddress: aws.String("10.0.0.1"),
+				PrivateDnsName:   aws.String("test.example.internal"),
 				PublicIpAddress:  aws.String("1.1.1.1"),
+				PublicDnsName:    aws.String("test.example.com"),
 				NetworkInterfaces: []*ec2.InstanceNetworkInterface{
 					&ec2.InstanceNetworkInterface{
+						PrivateIpAddress: aws.String("10.0.0.1"),
 						PrivateIpAddresses: []*ec2.InstancePrivateIpAddress{
 							&ec2.InstancePrivateIpAddress{
 								Association: &ec2.InstanceNetworkInterfaceAssociation{
@@ -1537,6 +1581,7 @@ func TestAwsInstanceToHost(t *testing.T) {
 			expected: &pb.ListHostsResponseHost{
 				ExternalId:  "foobar",
 				IpAddresses: []string{"10.0.0.1", "1.1.1.1", "some::fake::address"},
+				DnsNames:    []string{"test.example.internal", "test.example.com"},
 			},
 		},
 	}
