@@ -28,6 +28,9 @@ client secret in use by this plugin.
 
 ## Getting Started
 
+Refer to [Attributes and Secrets](#attributes-and-secrets) for more detail on
+configuration options for host catalogs and sets.
+
 To create a host catalog (using default scope created by `boundary dev`):
 
 ```
@@ -41,9 +44,9 @@ boundary host-catalogs create plugin \
  -secret secret_access_key='SECRET'
 ```
 
-To create a host set, filtering the host set based on tag keys `foo` and `bar`,
-ensuring that any targets set to this host set only connect to external
-addresses in the `54.0.0.0/8` class A subnet:
+To create a host set, filtering the host set based on tag keys `foo` or `bar`
+(either tag can be present), ensuring that any targets set to this host set only
+connect to external addresses in the `54.0.0.0/8` class A subnet:
 
 ```
 boundary host-sets create plugin \
@@ -51,6 +54,31 @@ boundary host-sets create plugin \
  -name "Example Plugin-Based Host Set" \
  -description "Description for plugin-based host set" \
  -attr filters=tag-key=foo,bar \
+ -preferred-endpoint "cidr:54.0.0.0/8"
+```
+
+As above, but instances must have both tags (both `foo` and `bar` *must* be
+present):
+
+```
+boundary host-sets create plugin \
+ -host-catalog-id HOST_CATALOG_ID \
+ -name "Example Plugin-Based Host Set" \
+ -description "Description for plugin-based host set" \
+ -attr filters=tag-key=foo \
+ -attr filters=tag-key=bar \
+ -preferred-endpoint "cidr:54.0.0.0/8"
+```
+
+As above, but matching on tag key and launch date:
+
+```
+boundary host-sets create plugin \
+ -host-catalog-id HOST_CATALOG_ID \
+ -name "Example Plugin-Based Host Set" \
+ -description "Description for plugin-based host set" \
+ -attr filters=tag-key=foo \
+ -attr filters=launch-time=2022-01-04T* \
  -preferred-endpoint "cidr:54.0.0.0/8"
 ```
 
