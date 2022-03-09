@@ -35,7 +35,7 @@ func TestGetCatalogAttributes(t *testing.T) {
 				"foo":       true,
 				"bar":       true,
 			}),
-			expectedErrContains: "unknown catalog attribute fields provided: bar, foo",
+			expectedErrContains: "attributes.bar: Unrecognized field, attributes.foo: Unrecognized field",
 		},
 		{
 			name: "default",
@@ -104,7 +104,7 @@ func TestGetCatalogSecrets(t *testing.T) {
 				"foo":                true,
 				"bar":                true,
 			}),
-			expectedErrContains: "unknown catalog secret fields provided: bar, foo",
+			expectedErrContains: "attributes.bar: Unrecognized field, attributes.foo: Unrecognized field",
 		},
 		{
 			name: "good",
@@ -413,7 +413,7 @@ func TestValidateRegion(t *testing.T) {
 			require := require.New(t)
 			err := validateRegion(tc.in)
 			if tc.expectedErr != "" {
-				require.EqualError(err, tc.expectedErr)
+				require.Contains(err.Error(), tc.expectedErr)
 				return
 			}
 
