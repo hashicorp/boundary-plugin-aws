@@ -74,18 +74,18 @@ func getCatalogSecrets(in *structpb.Struct) (*CatalogSecrets, error) {
 	var err error
 	result.AccessKeyId, err = getStringValue(in, constAccessKeyId, true)
 	if err != nil {
-		badFields["access_key_id"] = err.Error()
+		badFields[fmt.Sprintf("secrets.%s", constAccessKeyId)] = err.Error()
 	}
 	delete(unknownFields, constAccessKeyId)
 
 	result.SecretAccessKey, err = getStringValue(in, constSecretAccessKey, true)
 	if err != nil {
-		badFields["secret_access_key"] = err.Error()
+		badFields[fmt.Sprintf("secrets.%s", constSecretAccessKey)] = err.Error()
 	}
 	delete(unknownFields, constSecretAccessKey)
 
 	for s := range unknownFields {
-		badFields[fmt.Sprintf("attributes.%s", s)] = "Unrecognized field"
+		badFields[fmt.Sprintf("secrets.%s", s)] = "Unrecognized field"
 	}
 
 	if len(badFields) > 0 {
@@ -108,9 +108,13 @@ func getSetAttributes(in *structpb.Struct) (*SetAttributes, error) {
 	// here for now. Make this more complex if we add more attributes
 	// to host sets.
 	unknownFields := structFields(in)
+	badFields := make(map[string]string)
 	delete(unknownFields, constDescribeInstancesFilters)
-	if len(unknownFields) != 0 {
-		return nil, status.Errorf(codes.InvalidArgument, "unknown set attribute fields provided: %s", keysAsString(unknownFields))
+	for a := range unknownFields {
+		badFields[fmt.Sprintf("attributes.%s", a)] = "Unrecognized field"
+	}
+	if len(badFields) > 0 {
+		return nil, invalidArgumentError("Error in the attributes provided", badFields)
 	}
 
 	// Mapstructure complains if it expects a slice as output and sees a scalar

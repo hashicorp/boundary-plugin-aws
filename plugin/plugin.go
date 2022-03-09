@@ -70,7 +70,7 @@ func (p *AwsPlugin) OnCreateCatalog(ctx context.Context, req *pb.OnCreateCatalog
 		withSecretAccessKey(catalogSecrets.SecretAccessKey),
 	}, p.testStateOpts...)...)
 	if err != nil {
-		return nil, fmt.Errorf("error setting up persisted state: %w", err)
+		return nil, status.Errorf(codes.InvalidArgument, "error setting up persisted state: %s", err)
 	}
 
 	// Try to rotate the credentials if we're not skipping them.
@@ -198,7 +198,7 @@ func (p *AwsPlugin) OnDeleteCatalog(ctx context.Context, req *pb.OnDeleteCatalog
 		// credentials to ensure that it has the proper permissions to do
 		// it.
 		if err := state.DeleteCreds(); err != nil {
-			return nil, status.Errorf(codes.FailedPrecondition, "error removing rotated credentials during catalog deletion: %s", err)
+			return nil, status.Errorf(codes.Aborted, "error removing rotated credentials during catalog deletion: %s", err)
 		}
 	}
 
@@ -218,11 +218,11 @@ func (p *AwsPlugin) OnCreateSet(ctx context.Context, req *pb.OnCreateSetRequest)
 
 	catalogAttributes, err := getCatalogAttributes(catalogAttrsRaw)
 	if err != nil {
-		return nil, fmt.Errorf("integrity error in host catalog attributes: %w", err)
+		return nil, err
 	}
 
 	if err := validateRegion(catalogAttributes.Region); err != nil {
-		return nil, fmt.Errorf("integrity error in host catalog attributes: %w", err)
+		return nil, err
 	}
 
 	state, err := awsCatalogPersistedStateFromProto(req.GetPersisted(), p.testStateOpts...)
@@ -240,7 +240,7 @@ func (p *AwsPlugin) OnCreateSet(ctx context.Context, req *pb.OnCreateSetRequest)
 	}
 	setAttrs, err := getSetAttributes(set.GetAttributes())
 	if err != nil {
-		return nil, fmt.Errorf("error parsing set attributes: %w", err)
+		return nil, err
 	}
 
 	ec2Client, err := state.EC2Client(catalogAttributes.Region)
@@ -279,11 +279,11 @@ func (p *AwsPlugin) OnUpdateSet(ctx context.Context, req *pb.OnUpdateSetRequest)
 
 	catalogAttributes, err := getCatalogAttributes(catalogAttrsRaw)
 	if err != nil {
-		return nil, fmt.Errorf("integrity error in host catalog attributes: %w", err)
+		return nil, err
 	}
 
 	if err := validateRegion(catalogAttributes.Region); err != nil {
-		return nil, fmt.Errorf("integrity error in host catalog attributes: %w", err)
+		return nil, err
 	}
 
 	state, err := awsCatalogPersistedStateFromProto(req.GetPersisted(), p.testStateOpts...)
@@ -303,7 +303,7 @@ func (p *AwsPlugin) OnUpdateSet(ctx context.Context, req *pb.OnUpdateSetRequest)
 	}
 	setAttrs, err := getSetAttributes(set.GetAttributes())
 	if err != nil {
-		return nil, fmt.Errorf("error parsing set attributes: %w", err)
+		return nil, err
 	}
 
 	ec2Client, err := state.EC2Client(catalogAttributes.Region)
@@ -348,11 +348,11 @@ func (p *AwsPlugin) ListHosts(ctx context.Context, req *pb.ListHostsRequest) (*p
 
 	catalogAttributes, err := getCatalogAttributes(catalogAttrsRaw)
 	if err != nil {
-		return nil, fmt.Errorf("integrity error in host catalog attributes: %w", err)
+		return nil, err
 	}
 
 	if err := validateRegion(catalogAttributes.Region); err != nil {
-		return nil, fmt.Errorf("integrity error in host catalog attributes: %w", err)
+		return nil, err
 	}
 
 	state, err := awsCatalogPersistedStateFromProto(req.GetPersisted(), p.testStateOpts...)
@@ -385,7 +385,7 @@ func (p *AwsPlugin) ListHosts(ctx context.Context, req *pb.ListHostsRequest) (*p
 		}
 		setAttrs, err := getSetAttributes(set.GetAttributes())
 		if err != nil {
-			return nil, fmt.Errorf("error parsing set attributes: %w", err)
+			return nil, err
 		}
 
 		input, err := buildDescribeInstancesInput(setAttrs, false)
