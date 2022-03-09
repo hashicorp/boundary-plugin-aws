@@ -70,14 +70,15 @@ boundary host-sets create plugin \
  -preferred-endpoint "cidr:54.0.0.0/8"
 ```
 
-As above, but matching on tag key and launch date:
+As above, but matching on tag key named "development" with value "prod" or "dev"
+and launch date:
 
 ```
 boundary host-sets create plugin \
  -host-catalog-id HOST_CATALOG_ID \
  -name "Example Plugin-Based Host Set" \
  -description "Description for plugin-based host set" \
- -attr filters=tag-key=foo \
+ -attr filters=tag:development=prod,dev \
  -attr filters=launch-time=2022-01-04T* \
  -preferred-endpoint "cidr:54.0.0.0/8"
 ```
