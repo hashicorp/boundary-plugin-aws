@@ -39,18 +39,18 @@ func getCatalogAttributes(in *structpb.Struct) (*CatalogAttributes, error) {
 	var err error
 	result.Region, err = getStringValue(in, constRegion, true)
 	if err != nil {
-		badFields["attributes.region"] = err.Error()
+		badFields[fmt.Sprintf("attributes.%s", constRegion)] = err.Error()
 	}
 	delete(unknownFields, constRegion)
 
 	result.DisableCredentialRotation, err = getBoolValue(in, constDisableCredentialRotation, false)
 	if err != nil {
-		badFields["attributes.disable_credential_rotation"] = err.Error()
+		badFields[fmt.Sprintf("attributes.%s", constDisableCredentialRotation)] = err.Error()
 	}
 	delete(unknownFields, constDisableCredentialRotation)
 
 	for s := range unknownFields {
-		badFields[fmt.Sprintf("attributes.%s", s)] = "Unrecognized field"
+		badFields[fmt.Sprintf("attributes.%s", s)] = "unrecognized field"
 	}
 
 	if len(badFields) > 0 {
@@ -85,7 +85,7 @@ func getCatalogSecrets(in *structpb.Struct) (*CatalogSecrets, error) {
 	delete(unknownFields, constSecretAccessKey)
 
 	for s := range unknownFields {
-		badFields[fmt.Sprintf("secrets.%s", s)] = "Unrecognized field"
+		badFields[fmt.Sprintf("secrets.%s", s)] = "unrecognized field"
 	}
 
 	if len(badFields) > 0 {
@@ -111,7 +111,7 @@ func getSetAttributes(in *structpb.Struct) (*SetAttributes, error) {
 	badFields := make(map[string]string)
 	delete(unknownFields, constDescribeInstancesFilters)
 	for a := range unknownFields {
-		badFields[fmt.Sprintf("attributes.%s", a)] = "Unrecognized field"
+		badFields[fmt.Sprintf("attributes.%s", a)] = "unrecognized field"
 	}
 	if len(badFields) > 0 {
 		return nil, invalidArgumentError("Error in the attributes provided", badFields)
