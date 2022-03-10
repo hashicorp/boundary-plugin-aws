@@ -5,6 +5,8 @@ import (
 	"time"
 
 	"github.com/stretchr/testify/require"
+	"google.golang.org/grpc/codes"
+	"google.golang.org/grpc/status"
 	"google.golang.org/protobuf/types/known/structpb"
 )
 
@@ -35,7 +37,7 @@ func TestGetCatalogAttributes(t *testing.T) {
 				"foo":       true,
 				"bar":       true,
 			}),
-			expectedErrContains: "unknown catalog attribute fields provided: bar, foo",
+			expectedErrContains: "attributes.bar: Unrecognized field, attributes.foo: Unrecognized field",
 		},
 		{
 			name: "default",
@@ -68,6 +70,7 @@ func TestGetCatalogAttributes(t *testing.T) {
 			if tc.expectedErrContains != "" {
 				require.Error(err)
 				require.Contains(err.Error(), tc.expectedErrContains)
+				require.Equal(status.Code(err), codes.InvalidArgument)
 				return
 			}
 
@@ -104,7 +107,7 @@ func TestGetCatalogSecrets(t *testing.T) {
 				"foo":                true,
 				"bar":                true,
 			}),
-			expectedErrContains: "unknown catalog secret fields provided: bar, foo",
+			expectedErrContains: "secrets.bar: Unrecognized field, secrets.foo: Unrecognized field",
 		},
 		{
 			name: "good",
@@ -127,6 +130,7 @@ func TestGetCatalogSecrets(t *testing.T) {
 			if tc.expectedErrContains != "" {
 				require.Error(err)
 				require.Contains(err.Error(), tc.expectedErrContains)
+				require.Equal(status.Code(err), codes.InvalidArgument)
 				return
 			}
 
@@ -170,7 +174,7 @@ func TestGetSetAttributes(t *testing.T) {
 				"foo": true,
 				"bar": true,
 			}),
-			expectedErrContains: "unknown set attribute fields provided: bar, foo",
+			expectedErrContains: "attributes.bar: Unrecognized field, attributes.foo: Unrecognized field",
 		},
 		{
 			name: "good",
@@ -194,6 +198,7 @@ func TestGetSetAttributes(t *testing.T) {
 			if tc.expectedErrContains != "" {
 				require.Error(err)
 				require.Contains(err.Error(), tc.expectedErrContains)
+				require.Equal(status.Code(err), codes.InvalidArgument)
 				return
 			}
 
@@ -413,7 +418,8 @@ func TestValidateRegion(t *testing.T) {
 			require := require.New(t)
 			err := validateRegion(tc.in)
 			if tc.expectedErr != "" {
-				require.EqualError(err, tc.expectedErr)
+				require.Contains(err.Error(), tc.expectedErr)
+				require.Equal(status.Code(err), codes.InvalidArgument)
 				return
 			}
 

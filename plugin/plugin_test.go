@@ -14,27 +14,32 @@ import (
 	pb "github.com/hashicorp/boundary/sdk/pbs/plugin"
 	"github.com/hashicorp/go-secure-stdlib/awsutil"
 	"github.com/stretchr/testify/require"
+	"google.golang.org/grpc/codes"
+	"google.golang.org/grpc/status"
 	"google.golang.org/protobuf/types/known/structpb"
 )
 
 func TestPluginOnCreateCatalogErr(t *testing.T) {
 	cases := []struct {
-		name        string
-		req         *pb.OnCreateCatalogRequest
-		opts        []awsCatalogPersistedStateOption
-		expectedErr string
+		name                string
+		req                 *pb.OnCreateCatalogRequest
+		opts                []awsCatalogPersistedStateOption
+		expectedErrContains string
+		expectedErrCode     codes.Code
 	}{
 		{
-			name:        "nil catalog",
-			req:         &pb.OnCreateCatalogRequest{},
-			expectedErr: "catalog is nil",
+			name:                "nil catalog",
+			req:                 &pb.OnCreateCatalogRequest{},
+			expectedErrContains: "catalog is nil",
+			expectedErrCode:     codes.InvalidArgument,
 		},
 		{
 			name: "nil secrets",
 			req: &pb.OnCreateCatalogRequest{
 				Catalog: &hostcatalogs.HostCatalog{},
 			},
-			expectedErr: "secrets are required",
+			expectedErrContains: "secrets are required",
+			expectedErrCode:     codes.InvalidArgument,
 		},
 		{
 			name: "nil attributes",
@@ -43,7 +48,8 @@ func TestPluginOnCreateCatalogErr(t *testing.T) {
 					Secrets: new(structpb.Struct),
 				},
 			},
-			expectedErr: "attributes are required",
+			expectedErrContains: "attributes are required",
+			expectedErrCode:     codes.InvalidArgument,
 		},
 		{
 			name: "error reading attributes",
@@ -53,7 +59,8 @@ func TestPluginOnCreateCatalogErr(t *testing.T) {
 					Attributes: new(structpb.Struct),
 				},
 			},
-			expectedErr: "missing required value \"region\"",
+			expectedErrContains: "missing required value \"region\"",
+			expectedErrCode:     codes.InvalidArgument,
 		},
 		{
 			name: "error reading secrets",
@@ -65,7 +72,8 @@ func TestPluginOnCreateCatalogErr(t *testing.T) {
 					}),
 				},
 			},
-			expectedErr: "missing required value \"access_key_id\"",
+			expectedErrContains: "missing required value \"access_key_id\"",
+			expectedErrCode:     codes.InvalidArgument,
 		},
 		{
 			name: "invalid region",
@@ -80,7 +88,8 @@ func TestPluginOnCreateCatalogErr(t *testing.T) {
 					}),
 				},
 			},
-			expectedErr: "not a valid region: foobar",
+			expectedErrContains: "not a valid region: foobar",
+			expectedErrCode:     codes.InvalidArgument,
 		},
 		{
 			name: "persisted state setup error",
@@ -100,7 +109,8 @@ func TestPluginOnCreateCatalogErr(t *testing.T) {
 					return errors.New(testOptionErr)
 				},
 			},
-			expectedErr: fmt.Sprintf("error setting up persisted state: %s", testOptionErr),
+			expectedErrContains: fmt.Sprintf("error setting up persisted state: %s", testOptionErr),
+			expectedErrCode:     codes.InvalidArgument,
 		},
 		{
 			name: "rotation error",
@@ -124,7 +134,8 @@ func TestPluginOnCreateCatalogErr(t *testing.T) {
 					),
 				}),
 			},
-			expectedErr: fmt.Sprintf("error during credential rotation: error rotating credentials: error calling CreateAccessKey: error calling aws.GetUser: %s", testGetUserErr),
+			expectedErrContains: fmt.Sprintf("error during credential rotation: error rotating credentials: error calling CreateAccessKey: error calling aws.GetUser: %s", testGetUserErr),
+			expectedErrCode:     codes.InvalidArgument,
 		},
 		{
 			name: "validation error",
@@ -149,7 +160,8 @@ func TestPluginOnCreateCatalogErr(t *testing.T) {
 					),
 				}),
 			},
-			expectedErr: fmt.Sprintf("error during credential validation: error validating credentials: %s", testGetCallerIdentityErr),
+			expectedErrContains: fmt.Sprintf("error during credential validation: error validating credentials: %s", testGetCallerIdentityErr),
+			expectedErrCode:     codes.InvalidArgument,
 		},
 	}
 
@@ -161,22 +173,25 @@ func TestPluginOnCreateCatalogErr(t *testing.T) {
 				testStateOpts: tc.opts,
 			}
 			_, err := p.OnCreateCatalog(context.Background(), tc.req)
-			require.EqualError(err, tc.expectedErr)
+			require.Contains(err.Error(), tc.expectedErrContains)
+			require.Equal(status.Code(err).String(), tc.expectedErrCode.String())
 		})
 	}
 }
 
 func TestPluginOnUpdateCatalogErr(t *testing.T) {
 	cases := []struct {
-		name        string
-		req         *pb.OnUpdateCatalogRequest
-		opts        []awsCatalogPersistedStateOption
-		expectedErr string
+		name                string
+		req                 *pb.OnUpdateCatalogRequest
+		opts                []awsCatalogPersistedStateOption
+		expectedErrContains string
+		expectedErrCode     codes.Code
 	}{
 		{
-			name:        "nil new catalog",
-			req:         &pb.OnUpdateCatalogRequest{},
-			expectedErr: "new catalog is nil",
+			name:                "nil new catalog",
+			req:                 &pb.OnUpdateCatalogRequest{},
+			expectedErrContains: "new catalog is nil",
+			expectedErrCode:     codes.InvalidArgument,
 		},
 		{
 			name: "nil new attributes",
@@ -185,7 +200,8 @@ func TestPluginOnUpdateCatalogErr(t *testing.T) {
 					Secrets: new(structpb.Struct),
 				},
 			},
-			expectedErr: "new catalog missing attributes",
+			expectedErrContains: "new catalog missing attributes",
+			expectedErrCode:     codes.InvalidArgument,
 		},
 		{
 			name: "error reading attributes",
@@ -195,7 +211,8 @@ func TestPluginOnUpdateCatalogErr(t *testing.T) {
 					Attributes: new(structpb.Struct),
 				},
 			},
-			expectedErr: "missing required value \"region\"",
+			expectedErrContains: "missing required value \"region\"",
+			expectedErrCode:     codes.InvalidArgument,
 		},
 		{
 			name: "invalid region",
@@ -206,7 +223,8 @@ func TestPluginOnUpdateCatalogErr(t *testing.T) {
 					}),
 				},
 			},
-			expectedErr: "not a valid region: foobar",
+			expectedErrContains: "not a valid region: foobar",
+			expectedErrCode:     codes.InvalidArgument,
 		},
 		{
 			name: "persisted state setup error",
@@ -229,7 +247,8 @@ func TestPluginOnUpdateCatalogErr(t *testing.T) {
 					return errors.New(testOptionErr)
 				},
 			},
-			expectedErr: fmt.Sprintf("error loading persisted state: %s", testOptionErr),
+			expectedErrContains: fmt.Sprintf("error loading persisted state: %s", testOptionErr),
+			expectedErrCode:     codes.InvalidArgument,
 		},
 		{
 			name: "cannot disable rotation for already rotated credentials",
@@ -248,7 +267,8 @@ func TestPluginOnUpdateCatalogErr(t *testing.T) {
 					}),
 				},
 			},
-			expectedErr: "cannot disable rotation for already-rotated credentials",
+			expectedErrContains: "cannot disable rotation for already-rotated credentials",
+			expectedErrCode:     codes.FailedPrecondition,
 		},
 		{
 			name: "error reading secrets",
@@ -267,7 +287,8 @@ func TestPluginOnUpdateCatalogErr(t *testing.T) {
 					}),
 				},
 			},
-			expectedErr: "missing required value \"access_key_id\"",
+			expectedErrContains: "missing required value \"access_key_id\"",
+			expectedErrCode:     codes.InvalidArgument,
 		},
 		{
 			name: "updating secrets, replace error",
@@ -299,7 +320,8 @@ func TestPluginOnUpdateCatalogErr(t *testing.T) {
 					),
 				}),
 			},
-			expectedErr: fmt.Sprintf("error attempting to replace credentials: error deleting old access key: %s", testDeleteAccessKeyErr),
+			expectedErrContains: fmt.Sprintf("error attempting to replace credentials: error deleting old access key: %s", testDeleteAccessKeyErr),
+			expectedErrCode:     codes.InvalidArgument,
 		},
 		{
 			name: "rotation error",
@@ -325,7 +347,8 @@ func TestPluginOnUpdateCatalogErr(t *testing.T) {
 					),
 				}),
 			},
-			expectedErr: fmt.Sprintf("error during credential rotation: error rotating credentials: error calling CreateAccessKey: error calling aws.GetUser: %s", testGetUserErr),
+			expectedErrContains: fmt.Sprintf("error during credential rotation: error rotating credentials: error calling CreateAccessKey: error calling aws.GetUser: %s", testGetUserErr),
+			expectedErrCode:     codes.InvalidArgument,
 		},
 	}
 
@@ -337,17 +360,19 @@ func TestPluginOnUpdateCatalogErr(t *testing.T) {
 				testStateOpts: tc.opts,
 			}
 			_, err := p.OnUpdateCatalog(context.Background(), tc.req)
-			require.EqualError(err, tc.expectedErr)
+			require.Contains(err.Error(), tc.expectedErrContains)
+			require.Equal(status.Code(err).String(), tc.expectedErrCode.String())
 		})
 	}
 }
 
 func TestPluginOnDeleteCatalogErr(t *testing.T) {
 	cases := []struct {
-		name        string
-		req         *pb.OnDeleteCatalogRequest
-		opts        []awsCatalogPersistedStateOption
-		expectedErr string
+		name                string
+		req                 *pb.OnDeleteCatalogRequest
+		opts                []awsCatalogPersistedStateOption
+		expectedErrContains string
+		expectedErrCode     codes.Code
 	}{
 		{
 			name: "persisted state setup error",
@@ -370,7 +395,8 @@ func TestPluginOnDeleteCatalogErr(t *testing.T) {
 					return errors.New(testOptionErr)
 				},
 			},
-			expectedErr: fmt.Sprintf("error loading persisted state: %s", testOptionErr),
+			expectedErrContains: fmt.Sprintf("error loading persisted state: %s", testOptionErr),
+			expectedErrCode:     codes.InvalidArgument,
 		},
 		{
 			name: "delete error",
@@ -397,7 +423,8 @@ func TestPluginOnDeleteCatalogErr(t *testing.T) {
 					),
 				}),
 			},
-			expectedErr: fmt.Sprintf("error removing rotated credentials during catalog deletion: error deleting old access key: %s", testDeleteAccessKeyErr),
+			expectedErrContains: fmt.Sprintf("error removing rotated credentials during catalog deletion: error deleting old access key: %s", testDeleteAccessKeyErr),
+			expectedErrCode:     codes.Aborted,
 		},
 	}
 
@@ -409,22 +436,25 @@ func TestPluginOnDeleteCatalogErr(t *testing.T) {
 				testStateOpts: tc.opts,
 			}
 			_, err := p.OnDeleteCatalog(context.Background(), tc.req)
-			require.EqualError(err, tc.expectedErr)
+			require.Contains(err.Error(), tc.expectedErrContains)
+			require.Equal(status.Code(err).String(), tc.expectedErrCode.String())
 		})
 	}
 }
 
 func TestPluginOnCreateSetErr(t *testing.T) {
 	cases := []struct {
-		name        string
-		req         *pb.OnCreateSetRequest
-		opts        []awsCatalogPersistedStateOption
-		expectedErr string
+		name                string
+		req                 *pb.OnCreateSetRequest
+		opts                []awsCatalogPersistedStateOption
+		expectedErrContains string
+		expectedErrCode     codes.Code
 	}{
 		{
-			name:        "nil catalog",
-			req:         &pb.OnCreateSetRequest{},
-			expectedErr: "catalog is nil",
+			name:                "nil catalog",
+			req:                 &pb.OnCreateSetRequest{},
+			expectedErrContains: "catalog is nil",
+			expectedErrCode:     codes.InvalidArgument,
 		},
 		{
 			name: "nil catalog attributes",
@@ -433,7 +463,8 @@ func TestPluginOnCreateSetErr(t *testing.T) {
 					Secrets: new(structpb.Struct),
 				},
 			},
-			expectedErr: "catalog missing attributes",
+			expectedErrContains: "catalog missing attributes",
+			expectedErrCode:     codes.InvalidArgument,
 		},
 		{
 			name: "error reading catalog attributes",
@@ -443,7 +474,8 @@ func TestPluginOnCreateSetErr(t *testing.T) {
 					Attributes: new(structpb.Struct),
 				},
 			},
-			expectedErr: "integrity error in host catalog attributes: missing required value \"region\"",
+			expectedErrContains: "missing required value \"region\"",
+			expectedErrCode:     codes.InvalidArgument,
 		},
 		{
 			name: "invalid region",
@@ -454,7 +486,8 @@ func TestPluginOnCreateSetErr(t *testing.T) {
 					}),
 				},
 			},
-			expectedErr: "integrity error in host catalog attributes: not a valid region: foobar",
+			expectedErrContains: "not a valid region: foobar",
+			expectedErrCode:     codes.InvalidArgument,
 		},
 		{
 			name: "persisted state setup error",
@@ -477,7 +510,8 @@ func TestPluginOnCreateSetErr(t *testing.T) {
 					return errors.New(testOptionErr)
 				},
 			},
-			expectedErr: fmt.Sprintf("error loading persisted state: %s", testOptionErr),
+			expectedErrContains: fmt.Sprintf("error loading persisted state: %s", testOptionErr),
+			expectedErrCode:     codes.InvalidArgument,
 		},
 		{
 			name: "nil set",
@@ -495,7 +529,8 @@ func TestPluginOnCreateSetErr(t *testing.T) {
 					}),
 				},
 			},
-			expectedErr: "set is nil",
+			expectedErrContains: "set is nil",
+			expectedErrCode:     codes.InvalidArgument,
 		},
 		{
 			name: "nil attributes in set",
@@ -514,7 +549,8 @@ func TestPluginOnCreateSetErr(t *testing.T) {
 				},
 				Set: &hostsets.HostSet{},
 			},
-			expectedErr: "set missing attributes",
+			expectedErrContains: "set missing attributes",
+			expectedErrCode:     codes.InvalidArgument,
 		},
 		{
 			name: "set attribute load error",
@@ -538,7 +574,8 @@ func TestPluginOnCreateSetErr(t *testing.T) {
 					}),
 				},
 			},
-			expectedErr: "error parsing set attributes: unknown set attribute fields provided: bar, foo",
+			expectedErrContains: "attributes.bar: Unrecognized field, attributes.foo: Unrecognized field",
+			expectedErrCode:     codes.InvalidArgument,
 		},
 		{
 			name: "client load error",
@@ -566,7 +603,8 @@ func TestPluginOnCreateSetErr(t *testing.T) {
 					awsutil.MockOptionErr(errors.New(testOptionErr)),
 				}),
 			},
-			expectedErr: fmt.Sprintf("error getting EC2 client: error getting AWS session: error reading options in NewCredentialsConfig: %s", testOptionErr),
+			expectedErrContains: fmt.Sprintf("error getting EC2 client: error getting AWS session: error reading options in NewCredentialsConfig: %s", testOptionErr),
+			expectedErrCode:     codes.InvalidArgument,
 		},
 		{
 			name: "DescribeInstances error",
@@ -595,7 +633,8 @@ func TestPluginOnCreateSetErr(t *testing.T) {
 					testMockEC2WithDescribeInstancesError(errors.New(testDescribeInstancesError)),
 				)),
 			},
-			expectedErr: fmt.Sprintf("error performing dry run of DescribeInstances: %s", testDescribeInstancesError),
+			expectedErrContains: fmt.Sprintf("error performing dry run of DescribeInstances: %s", testDescribeInstancesError),
+			expectedErrCode:     codes.InvalidArgument,
 		},
 		{
 			name: "DescribeInstances non-error array filter",
@@ -623,7 +662,8 @@ func TestPluginOnCreateSetErr(t *testing.T) {
 					nil,
 				)),
 			},
-			expectedErr: "query error: DescribeInstances DryRun should have returned error, but none was found",
+			expectedErrContains: "query error: DescribeInstances DryRun should have returned error, but none was found",
+			expectedErrCode:     codes.FailedPrecondition,
 		},
 		{
 			name: "DescribeInstances non-error string filter",
@@ -651,7 +691,8 @@ func TestPluginOnCreateSetErr(t *testing.T) {
 					nil,
 				)),
 			},
-			expectedErr: "query error: DescribeInstances DryRun should have returned error, but none was found",
+			expectedErrContains: "query error: DescribeInstances DryRun should have returned error, but none was found",
+			expectedErrCode:     codes.FailedPrecondition,
 		},
 	}
 
@@ -663,22 +704,25 @@ func TestPluginOnCreateSetErr(t *testing.T) {
 				testStateOpts: tc.opts,
 			}
 			_, err := p.OnCreateSet(context.Background(), tc.req)
-			require.EqualError(err, tc.expectedErr)
+			require.Contains(err.Error(), tc.expectedErrContains)
+			require.Equal(status.Code(err).String(), tc.expectedErrCode.String())
 		})
 	}
 }
 
 func TestPluginOnUpdateSetErr(t *testing.T) {
 	cases := []struct {
-		name        string
-		req         *pb.OnUpdateSetRequest
-		opts        []awsCatalogPersistedStateOption
-		expectedErr string
+		name                string
+		req                 *pb.OnUpdateSetRequest
+		opts                []awsCatalogPersistedStateOption
+		expectedErrContains string
+		expectedErrCode     codes.Code
 	}{
 		{
-			name:        "nil catalog",
-			req:         &pb.OnUpdateSetRequest{},
-			expectedErr: "catalog is nil",
+			name:                "nil catalog",
+			req:                 &pb.OnUpdateSetRequest{},
+			expectedErrContains: "catalog is nil",
+			expectedErrCode:     codes.InvalidArgument,
 		},
 		{
 			name: "nil catalog attributes",
@@ -687,7 +731,8 @@ func TestPluginOnUpdateSetErr(t *testing.T) {
 					Secrets: new(structpb.Struct),
 				},
 			},
-			expectedErr: "catalog missing attributes",
+			expectedErrContains: "catalog missing attributes",
+			expectedErrCode:     codes.InvalidArgument,
 		},
 		{
 			name: "catalog attribute load error",
@@ -697,7 +742,8 @@ func TestPluginOnUpdateSetErr(t *testing.T) {
 					Attributes: new(structpb.Struct),
 				},
 			},
-			expectedErr: "integrity error in host catalog attributes: missing required value \"region\"",
+			expectedErrContains: "missing required value \"region\"",
+			expectedErrCode:     codes.InvalidArgument,
 		},
 		{
 			name: "invalid region",
@@ -709,7 +755,8 @@ func TestPluginOnUpdateSetErr(t *testing.T) {
 					}),
 				},
 			},
-			expectedErr: "integrity error in host catalog attributes: not a valid region: foobar",
+			expectedErrContains: "not a valid region: foobar",
+			expectedErrCode:     codes.InvalidArgument,
 		},
 		{
 			name: "persisted state setup error",
@@ -732,7 +779,8 @@ func TestPluginOnUpdateSetErr(t *testing.T) {
 					return errors.New(testOptionErr)
 				},
 			},
-			expectedErr: fmt.Sprintf("error loading persisted state: %s", testOptionErr),
+			expectedErrContains: fmt.Sprintf("error loading persisted state: %s", testOptionErr),
+			expectedErrCode:     codes.InvalidArgument,
 		},
 		{
 			name: "nil set",
@@ -750,7 +798,8 @@ func TestPluginOnUpdateSetErr(t *testing.T) {
 					}),
 				},
 			},
-			expectedErr: "new set is nil",
+			expectedErrContains: "new set is nil",
+			expectedErrCode:     codes.InvalidArgument,
 		},
 		{
 			name: "nil attributes in set",
@@ -769,7 +818,8 @@ func TestPluginOnUpdateSetErr(t *testing.T) {
 				},
 				NewSet: &hostsets.HostSet{},
 			},
-			expectedErr: "new set missing attributes",
+			expectedErrContains: "new set missing attributes",
+			expectedErrCode:     codes.InvalidArgument,
 		},
 		{
 			name: "set attribute load error",
@@ -793,7 +843,8 @@ func TestPluginOnUpdateSetErr(t *testing.T) {
 					}),
 				},
 			},
-			expectedErr: "error parsing set attributes: unknown set attribute fields provided: bar, foo",
+			expectedErrContains: "attributes.bar: Unrecognized field, attributes.foo: Unrecognized field",
+			expectedErrCode:     codes.InvalidArgument,
 		},
 		{
 			name: "client load error",
@@ -821,7 +872,8 @@ func TestPluginOnUpdateSetErr(t *testing.T) {
 					awsutil.MockOptionErr(errors.New(testOptionErr)),
 				}),
 			},
-			expectedErr: fmt.Sprintf("error getting EC2 client: error getting AWS session: error reading options in NewCredentialsConfig: %s", testOptionErr),
+			expectedErrContains: fmt.Sprintf("error getting EC2 client: error getting AWS session: error reading options in NewCredentialsConfig: %s", testOptionErr),
+			expectedErrCode:     codes.InvalidArgument,
 		},
 		{
 			name: "DescribeInstances error",
@@ -850,7 +902,8 @@ func TestPluginOnUpdateSetErr(t *testing.T) {
 					testMockEC2WithDescribeInstancesError(errors.New(testDescribeInstancesError)),
 				)),
 			},
-			expectedErr: fmt.Sprintf("error performing dry run of DescribeInstances: %s", testDescribeInstancesError),
+			expectedErrContains: fmt.Sprintf("error performing dry run of DescribeInstances: %s", testDescribeInstancesError),
+			expectedErrCode:     codes.InvalidArgument,
 		},
 		{
 			name: "DescribeInstances non-error",
@@ -878,7 +931,8 @@ func TestPluginOnUpdateSetErr(t *testing.T) {
 					nil,
 				)),
 			},
-			expectedErr: "query error: DescribeInstances DryRun should have returned error, but none was found",
+			expectedErrContains: "query error: DescribeInstances DryRun should have returned error, but none was found",
+			expectedErrCode:     codes.FailedPrecondition,
 		},
 	}
 
@@ -890,22 +944,25 @@ func TestPluginOnUpdateSetErr(t *testing.T) {
 				testStateOpts: tc.opts,
 			}
 			_, err := p.OnUpdateSet(context.Background(), tc.req)
-			require.EqualError(err, tc.expectedErr)
+			require.Contains(err.Error(), tc.expectedErrContains)
+			require.Equal(status.Code(err).String(), tc.expectedErrCode.String())
 		})
 	}
 }
 
 func TestPluginListHostsErr(t *testing.T) {
 	cases := []struct {
-		name        string
-		req         *pb.ListHostsRequest
-		opts        []awsCatalogPersistedStateOption
-		expectedErr string
+		name                string
+		req                 *pb.ListHostsRequest
+		opts                []awsCatalogPersistedStateOption
+		expectedErrContains string
+		expectedErrCode     codes.Code
 	}{
 		{
-			name:        "nil catalog",
-			req:         &pb.ListHostsRequest{},
-			expectedErr: "catalog is nil",
+			name:                "nil catalog",
+			req:                 &pb.ListHostsRequest{},
+			expectedErrContains: "catalog is nil",
+			expectedErrCode:     codes.InvalidArgument,
 		},
 		{
 			name: "nil catalog attributes",
@@ -914,7 +971,8 @@ func TestPluginListHostsErr(t *testing.T) {
 					Secrets: new(structpb.Struct),
 				},
 			},
-			expectedErr: "catalog missing attributes",
+			expectedErrContains: "catalog missing attributes",
+			expectedErrCode:     codes.InvalidArgument,
 		},
 		{
 			name: "error reading catalog attributes",
@@ -924,7 +982,8 @@ func TestPluginListHostsErr(t *testing.T) {
 					Attributes: new(structpb.Struct),
 				},
 			},
-			expectedErr: "integrity error in host catalog attributes: missing required value \"region\"",
+			expectedErrContains: "attributes.region: missing required value \"region\"",
+			expectedErrCode:     codes.InvalidArgument,
 		},
 		{
 			name: "invalid region",
@@ -936,7 +995,8 @@ func TestPluginListHostsErr(t *testing.T) {
 					}),
 				},
 			},
-			expectedErr: "integrity error in host catalog attributes: not a valid region: foobar",
+			expectedErrContains: "not a valid region: ",
+			expectedErrCode:     codes.InvalidArgument,
 		},
 		{
 			name: "persisted state setup error",
@@ -959,7 +1019,8 @@ func TestPluginListHostsErr(t *testing.T) {
 					return errors.New(testOptionErr)
 				},
 			},
-			expectedErr: fmt.Sprintf("error loading persisted state: %s", testOptionErr),
+			expectedErrContains: fmt.Sprintf("error loading persisted state: %s", testOptionErr),
+			expectedErrCode:     codes.InvalidArgument,
 		},
 		{
 			name: "nil sets",
@@ -977,7 +1038,8 @@ func TestPluginListHostsErr(t *testing.T) {
 					}),
 				},
 			},
-			expectedErr: "sets is nil",
+			expectedErrContains: "sets is nil",
+			expectedErrCode:     codes.InvalidArgument,
 		},
 		{
 			name: "set missing id",
@@ -996,7 +1058,8 @@ func TestPluginListHostsErr(t *testing.T) {
 				},
 				Sets: []*hostsets.HostSet{&hostsets.HostSet{}},
 			},
-			expectedErr: "set missing id",
+			expectedErrContains: "set missing id",
+			expectedErrCode:     codes.InvalidArgument,
 		},
 		{
 			name: "set missing attributes",
@@ -1019,7 +1082,8 @@ func TestPluginListHostsErr(t *testing.T) {
 					},
 				},
 			},
-			expectedErr: "set missing attributes",
+			expectedErrContains: "set missing attributes",
+			expectedErrCode:     codes.InvalidArgument,
 		},
 		{
 			name: "set attribute load error",
@@ -1046,7 +1110,8 @@ func TestPluginListHostsErr(t *testing.T) {
 					},
 				},
 			},
-			expectedErr: "error parsing set attributes: unknown set attribute fields provided: bar, foo",
+			expectedErrContains: "attributes.bar: Unrecognized field, attributes.foo: Unrecognized field",
+			expectedErrCode:     codes.InvalidArgument,
 		},
 		{
 			name: "client load error",
@@ -1077,7 +1142,8 @@ func TestPluginListHostsErr(t *testing.T) {
 					awsutil.MockOptionErr(errors.New(testOptionErr)),
 				}),
 			},
-			expectedErr: fmt.Sprintf("error getting EC2 client: error getting AWS session: error reading options in NewCredentialsConfig: %s", testOptionErr),
+			expectedErrContains: fmt.Sprintf("error getting EC2 client: error getting AWS session: error reading options in NewCredentialsConfig: %s", testOptionErr),
+			expectedErrCode:     codes.InvalidArgument,
 		},
 		{
 			name: "DescribeInstances error",
@@ -1109,7 +1175,8 @@ func TestPluginListHostsErr(t *testing.T) {
 					testMockEC2WithDescribeInstancesError(errors.New(testDescribeInstancesError)),
 				)),
 			},
-			expectedErr: fmt.Sprintf("error running DescribeInstances for host set id \"foobar\": %s", testDescribeInstancesError),
+			expectedErrContains: fmt.Sprintf("error running DescribeInstances for host set id \"foobar\": %s", testDescribeInstancesError),
+			expectedErrCode:     codes.InvalidArgument,
 		},
 		{
 			name: "awsInstanceToHost error",
@@ -1153,7 +1220,8 @@ func TestPluginListHostsErr(t *testing.T) {
 					),
 				)),
 			},
-			expectedErr: "error processing host results for host set id \"foobar\": response integrity error: missing instance id",
+			expectedErrContains: "error processing host results for host set id \"foobar\": response integrity error: missing instance id",
+			expectedErrCode:     codes.InvalidArgument,
 		},
 	}
 
@@ -1165,7 +1233,8 @@ func TestPluginListHostsErr(t *testing.T) {
 				testStateOpts: tc.opts,
 			}
 			_, err := p.ListHosts(context.Background(), tc.req)
-			require.EqualError(err, tc.expectedErr)
+			require.Contains(err.Error(), tc.expectedErrContains)
+			require.Equal(status.Code(err).String(), tc.expectedErrCode.String())
 		})
 	}
 }

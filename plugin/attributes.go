@@ -7,8 +7,22 @@ import (
 	"time"
 
 	"github.com/mitchellh/mapstructure"
+	"google.golang.org/grpc/codes"
+	"google.golang.org/grpc/status"
 	"google.golang.org/protobuf/types/known/structpb"
 )
+
+func invalidArgumentError(msg string, f map[string]string) error {
+	var fieldMsgs []string
+	for field, val := range f {
+		fieldMsgs = append(fieldMsgs, fmt.Sprintf("%s: %s", field, val))
+	}
+	if len(fieldMsgs) > 0 {
+		sort.Strings(fieldMsgs)
+		msg = fmt.Sprintf("%s: [%s]", msg, strings.Join(fieldMsgs, ", "))
+	}
+	return status.Error(codes.InvalidArgument, msg)
+}
 
 // CatalogAttributes is a Go-native representation of the Attributes
 // map.
@@ -20,22 +34,27 @@ type CatalogAttributes struct {
 func getCatalogAttributes(in *structpb.Struct) (*CatalogAttributes, error) {
 	unknownFields := structFields(in)
 	result := new(CatalogAttributes)
+	badFields := make(map[string]string)
 
 	var err error
 	result.Region, err = getStringValue(in, constRegion, true)
 	if err != nil {
-		return nil, err
+		badFields[fmt.Sprintf("attributes.%s", constRegion)] = err.Error()
 	}
 	delete(unknownFields, constRegion)
 
 	result.DisableCredentialRotation, err = getBoolValue(in, constDisableCredentialRotation, false)
 	if err != nil {
-		return nil, err
+		badFields[fmt.Sprintf("attributes.%s", constDisableCredentialRotation)] = err.Error()
 	}
 	delete(unknownFields, constDisableCredentialRotation)
 
-	if len(unknownFields) != 0 {
-		return nil, fmt.Errorf("unknown catalog attribute fields provided: %s", keysAsString(unknownFields))
+	for s := range unknownFields {
+		badFields[fmt.Sprintf("attributes.%s", s)] = "unrecognized field"
+	}
+
+	if len(badFields) > 0 {
+		return nil, invalidArgumentError("Invalid arguments in catalog attributes", badFields)
 	}
 
 	return result, nil
@@ -50,22 +69,27 @@ type CatalogSecrets struct {
 func getCatalogSecrets(in *structpb.Struct) (*CatalogSecrets, error) {
 	unknownFields := structFields(in)
 	result := new(CatalogSecrets)
+	badFields := make(map[string]string)
 
 	var err error
 	result.AccessKeyId, err = getStringValue(in, constAccessKeyId, true)
 	if err != nil {
-		return nil, err
+		badFields[fmt.Sprintf("secrets.%s", constAccessKeyId)] = err.Error()
 	}
 	delete(unknownFields, constAccessKeyId)
 
 	result.SecretAccessKey, err = getStringValue(in, constSecretAccessKey, true)
 	if err != nil {
-		return nil, err
+		badFields[fmt.Sprintf("secrets.%s", constSecretAccessKey)] = err.Error()
 	}
 	delete(unknownFields, constSecretAccessKey)
 
-	if len(unknownFields) != 0 {
-		return nil, fmt.Errorf("unknown catalog secret fields provided: %s", keysAsString(unknownFields))
+	for s := range unknownFields {
+		badFields[fmt.Sprintf("secrets.%s", s)] = "unrecognized field"
+	}
+
+	if len(badFields) > 0 {
+		return nil, invalidArgumentError("Error in the secrets provided", badFields)
 	}
 
 	return result, nil
@@ -84,9 +108,13 @@ func getSetAttributes(in *structpb.Struct) (*SetAttributes, error) {
 	// here for now. Make this more complex if we add more attributes
 	// to host sets.
 	unknownFields := structFields(in)
+	badFields := make(map[string]string)
 	delete(unknownFields, constDescribeInstancesFilters)
-	if len(unknownFields) != 0 {
-		return nil, fmt.Errorf("unknown set attribute fields provided: %s", keysAsString(unknownFields))
+	for a := range unknownFields {
+		badFields[fmt.Sprintf("attributes.%s", a)] = "unrecognized field"
+	}
+	if len(badFields) > 0 {
+		return nil, invalidArgumentError("Error in the attributes provided", badFields)
 	}
 
 	// Mapstructure complains if it expects a slice as output and sees a scalar
@@ -101,7 +129,7 @@ func getSetAttributes(in *structpb.Struct) (*SetAttributes, error) {
 	}
 
 	if err := mapstructure.Decode(inMap, &setAttrs); err != nil {
-		return nil, fmt.Errorf("error decoding set attributes: %w", err)
+		return nil, status.Errorf(codes.InvalidArgument, "error decoding set attributes: %s", err)
 	}
 
 	return &setAttrs, nil
