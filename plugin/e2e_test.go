@@ -18,8 +18,10 @@ import (
 	"google.golang.org/protobuf/types/known/structpb"
 )
 
-const expectedIamUserCount = 6
-const expectedEc2InstanceCount = 5
+const (
+	expectedIamUserCount     = 6
+	expectedEc2InstanceCount = 5
+)
 
 var expectedTags = []string{"foo", "bar", "baz"}
 
@@ -177,8 +179,10 @@ func testPluginOnCreateCatalog(ctx context.Context, t *testing.T, p *AwsPlugin, 
 	require.NoError(err)
 	request := &pb.OnCreateCatalogRequest{
 		Catalog: &hostcatalogs.HostCatalog{
-			Attributes: reqAttrs,
-			Secrets:    reqSecrets,
+			Attrs: &hostcatalogs.HostCatalog_Attributes{
+				Attributes: reqAttrs,
+			},
+			Secrets: reqSecrets,
 		},
 	}
 	response, err := p.OnCreateCatalog(ctx, request)
@@ -265,11 +269,15 @@ func testPluginOnUpdateCatalog(
 	require.NotNil(reqPersistedSecrets)
 	request := &pb.OnUpdateCatalogRequest{
 		CurrentCatalog: &hostcatalogs.HostCatalog{
-			Attributes: reqCurrentAttrs,
+			Attrs: &hostcatalogs.HostCatalog_Attributes{
+				Attributes: reqCurrentAttrs,
+			},
 		},
 		NewCatalog: &hostcatalogs.HostCatalog{
-			Attributes: reqNewAttrs,
-			Secrets:    reqSecrets,
+			Attrs: &hostcatalogs.HostCatalog_Attributes{
+				Attributes: reqNewAttrs,
+			},
+			Secrets: reqSecrets,
 		},
 		Persisted: &pb.HostCatalogPersisted{
 			Secrets: reqPersistedSecrets,
@@ -421,8 +429,10 @@ func testPluginOnDeleteCatalog(ctx context.Context, t *testing.T, p *AwsPlugin, 
 	require.NoError(err)
 	request := &pb.OnDeleteCatalogRequest{
 		Catalog: &hostcatalogs.HostCatalog{
-			Attributes: reqAttrs,
-			Secrets:    reqSecrets,
+			Attrs: &hostcatalogs.HostCatalog_Attributes{
+				Attributes: reqAttrs,
+			},
+			Secrets: reqSecrets,
 		},
 		Persisted: &pb.HostCatalogPersisted{
 			Secrets: reqPersistedSecrets,
@@ -465,10 +475,14 @@ func testPluginOnCreateUpdateSet(ctx context.Context, t *testing.T, p *AwsPlugin
 	require.NoError(err)
 	createRequest := &pb.OnCreateSetRequest{
 		Catalog: &hostcatalogs.HostCatalog{
-			Attributes: catalogAttrs,
+			Attrs: &hostcatalogs.HostCatalog_Attributes{
+				Attributes: catalogAttrs,
+			},
 		},
 		Set: &hostsets.HostSet{
-			Attributes: setAttrs,
+			Attrs: &hostsets.HostSet_Attributes{
+				Attributes: setAttrs,
+			},
 		},
 		Persisted: &pb.HostCatalogPersisted{
 			Secrets: reqPersistedSecrets,
@@ -483,13 +497,19 @@ func testPluginOnCreateUpdateSet(ctx context.Context, t *testing.T, p *AwsPlugin
 	t.Logf("testing OnUpdateSet (region=%s, tags=%v)", region, tags)
 	updateRequest := &pb.OnUpdateSetRequest{
 		Catalog: &hostcatalogs.HostCatalog{
-			Attributes: catalogAttrs,
+			Attrs: &hostcatalogs.HostCatalog_Attributes{
+				Attributes: catalogAttrs,
+			},
 		},
 		CurrentSet: &hostsets.HostSet{
-			Attributes: setAttrs,
+			Attrs: &hostsets.HostSet_Attributes{
+				Attributes: setAttrs,
+			},
 		},
 		NewSet: &hostsets.HostSet{
-			Attributes: setAttrs,
+			Attrs: &hostsets.HostSet_Attributes{
+				Attributes: setAttrs,
+			},
 		},
 		Persisted: &pb.HostCatalogPersisted{
 			Secrets: reqPersistedSecrets,
@@ -516,8 +536,10 @@ func testPluginListHosts(ctx context.Context, t *testing.T, p *AwsPlugin, region
 		})
 		require.NoError(err)
 		sets[i] = &hostsets.HostSet{
-			Id:         fmt.Sprintf("hostset-%d", i),
-			Attributes: setAttrs,
+			Id: fmt.Sprintf("hostset-%d", i),
+			Attrs: &hostsets.HostSet_Attributes{
+				Attributes: setAttrs,
+			},
 		}
 	}
 	reqPersistedSecrets, err := structpb.NewStruct(map[string]interface{}{
@@ -528,7 +550,9 @@ func testPluginListHosts(ctx context.Context, t *testing.T, p *AwsPlugin, region
 	require.NoError(err)
 	request := &pb.ListHostsRequest{
 		Catalog: &hostcatalogs.HostCatalog{
-			Attributes: catalogAttrs,
+			Attrs: &hostcatalogs.HostCatalog_Attributes{
+				Attributes: catalogAttrs,
+			},
 		},
 		Sets: sets,
 		Persisted: &pb.HostCatalogPersisted{
@@ -573,7 +597,7 @@ func requireCredentialsInvalid(t *testing.T, accessKeyId, secretAccessKey string
 	// We need to wait for invalidation as while awsutil waits for
 	// credential creation, deletion of the old credentials returns
 	// immediately.
-	timeoutCtx, cancel := context.WithTimeout(context.Background(), time.Second*10)
+	timeoutCtx, cancel := context.WithTimeout(context.Background(), time.Second*30)
 	defer cancel()
 waitErr:
 	for {
