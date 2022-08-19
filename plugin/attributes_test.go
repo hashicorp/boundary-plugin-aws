@@ -1,12 +1,16 @@
 package plugin
 
 import (
+	"context"
 	"testing"
 	"time"
 
+	"github.com/google/go-cmp/cmp"
+	"github.com/hashicorp/boundary/sdk/pbs/plugin"
 	"github.com/stretchr/testify/require"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
+	"google.golang.org/protobuf/testing/protocmp"
 	"google.golang.org/protobuf/types/known/structpb"
 )
 
@@ -37,7 +41,7 @@ func TestGetCatalogAttributes(t *testing.T) {
 				"foo":       true,
 				"bar":       true,
 			}),
-			expectedErrContains: "attributes.bar: Unrecognized field, attributes.foo: Unrecognized field",
+			expectedErrContains: "attributes.bar: unrecognized field, attributes.foo: unrecognized field",
 		},
 		{
 			name: "default",
@@ -107,7 +111,7 @@ func TestGetCatalogSecrets(t *testing.T) {
 				"foo":                true,
 				"bar":                true,
 			}),
-			expectedErrContains: "secrets.bar: Unrecognized field, secrets.foo: Unrecognized field",
+			expectedErrContains: "secrets.bar: unrecognized field, secrets.foo: unrecognized field",
 		},
 		{
 			name: "good",
@@ -144,6 +148,7 @@ func TestGetSetAttributes(t *testing.T) {
 	cases := []struct {
 		name                string
 		in                  *structpb.Struct
+		normalized          *structpb.Struct
 		expected            *SetAttributes
 		expectedErrContains string
 	}{
@@ -174,7 +179,7 @@ func TestGetSetAttributes(t *testing.T) {
 				"foo": true,
 				"bar": true,
 			}),
-			expectedErrContains: "attributes.bar: Unrecognized field, attributes.foo: Unrecognized field",
+			expectedErrContains: "attributes.bar: unrecognized field, attributes.foo: unrecognized field",
 		},
 		{
 			name: "good",
@@ -188,12 +193,31 @@ func TestGetSetAttributes(t *testing.T) {
 				Filters: []string{"foo=bar", "zip=zap"},
 			},
 		},
+		{
+			name: "good with filter transform",
+			in: mustStruct(map[string]interface{}{
+				constDescribeInstancesFilters: "foo=bar",
+			}),
+			normalized: mustStruct(map[string]interface{}{
+				constDescribeInstancesFilters: []interface{}{"foo=bar"},
+			}),
+			expected: &SetAttributes{
+				Filters: []string{"foo=bar"},
+			},
+		},
 	}
 
 	for _, tc := range cases {
 		tc := tc
 		t.Run(tc.name, func(t *testing.T) {
 			require := require.New(t)
+			p := new(AwsPlugin)
+			normalizedOut, err := p.NormalizeSetData(context.Background(), &plugin.NormalizeSetDataRequest{Attributes: tc.in})
+			require.NoError(err)
+			if tc.normalized != nil {
+				require.Empty(cmp.Diff(tc.normalized, normalizedOut.Attributes, protocmp.Transform()))
+			}
+			tc.in = normalizedOut.Attributes
 			actual, err := getSetAttributes(tc.in)
 			if tc.expectedErrContains != "" {
 				require.Error(err)

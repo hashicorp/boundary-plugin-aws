@@ -55,8 +55,10 @@ func TestPluginOnCreateCatalogErr(t *testing.T) {
 			name: "error reading attributes",
 			req: &pb.OnCreateCatalogRequest{
 				Catalog: &hostcatalogs.HostCatalog{
-					Secrets:    new(structpb.Struct),
-					Attributes: new(structpb.Struct),
+					Secrets: new(structpb.Struct),
+					Attrs: &hostcatalogs.HostCatalog_Attributes{
+						Attributes: new(structpb.Struct),
+					},
 				},
 			},
 			expectedErrContains: "missing required value \"region\"",
@@ -67,9 +69,11 @@ func TestPluginOnCreateCatalogErr(t *testing.T) {
 			req: &pb.OnCreateCatalogRequest{
 				Catalog: &hostcatalogs.HostCatalog{
 					Secrets: new(structpb.Struct),
-					Attributes: mustStruct(map[string]interface{}{
-						constRegion: "us-west-2",
-					}),
+					Attrs: &hostcatalogs.HostCatalog_Attributes{
+						Attributes: mustStruct(map[string]interface{}{
+							constRegion: "us-west-2",
+						}),
+					},
 				},
 			},
 			expectedErrContains: "missing required value \"access_key_id\"",
@@ -83,9 +87,11 @@ func TestPluginOnCreateCatalogErr(t *testing.T) {
 						constAccessKeyId:     "foobar",
 						constSecretAccessKey: "bazqux",
 					}),
-					Attributes: mustStruct(map[string]interface{}{
-						constRegion: "foobar",
-					}),
+					Attrs: &hostcatalogs.HostCatalog_Attributes{
+						Attributes: mustStruct(map[string]interface{}{
+							constRegion: "foobar",
+						}),
+					},
 				},
 			},
 			expectedErrContains: "not a valid region: foobar",
@@ -99,9 +105,11 @@ func TestPluginOnCreateCatalogErr(t *testing.T) {
 						constAccessKeyId:     "foobar",
 						constSecretAccessKey: "bazqux",
 					}),
-					Attributes: mustStruct(map[string]interface{}{
-						constRegion: "us-west-2",
-					}),
+					Attrs: &hostcatalogs.HostCatalog_Attributes{
+						Attributes: mustStruct(map[string]interface{}{
+							constRegion: "us-west-2",
+						}),
+					},
 				},
 			},
 			opts: []awsCatalogPersistedStateOption{
@@ -120,9 +128,11 @@ func TestPluginOnCreateCatalogErr(t *testing.T) {
 						constAccessKeyId:     "foobar",
 						constSecretAccessKey: "bazqux",
 					}),
-					Attributes: mustStruct(map[string]interface{}{
-						constRegion: "us-west-2",
-					}),
+					Attrs: &hostcatalogs.HostCatalog_Attributes{
+						Attributes: mustStruct(map[string]interface{}{
+							constRegion: "us-west-2",
+						}),
+					},
 				},
 			},
 			opts: []awsCatalogPersistedStateOption{
@@ -145,10 +155,12 @@ func TestPluginOnCreateCatalogErr(t *testing.T) {
 						constAccessKeyId:     "foobar",
 						constSecretAccessKey: "bazqux",
 					}),
-					Attributes: mustStruct(map[string]interface{}{
-						constRegion:                    "us-west-2",
-						constDisableCredentialRotation: true,
-					}),
+					Attrs: &hostcatalogs.HostCatalog_Attributes{
+						Attributes: mustStruct(map[string]interface{}{
+							constRegion:                    "us-west-2",
+							constDisableCredentialRotation: true,
+						}),
+					},
 				},
 			},
 			opts: []awsCatalogPersistedStateOption{
@@ -207,8 +219,10 @@ func TestPluginOnUpdateCatalogErr(t *testing.T) {
 			name: "error reading attributes",
 			req: &pb.OnUpdateCatalogRequest{
 				NewCatalog: &hostcatalogs.HostCatalog{
-					Secrets:    new(structpb.Struct),
-					Attributes: new(structpb.Struct),
+					Secrets: new(structpb.Struct),
+					Attrs: &hostcatalogs.HostCatalog_Attributes{
+						Attributes: new(structpb.Struct),
+					},
 				},
 			},
 			expectedErrContains: "missing required value \"region\"",
@@ -218,9 +232,11 @@ func TestPluginOnUpdateCatalogErr(t *testing.T) {
 			name: "invalid region",
 			req: &pb.OnUpdateCatalogRequest{
 				NewCatalog: &hostcatalogs.HostCatalog{
-					Attributes: mustStruct(map[string]interface{}{
-						constRegion: "foobar",
-					}),
+					Attrs: &hostcatalogs.HostCatalog_Attributes{
+						Attributes: mustStruct(map[string]interface{}{
+							constRegion: "foobar",
+						}),
+					},
 				},
 			},
 			expectedErrContains: "not a valid region: foobar",
@@ -230,9 +246,11 @@ func TestPluginOnUpdateCatalogErr(t *testing.T) {
 			name: "persisted state setup error",
 			req: &pb.OnUpdateCatalogRequest{
 				NewCatalog: &hostcatalogs.HostCatalog{
-					Attributes: mustStruct(map[string]interface{}{
-						constRegion: "us-west-2",
-					}),
+					Attrs: &hostcatalogs.HostCatalog_Attributes{
+						Attributes: mustStruct(map[string]interface{}{
+							constRegion: "us-west-2",
+						}),
+					},
 				},
 				Persisted: &pb.HostCatalogPersisted{
 					Secrets: mustStruct(map[string]interface{}{
@@ -254,10 +272,12 @@ func TestPluginOnUpdateCatalogErr(t *testing.T) {
 			name: "cannot disable rotation for already rotated credentials",
 			req: &pb.OnUpdateCatalogRequest{
 				NewCatalog: &hostcatalogs.HostCatalog{
-					Attributes: mustStruct(map[string]interface{}{
-						constRegion:                    "us-west-2",
-						constDisableCredentialRotation: true,
-					}),
+					Attrs: &hostcatalogs.HostCatalog_Attributes{
+						Attributes: mustStruct(map[string]interface{}{
+							constRegion:                    "us-west-2",
+							constDisableCredentialRotation: true,
+						}),
+					},
 				},
 				Persisted: &pb.HostCatalogPersisted{
 					Secrets: mustStruct(map[string]interface{}{
@@ -275,9 +295,11 @@ func TestPluginOnUpdateCatalogErr(t *testing.T) {
 			req: &pb.OnUpdateCatalogRequest{
 				NewCatalog: &hostcatalogs.HostCatalog{
 					Secrets: new(structpb.Struct),
-					Attributes: mustStruct(map[string]interface{}{
-						constRegion: "us-west-2",
-					}),
+					Attrs: &hostcatalogs.HostCatalog_Attributes{
+						Attributes: mustStruct(map[string]interface{}{
+							constRegion: "us-west-2",
+						}),
+					},
 				},
 				Persisted: &pb.HostCatalogPersisted{
 					Secrets: mustStruct(map[string]interface{}{
@@ -298,10 +320,12 @@ func TestPluginOnUpdateCatalogErr(t *testing.T) {
 						constAccessKeyId:     "onetwo",
 						constSecretAccessKey: "threefour",
 					}),
-					Attributes: mustStruct(map[string]interface{}{
-						constRegion:                    "us-west-2",
-						constDisableCredentialRotation: true,
-					}),
+					Attrs: &hostcatalogs.HostCatalog_Attributes{
+						Attributes: mustStruct(map[string]interface{}{
+							constRegion:                    "us-west-2",
+							constDisableCredentialRotation: true,
+						}),
+					},
 				},
 				Persisted: &pb.HostCatalogPersisted{
 					Secrets: mustStruct(map[string]interface{}{
@@ -327,9 +351,11 @@ func TestPluginOnUpdateCatalogErr(t *testing.T) {
 			name: "rotation error",
 			req: &pb.OnUpdateCatalogRequest{
 				NewCatalog: &hostcatalogs.HostCatalog{
-					Attributes: mustStruct(map[string]interface{}{
-						constRegion: "us-west-2",
-					}),
+					Attrs: &hostcatalogs.HostCatalog_Attributes{
+						Attributes: mustStruct(map[string]interface{}{
+							constRegion: "us-west-2",
+						}),
+					},
 				},
 				Persisted: &pb.HostCatalogPersisted{
 					Secrets: mustStruct(map[string]interface{}{
@@ -378,9 +404,11 @@ func TestPluginOnDeleteCatalogErr(t *testing.T) {
 			name: "persisted state setup error",
 			req: &pb.OnDeleteCatalogRequest{
 				Catalog: &hostcatalogs.HostCatalog{
-					Attributes: mustStruct(map[string]interface{}{
-						constRegion: "us-west-2",
-					}),
+					Attrs: &hostcatalogs.HostCatalog_Attributes{
+						Attributes: mustStruct(map[string]interface{}{
+							constRegion: "us-west-2",
+						}),
+					},
 				},
 				Persisted: &pb.HostCatalogPersisted{
 					Secrets: mustStruct(map[string]interface{}{
@@ -402,9 +430,11 @@ func TestPluginOnDeleteCatalogErr(t *testing.T) {
 			name: "delete error",
 			req: &pb.OnDeleteCatalogRequest{
 				Catalog: &hostcatalogs.HostCatalog{
-					Attributes: mustStruct(map[string]interface{}{
-						constRegion: "us-west-2",
-					}),
+					Attrs: &hostcatalogs.HostCatalog_Attributes{
+						Attributes: mustStruct(map[string]interface{}{
+							constRegion: "us-west-2",
+						}),
+					},
 				},
 				Persisted: &pb.HostCatalogPersisted{
 					Secrets: mustStruct(map[string]interface{}{
@@ -470,8 +500,10 @@ func TestPluginOnCreateSetErr(t *testing.T) {
 			name: "error reading catalog attributes",
 			req: &pb.OnCreateSetRequest{
 				Catalog: &hostcatalogs.HostCatalog{
-					Secrets:    new(structpb.Struct),
-					Attributes: new(structpb.Struct),
+					Secrets: new(structpb.Struct),
+					Attrs: &hostcatalogs.HostCatalog_Attributes{
+						Attributes: new(structpb.Struct),
+					},
 				},
 			},
 			expectedErrContains: "missing required value \"region\"",
@@ -481,9 +513,11 @@ func TestPluginOnCreateSetErr(t *testing.T) {
 			name: "invalid region",
 			req: &pb.OnCreateSetRequest{
 				Catalog: &hostcatalogs.HostCatalog{
-					Attributes: mustStruct(map[string]interface{}{
-						constRegion: "foobar",
-					}),
+					Attrs: &hostcatalogs.HostCatalog_Attributes{
+						Attributes: mustStruct(map[string]interface{}{
+							constRegion: "foobar",
+						}),
+					},
 				},
 			},
 			expectedErrContains: "not a valid region: foobar",
@@ -493,9 +527,11 @@ func TestPluginOnCreateSetErr(t *testing.T) {
 			name: "persisted state setup error",
 			req: &pb.OnCreateSetRequest{
 				Catalog: &hostcatalogs.HostCatalog{
-					Attributes: mustStruct(map[string]interface{}{
-						constRegion: "us-west-2",
-					}),
+					Attrs: &hostcatalogs.HostCatalog_Attributes{
+						Attributes: mustStruct(map[string]interface{}{
+							constRegion: "us-west-2",
+						}),
+					},
 				},
 				Persisted: &pb.HostCatalogPersisted{
 					Secrets: mustStruct(map[string]interface{}{
@@ -517,9 +553,11 @@ func TestPluginOnCreateSetErr(t *testing.T) {
 			name: "nil set",
 			req: &pb.OnCreateSetRequest{
 				Catalog: &hostcatalogs.HostCatalog{
-					Attributes: mustStruct(map[string]interface{}{
-						constRegion: "us-west-2",
-					}),
+					Attrs: &hostcatalogs.HostCatalog_Attributes{
+						Attributes: mustStruct(map[string]interface{}{
+							constRegion: "us-west-2",
+						}),
+					},
 				},
 				Persisted: &pb.HostCatalogPersisted{
 					Secrets: mustStruct(map[string]interface{}{
@@ -536,9 +574,11 @@ func TestPluginOnCreateSetErr(t *testing.T) {
 			name: "nil attributes in set",
 			req: &pb.OnCreateSetRequest{
 				Catalog: &hostcatalogs.HostCatalog{
-					Attributes: mustStruct(map[string]interface{}{
-						constRegion: "us-west-2",
-					}),
+					Attrs: &hostcatalogs.HostCatalog_Attributes{
+						Attributes: mustStruct(map[string]interface{}{
+							constRegion: "us-west-2",
+						}),
+					},
 				},
 				Persisted: &pb.HostCatalogPersisted{
 					Secrets: mustStruct(map[string]interface{}{
@@ -556,9 +596,11 @@ func TestPluginOnCreateSetErr(t *testing.T) {
 			name: "set attribute load error",
 			req: &pb.OnCreateSetRequest{
 				Catalog: &hostcatalogs.HostCatalog{
-					Attributes: mustStruct(map[string]interface{}{
-						constRegion: "us-west-2",
-					}),
+					Attrs: &hostcatalogs.HostCatalog_Attributes{
+						Attributes: mustStruct(map[string]interface{}{
+							constRegion: "us-west-2",
+						}),
+					},
 				},
 				Persisted: &pb.HostCatalogPersisted{
 					Secrets: mustStruct(map[string]interface{}{
@@ -568,22 +610,26 @@ func TestPluginOnCreateSetErr(t *testing.T) {
 					}),
 				},
 				Set: &hostsets.HostSet{
-					Attributes: mustStruct(map[string]interface{}{
-						"foo": true,
-						"bar": true,
-					}),
+					Attrs: &hostsets.HostSet_Attributes{
+						Attributes: mustStruct(map[string]interface{}{
+							"foo": true,
+							"bar": true,
+						}),
+					},
 				},
 			},
-			expectedErrContains: "attributes.bar: Unrecognized field, attributes.foo: Unrecognized field",
+			expectedErrContains: "attributes.bar: unrecognized field, attributes.foo: unrecognized field",
 			expectedErrCode:     codes.InvalidArgument,
 		},
 		{
 			name: "client load error",
 			req: &pb.OnCreateSetRequest{
 				Catalog: &hostcatalogs.HostCatalog{
-					Attributes: mustStruct(map[string]interface{}{
-						constRegion: "us-west-2",
-					}),
+					Attrs: &hostcatalogs.HostCatalog_Attributes{
+						Attributes: mustStruct(map[string]interface{}{
+							constRegion: "us-west-2",
+						}),
+					},
 				},
 				Persisted: &pb.HostCatalogPersisted{
 					Secrets: mustStruct(map[string]interface{}{
@@ -593,9 +639,11 @@ func TestPluginOnCreateSetErr(t *testing.T) {
 					}),
 				},
 				Set: &hostsets.HostSet{
-					Attributes: mustStruct(map[string]interface{}{
-						constDescribeInstancesFilters: []interface{}{"tag-key=foo"},
-					}),
+					Attrs: &hostsets.HostSet_Attributes{
+						Attributes: mustStruct(map[string]interface{}{
+							constDescribeInstancesFilters: []interface{}{"tag-key=foo"},
+						}),
+					},
 				},
 			},
 			opts: []awsCatalogPersistedStateOption{
@@ -610,9 +658,11 @@ func TestPluginOnCreateSetErr(t *testing.T) {
 			name: "DescribeInstances error",
 			req: &pb.OnCreateSetRequest{
 				Catalog: &hostcatalogs.HostCatalog{
-					Attributes: mustStruct(map[string]interface{}{
-						constRegion: "us-west-2",
-					}),
+					Attrs: &hostcatalogs.HostCatalog_Attributes{
+						Attributes: mustStruct(map[string]interface{}{
+							constRegion: "us-west-2",
+						}),
+					},
 				},
 				Persisted: &pb.HostCatalogPersisted{
 					Secrets: mustStruct(map[string]interface{}{
@@ -622,9 +672,11 @@ func TestPluginOnCreateSetErr(t *testing.T) {
 					}),
 				},
 				Set: &hostsets.HostSet{
-					Attributes: mustStruct(map[string]interface{}{
-						constDescribeInstancesFilters: []interface{}{"tag-key=foo"},
-					}),
+					Attrs: &hostsets.HostSet_Attributes{
+						Attributes: mustStruct(map[string]interface{}{
+							constDescribeInstancesFilters: []interface{}{"tag-key=foo"},
+						}),
+					},
 				},
 			},
 			opts: []awsCatalogPersistedStateOption{
@@ -640,9 +692,11 @@ func TestPluginOnCreateSetErr(t *testing.T) {
 			name: "DescribeInstances non-error array filter",
 			req: &pb.OnCreateSetRequest{
 				Catalog: &hostcatalogs.HostCatalog{
-					Attributes: mustStruct(map[string]interface{}{
-						constRegion: "us-west-2",
-					}),
+					Attrs: &hostcatalogs.HostCatalog_Attributes{
+						Attributes: mustStruct(map[string]interface{}{
+							constRegion: "us-west-2",
+						}),
+					},
 				},
 				Persisted: &pb.HostCatalogPersisted{
 					Secrets: mustStruct(map[string]interface{}{
@@ -652,9 +706,11 @@ func TestPluginOnCreateSetErr(t *testing.T) {
 					}),
 				},
 				Set: &hostsets.HostSet{
-					Attributes: mustStruct(map[string]interface{}{
-						constDescribeInstancesFilters: []interface{}{"tag-key=foo"},
-					}),
+					Attrs: &hostsets.HostSet_Attributes{
+						Attributes: mustStruct(map[string]interface{}{
+							constDescribeInstancesFilters: []interface{}{"tag-key=foo"},
+						}),
+					},
 				},
 			},
 			opts: []awsCatalogPersistedStateOption{
@@ -669,9 +725,11 @@ func TestPluginOnCreateSetErr(t *testing.T) {
 			name: "DescribeInstances non-error string filter",
 			req: &pb.OnCreateSetRequest{
 				Catalog: &hostcatalogs.HostCatalog{
-					Attributes: mustStruct(map[string]interface{}{
-						constRegion: "us-west-2",
-					}),
+					Attrs: &hostcatalogs.HostCatalog_Attributes{
+						Attributes: mustStruct(map[string]interface{}{
+							constRegion: "us-west-2",
+						}),
+					},
 				},
 				Persisted: &pb.HostCatalogPersisted{
 					Secrets: mustStruct(map[string]interface{}{
@@ -681,9 +739,11 @@ func TestPluginOnCreateSetErr(t *testing.T) {
 					}),
 				},
 				Set: &hostsets.HostSet{
-					Attributes: mustStruct(map[string]interface{}{
-						constDescribeInstancesFilters: "tag-key=foo",
-					}),
+					Attrs: &hostsets.HostSet_Attributes{
+						Attributes: mustStruct(map[string]interface{}{
+							constDescribeInstancesFilters: []interface{}{"tag-key=foo"},
+						}),
+					},
 				},
 			},
 			opts: []awsCatalogPersistedStateOption{
@@ -738,8 +798,10 @@ func TestPluginOnUpdateSetErr(t *testing.T) {
 			name: "catalog attribute load error",
 			req: &pb.OnUpdateSetRequest{
 				Catalog: &hostcatalogs.HostCatalog{
-					Secrets:    new(structpb.Struct),
-					Attributes: new(structpb.Struct),
+					Secrets: new(structpb.Struct),
+					Attrs: &hostcatalogs.HostCatalog_Attributes{
+						Attributes: new(structpb.Struct),
+					},
 				},
 			},
 			expectedErrContains: "missing required value \"region\"",
@@ -750,9 +812,11 @@ func TestPluginOnUpdateSetErr(t *testing.T) {
 			req: &pb.OnUpdateSetRequest{
 				Catalog: &hostcatalogs.HostCatalog{
 					Secrets: new(structpb.Struct),
-					Attributes: mustStruct(map[string]interface{}{
-						constRegion: "foobar",
-					}),
+					Attrs: &hostcatalogs.HostCatalog_Attributes{
+						Attributes: mustStruct(map[string]interface{}{
+							constRegion: "foobar",
+						}),
+					},
 				},
 			},
 			expectedErrContains: "not a valid region: foobar",
@@ -762,9 +826,11 @@ func TestPluginOnUpdateSetErr(t *testing.T) {
 			name: "persisted state setup error",
 			req: &pb.OnUpdateSetRequest{
 				Catalog: &hostcatalogs.HostCatalog{
-					Attributes: mustStruct(map[string]interface{}{
-						constRegion: "us-west-2",
-					}),
+					Attrs: &hostcatalogs.HostCatalog_Attributes{
+						Attributes: mustStruct(map[string]interface{}{
+							constRegion: "us-west-2",
+						}),
+					},
 				},
 				Persisted: &pb.HostCatalogPersisted{
 					Secrets: mustStruct(map[string]interface{}{
@@ -786,9 +852,11 @@ func TestPluginOnUpdateSetErr(t *testing.T) {
 			name: "nil set",
 			req: &pb.OnUpdateSetRequest{
 				Catalog: &hostcatalogs.HostCatalog{
-					Attributes: mustStruct(map[string]interface{}{
-						constRegion: "us-west-2",
-					}),
+					Attrs: &hostcatalogs.HostCatalog_Attributes{
+						Attributes: mustStruct(map[string]interface{}{
+							constRegion: "us-west-2",
+						}),
+					},
 				},
 				Persisted: &pb.HostCatalogPersisted{
 					Secrets: mustStruct(map[string]interface{}{
@@ -805,9 +873,11 @@ func TestPluginOnUpdateSetErr(t *testing.T) {
 			name: "nil attributes in set",
 			req: &pb.OnUpdateSetRequest{
 				Catalog: &hostcatalogs.HostCatalog{
-					Attributes: mustStruct(map[string]interface{}{
-						constRegion: "us-west-2",
-					}),
+					Attrs: &hostcatalogs.HostCatalog_Attributes{
+						Attributes: mustStruct(map[string]interface{}{
+							constRegion: "us-west-2",
+						}),
+					},
 				},
 				Persisted: &pb.HostCatalogPersisted{
 					Secrets: mustStruct(map[string]interface{}{
@@ -825,9 +895,11 @@ func TestPluginOnUpdateSetErr(t *testing.T) {
 			name: "set attribute load error",
 			req: &pb.OnUpdateSetRequest{
 				Catalog: &hostcatalogs.HostCatalog{
-					Attributes: mustStruct(map[string]interface{}{
-						constRegion: "us-west-2",
-					}),
+					Attrs: &hostcatalogs.HostCatalog_Attributes{
+						Attributes: mustStruct(map[string]interface{}{
+							constRegion: "us-west-2",
+						}),
+					},
 				},
 				Persisted: &pb.HostCatalogPersisted{
 					Secrets: mustStruct(map[string]interface{}{
@@ -837,22 +909,26 @@ func TestPluginOnUpdateSetErr(t *testing.T) {
 					}),
 				},
 				NewSet: &hostsets.HostSet{
-					Attributes: mustStruct(map[string]interface{}{
-						"foo": true,
-						"bar": true,
-					}),
+					Attrs: &hostsets.HostSet_Attributes{
+						Attributes: mustStruct(map[string]interface{}{
+							"foo": true,
+							"bar": true,
+						}),
+					},
 				},
 			},
-			expectedErrContains: "attributes.bar: Unrecognized field, attributes.foo: Unrecognized field",
+			expectedErrContains: "attributes.bar: unrecognized field, attributes.foo: unrecognized field",
 			expectedErrCode:     codes.InvalidArgument,
 		},
 		{
 			name: "client load error",
 			req: &pb.OnUpdateSetRequest{
 				Catalog: &hostcatalogs.HostCatalog{
-					Attributes: mustStruct(map[string]interface{}{
-						constRegion: "us-west-2",
-					}),
+					Attrs: &hostcatalogs.HostCatalog_Attributes{
+						Attributes: mustStruct(map[string]interface{}{
+							constRegion: "us-west-2",
+						}),
+					},
 				},
 				Persisted: &pb.HostCatalogPersisted{
 					Secrets: mustStruct(map[string]interface{}{
@@ -862,9 +938,11 @@ func TestPluginOnUpdateSetErr(t *testing.T) {
 					}),
 				},
 				NewSet: &hostsets.HostSet{
-					Attributes: mustStruct(map[string]interface{}{
-						constDescribeInstancesFilters: []interface{}{"tag-key=foo"},
-					}),
+					Attrs: &hostsets.HostSet_Attributes{
+						Attributes: mustStruct(map[string]interface{}{
+							constDescribeInstancesFilters: []interface{}{"tag-key=foo"},
+						}),
+					},
 				},
 			},
 			opts: []awsCatalogPersistedStateOption{
@@ -879,9 +957,11 @@ func TestPluginOnUpdateSetErr(t *testing.T) {
 			name: "DescribeInstances error",
 			req: &pb.OnUpdateSetRequest{
 				Catalog: &hostcatalogs.HostCatalog{
-					Attributes: mustStruct(map[string]interface{}{
-						constRegion: "us-west-2",
-					}),
+					Attrs: &hostcatalogs.HostCatalog_Attributes{
+						Attributes: mustStruct(map[string]interface{}{
+							constRegion: "us-west-2",
+						}),
+					},
 				},
 				Persisted: &pb.HostCatalogPersisted{
 					Secrets: mustStruct(map[string]interface{}{
@@ -891,9 +971,11 @@ func TestPluginOnUpdateSetErr(t *testing.T) {
 					}),
 				},
 				NewSet: &hostsets.HostSet{
-					Attributes: mustStruct(map[string]interface{}{
-						constDescribeInstancesFilters: []interface{}{"tag-key=foo"},
-					}),
+					Attrs: &hostsets.HostSet_Attributes{
+						Attributes: mustStruct(map[string]interface{}{
+							constDescribeInstancesFilters: []interface{}{"tag-key=foo"},
+						}),
+					},
 				},
 			},
 			opts: []awsCatalogPersistedStateOption{
@@ -909,9 +991,11 @@ func TestPluginOnUpdateSetErr(t *testing.T) {
 			name: "DescribeInstances non-error",
 			req: &pb.OnUpdateSetRequest{
 				Catalog: &hostcatalogs.HostCatalog{
-					Attributes: mustStruct(map[string]interface{}{
-						constRegion: "us-west-2",
-					}),
+					Attrs: &hostcatalogs.HostCatalog_Attributes{
+						Attributes: mustStruct(map[string]interface{}{
+							constRegion: "us-west-2",
+						}),
+					},
 				},
 				Persisted: &pb.HostCatalogPersisted{
 					Secrets: mustStruct(map[string]interface{}{
@@ -921,9 +1005,11 @@ func TestPluginOnUpdateSetErr(t *testing.T) {
 					}),
 				},
 				NewSet: &hostsets.HostSet{
-					Attributes: mustStruct(map[string]interface{}{
-						constDescribeInstancesFilters: []interface{}{"tag-key=foo"},
-					}),
+					Attrs: &hostsets.HostSet_Attributes{
+						Attributes: mustStruct(map[string]interface{}{
+							constDescribeInstancesFilters: []interface{}{"tag-key=foo"},
+						}),
+					},
 				},
 			},
 			opts: []awsCatalogPersistedStateOption{
@@ -978,8 +1064,10 @@ func TestPluginListHostsErr(t *testing.T) {
 			name: "error reading catalog attributes",
 			req: &pb.ListHostsRequest{
 				Catalog: &hostcatalogs.HostCatalog{
-					Secrets:    new(structpb.Struct),
-					Attributes: new(structpb.Struct),
+					Secrets: new(structpb.Struct),
+					Attrs: &hostcatalogs.HostCatalog_Attributes{
+						Attributes: new(structpb.Struct),
+					},
 				},
 			},
 			expectedErrContains: "attributes.region: missing required value \"region\"",
@@ -990,9 +1078,11 @@ func TestPluginListHostsErr(t *testing.T) {
 			req: &pb.ListHostsRequest{
 				Catalog: &hostcatalogs.HostCatalog{
 					Secrets: new(structpb.Struct),
-					Attributes: mustStruct(map[string]interface{}{
-						constRegion: "foobar",
-					}),
+					Attrs: &hostcatalogs.HostCatalog_Attributes{
+						Attributes: mustStruct(map[string]interface{}{
+							constRegion: "foobar",
+						}),
+					},
 				},
 			},
 			expectedErrContains: "not a valid region: ",
@@ -1002,9 +1092,11 @@ func TestPluginListHostsErr(t *testing.T) {
 			name: "persisted state setup error",
 			req: &pb.ListHostsRequest{
 				Catalog: &hostcatalogs.HostCatalog{
-					Attributes: mustStruct(map[string]interface{}{
-						constRegion: "us-west-2",
-					}),
+					Attrs: &hostcatalogs.HostCatalog_Attributes{
+						Attributes: mustStruct(map[string]interface{}{
+							constRegion: "us-west-2",
+						}),
+					},
 				},
 				Persisted: &pb.HostCatalogPersisted{
 					Secrets: mustStruct(map[string]interface{}{
@@ -1026,9 +1118,11 @@ func TestPluginListHostsErr(t *testing.T) {
 			name: "nil sets",
 			req: &pb.ListHostsRequest{
 				Catalog: &hostcatalogs.HostCatalog{
-					Attributes: mustStruct(map[string]interface{}{
-						constRegion: "us-west-2",
-					}),
+					Attrs: &hostcatalogs.HostCatalog_Attributes{
+						Attributes: mustStruct(map[string]interface{}{
+							constRegion: "us-west-2",
+						}),
+					},
 				},
 				Persisted: &pb.HostCatalogPersisted{
 					Secrets: mustStruct(map[string]interface{}{
@@ -1045,9 +1139,11 @@ func TestPluginListHostsErr(t *testing.T) {
 			name: "set missing id",
 			req: &pb.ListHostsRequest{
 				Catalog: &hostcatalogs.HostCatalog{
-					Attributes: mustStruct(map[string]interface{}{
-						constRegion: "us-west-2",
-					}),
+					Attrs: &hostcatalogs.HostCatalog_Attributes{
+						Attributes: mustStruct(map[string]interface{}{
+							constRegion: "us-west-2",
+						}),
+					},
 				},
 				Persisted: &pb.HostCatalogPersisted{
 					Secrets: mustStruct(map[string]interface{}{
@@ -1056,7 +1152,7 @@ func TestPluginListHostsErr(t *testing.T) {
 						constCredsLastRotatedTime: "2006-01-02T15:04:05+07:00",
 					}),
 				},
-				Sets: []*hostsets.HostSet{&hostsets.HostSet{}},
+				Sets: []*hostsets.HostSet{{}},
 			},
 			expectedErrContains: "set missing id",
 			expectedErrCode:     codes.InvalidArgument,
@@ -1065,61 +1161,11 @@ func TestPluginListHostsErr(t *testing.T) {
 			name: "set missing attributes",
 			req: &pb.ListHostsRequest{
 				Catalog: &hostcatalogs.HostCatalog{
-					Attributes: mustStruct(map[string]interface{}{
-						constRegion: "us-west-2",
-					}),
-				},
-				Persisted: &pb.HostCatalogPersisted{
-					Secrets: mustStruct(map[string]interface{}{
-						constAccessKeyId:          "foobar",
-						constSecretAccessKey:      "bazqux",
-						constCredsLastRotatedTime: "2006-01-02T15:04:05+07:00",
-					}),
-				},
-				Sets: []*hostsets.HostSet{
-					&hostsets.HostSet{
-						Id: "foobar",
-					},
-				},
-			},
-			expectedErrContains: "set missing attributes",
-			expectedErrCode:     codes.InvalidArgument,
-		},
-		{
-			name: "set attribute load error",
-			req: &pb.ListHostsRequest{
-				Catalog: &hostcatalogs.HostCatalog{
-					Attributes: mustStruct(map[string]interface{}{
-						constRegion: "us-west-2",
-					}),
-				},
-				Persisted: &pb.HostCatalogPersisted{
-					Secrets: mustStruct(map[string]interface{}{
-						constAccessKeyId:          "foobar",
-						constSecretAccessKey:      "bazqux",
-						constCredsLastRotatedTime: "2006-01-02T15:04:05+07:00",
-					}),
-				},
-				Sets: []*hostsets.HostSet{
-					&hostsets.HostSet{
-						Id: "foobar",
+					Attrs: &hostcatalogs.HostCatalog_Attributes{
 						Attributes: mustStruct(map[string]interface{}{
-							"foo": true,
-							"bar": true,
+							constRegion: "us-west-2",
 						}),
 					},
-				},
-			},
-			expectedErrContains: "attributes.bar: Unrecognized field, attributes.foo: Unrecognized field",
-			expectedErrCode:     codes.InvalidArgument,
-		},
-		{
-			name: "client load error",
-			req: &pb.ListHostsRequest{
-				Catalog: &hostcatalogs.HostCatalog{
-					Attributes: mustStruct(map[string]interface{}{
-						constRegion: "us-west-2",
-					}),
 				},
 				Persisted: &pb.HostCatalogPersisted{
 					Secrets: mustStruct(map[string]interface{}{
@@ -1131,9 +1177,69 @@ func TestPluginListHostsErr(t *testing.T) {
 				Sets: []*hostsets.HostSet{
 					{
 						Id: "foobar",
+					},
+				},
+			},
+			expectedErrContains: "set missing attributes",
+			expectedErrCode:     codes.InvalidArgument,
+		},
+		{
+			name: "set attribute load error",
+			req: &pb.ListHostsRequest{
+				Catalog: &hostcatalogs.HostCatalog{
+					Attrs: &hostcatalogs.HostCatalog_Attributes{
 						Attributes: mustStruct(map[string]interface{}{
-							constDescribeInstancesFilters: []interface{}{"tag-key=foo"},
+							constRegion: "us-west-2",
 						}),
+					},
+				},
+				Persisted: &pb.HostCatalogPersisted{
+					Secrets: mustStruct(map[string]interface{}{
+						constAccessKeyId:          "foobar",
+						constSecretAccessKey:      "bazqux",
+						constCredsLastRotatedTime: "2006-01-02T15:04:05+07:00",
+					}),
+				},
+				Sets: []*hostsets.HostSet{
+					{
+						Id: "foobar",
+						Attrs: &hostsets.HostSet_Attributes{
+							Attributes: mustStruct(map[string]interface{}{
+								"foo": true,
+								"bar": true,
+							}),
+						},
+					},
+				},
+			},
+			expectedErrContains: "attributes.bar: unrecognized field, attributes.foo: unrecognized field",
+			expectedErrCode:     codes.InvalidArgument,
+		},
+		{
+			name: "client load error",
+			req: &pb.ListHostsRequest{
+				Catalog: &hostcatalogs.HostCatalog{
+					Attrs: &hostcatalogs.HostCatalog_Attributes{
+						Attributes: mustStruct(map[string]interface{}{
+							constRegion: "us-west-2",
+						}),
+					},
+				},
+				Persisted: &pb.HostCatalogPersisted{
+					Secrets: mustStruct(map[string]interface{}{
+						constAccessKeyId:          "foobar",
+						constSecretAccessKey:      "bazqux",
+						constCredsLastRotatedTime: "2006-01-02T15:04:05+07:00",
+					}),
+				},
+				Sets: []*hostsets.HostSet{
+					{
+						Id: "foobar",
+						Attrs: &hostsets.HostSet_Attributes{
+							Attributes: mustStruct(map[string]interface{}{
+								constDescribeInstancesFilters: []interface{}{"tag-key=foo"},
+							}),
+						},
 					},
 				},
 			},
@@ -1149,9 +1255,11 @@ func TestPluginListHostsErr(t *testing.T) {
 			name: "DescribeInstances error",
 			req: &pb.ListHostsRequest{
 				Catalog: &hostcatalogs.HostCatalog{
-					Attributes: mustStruct(map[string]interface{}{
-						constRegion: "us-west-2",
-					}),
+					Attrs: &hostcatalogs.HostCatalog_Attributes{
+						Attributes: mustStruct(map[string]interface{}{
+							constRegion: "us-west-2",
+						}),
+					},
 				},
 				Persisted: &pb.HostCatalogPersisted{
 					Secrets: mustStruct(map[string]interface{}{
@@ -1163,9 +1271,11 @@ func TestPluginListHostsErr(t *testing.T) {
 				Sets: []*hostsets.HostSet{
 					{
 						Id: "foobar",
-						Attributes: mustStruct(map[string]interface{}{
-							constDescribeInstancesFilters: []interface{}{"tag-key=foo"},
-						}),
+						Attrs: &hostsets.HostSet_Attributes{
+							Attributes: mustStruct(map[string]interface{}{
+								constDescribeInstancesFilters: []interface{}{"tag-key=foo"},
+							}),
+						},
 					},
 				},
 			},
@@ -1182,9 +1292,11 @@ func TestPluginListHostsErr(t *testing.T) {
 			name: "awsInstanceToHost error",
 			req: &pb.ListHostsRequest{
 				Catalog: &hostcatalogs.HostCatalog{
-					Attributes: mustStruct(map[string]interface{}{
-						constRegion: "us-west-2",
-					}),
+					Attrs: &hostcatalogs.HostCatalog_Attributes{
+						Attributes: mustStruct(map[string]interface{}{
+							constRegion: "us-west-2",
+						}),
+					},
 				},
 				Persisted: &pb.HostCatalogPersisted{
 					Secrets: mustStruct(map[string]interface{}{
@@ -1196,9 +1308,11 @@ func TestPluginListHostsErr(t *testing.T) {
 				Sets: []*hostsets.HostSet{
 					{
 						Id: "foobar",
-						Attributes: mustStruct(map[string]interface{}{
-							constDescribeInstancesFilters: []interface{}{"tag-key=foo"},
-						}),
+						Attrs: &hostsets.HostSet_Attributes{
+							Attributes: mustStruct(map[string]interface{}{
+								constDescribeInstancesFilters: []interface{}{"tag-key=foo"},
+							}),
+						},
 					},
 				},
 			},
@@ -1208,9 +1322,9 @@ func TestPluginListHostsErr(t *testing.T) {
 					testMockEC2WithDescribeInstancesOutput(
 						&ec2.DescribeInstancesOutput{
 							Reservations: []*ec2.Reservation{
-								&ec2.Reservation{
+								{
 									Instances: []*ec2.Instance{
-										&ec2.Instance{
+										{
 											// Blank so we error out
 										},
 									},
@@ -1246,7 +1360,6 @@ func TestBuildFilters(t *testing.T) {
 		expected            []*ec2.Filter
 		expectedErrContains string
 	}{
-
 		{
 			name: "good without instance-state-name",
 			in: mustStruct(map[string]interface{}{
@@ -1437,7 +1550,7 @@ func TestAwsInstanceToHost(t *testing.T) {
 			instance: &ec2.Instance{
 				InstanceId: aws.String("foobar"),
 				NetworkInterfaces: []*ec2.InstanceNetworkInterface{
-					&ec2.InstanceNetworkInterface{
+					{
 						PrivateIpAddresses: []*ec2.InstancePrivateIpAddress{nil},
 					},
 				},
@@ -1453,11 +1566,11 @@ func TestAwsInstanceToHost(t *testing.T) {
 				PublicIpAddress:  aws.String("1.1.1.1"),
 				PublicDnsName:    aws.String("test.example.com"),
 				NetworkInterfaces: []*ec2.InstanceNetworkInterface{
-					&ec2.InstanceNetworkInterface{
+					{
 						PrivateIpAddress: aws.String("10.0.0.1"),
 						PrivateDnsName:   aws.String("test.example.internal"),
 						PrivateIpAddresses: []*ec2.InstancePrivateIpAddress{
-							&ec2.InstancePrivateIpAddress{
+							{
 								Association: &ec2.InstanceNetworkInterfaceAssociation{
 									PublicIp:      aws.String("1.1.1.1"),
 									PublicDnsName: aws.String("test.example.com"),
@@ -1482,11 +1595,11 @@ func TestAwsInstanceToHost(t *testing.T) {
 				PrivateIpAddress: aws.String("10.0.0.1"),
 				PrivateDnsName:   aws.String("test.example.internal"),
 				NetworkInterfaces: []*ec2.InstanceNetworkInterface{
-					&ec2.InstanceNetworkInterface{
+					{
 						PrivateIpAddress: aws.String("10.0.0.1"),
 						PrivateDnsName:   aws.String("test.example.internal"),
 						PrivateIpAddresses: []*ec2.InstancePrivateIpAddress{
-							&ec2.InstancePrivateIpAddress{
+							{
 								PrivateIpAddress: aws.String("10.0.0.1"),
 								PrivateDnsName:   aws.String("test.example.internal"),
 							},
@@ -1509,21 +1622,21 @@ func TestAwsInstanceToHost(t *testing.T) {
 				PublicIpAddress:  aws.String("1.1.1.1"),
 				PublicDnsName:    aws.String("test.example.com"),
 				NetworkInterfaces: []*ec2.InstanceNetworkInterface{
-					&ec2.InstanceNetworkInterface{
+					{
 						PrivateIpAddress: aws.String("10.0.0.2"),
 						PrivateDnsName:   aws.String("test2.example.internal"),
 						PrivateIpAddresses: []*ec2.InstancePrivateIpAddress{
-							&ec2.InstancePrivateIpAddress{
+							{
 								PrivateIpAddress: aws.String("10.0.0.2"),
 								PrivateDnsName:   aws.String("test2.example.internal"),
 							},
 						},
 					},
-					&ec2.InstanceNetworkInterface{
+					{
 						PrivateIpAddress: aws.String("10.0.0.1"),
 						PrivateDnsName:   aws.String("test.example.internal"),
 						PrivateIpAddresses: []*ec2.InstancePrivateIpAddress{
-							&ec2.InstancePrivateIpAddress{
+							{
 								Association: &ec2.InstanceNetworkInterfaceAssociation{
 									PublicIp:      aws.String("1.1.1.1"),
 									PublicDnsName: aws.String("test.example.com"),
@@ -1550,11 +1663,11 @@ func TestAwsInstanceToHost(t *testing.T) {
 				PublicIpAddress:  aws.String("1.1.1.1"),
 				PublicDnsName:    aws.String("test.example.com"),
 				NetworkInterfaces: []*ec2.InstanceNetworkInterface{
-					&ec2.InstanceNetworkInterface{
+					{
 						PrivateIpAddress: aws.String("10.0.0.2"),
 						PrivateDnsName:   aws.String("test2.example.internal"),
 						PrivateIpAddresses: []*ec2.InstancePrivateIpAddress{
-							&ec2.InstancePrivateIpAddress{
+							{
 								Association: &ec2.InstanceNetworkInterfaceAssociation{
 									PublicIp:      aws.String("1.1.1.2"),
 									PublicDnsName: aws.String("test2.example.com"),
@@ -1564,11 +1677,11 @@ func TestAwsInstanceToHost(t *testing.T) {
 							},
 						},
 					},
-					&ec2.InstanceNetworkInterface{
+					{
 						PrivateIpAddress: aws.String("10.0.0.1"),
 						PrivateDnsName:   aws.String("test.example.internal"),
 						PrivateIpAddresses: []*ec2.InstancePrivateIpAddress{
-							&ec2.InstancePrivateIpAddress{
+							{
 								Association: &ec2.InstanceNetworkInterfaceAssociation{
 									PublicIp:      aws.String("1.1.1.1"),
 									PublicDnsName: aws.String("test.example.com"),
@@ -1595,11 +1708,11 @@ func TestAwsInstanceToHost(t *testing.T) {
 				PublicIpAddress:  aws.String("1.1.1.1"),
 				PublicDnsName:    aws.String("test.example.com"),
 				NetworkInterfaces: []*ec2.InstanceNetworkInterface{
-					&ec2.InstanceNetworkInterface{
+					{
 						PrivateIpAddress: aws.String("10.0.0.1"),
 						PrivateDnsName:   aws.String("test.example.internal"),
 						PrivateIpAddresses: []*ec2.InstancePrivateIpAddress{
-							&ec2.InstancePrivateIpAddress{
+							{
 								Association: &ec2.InstanceNetworkInterfaceAssociation{
 									PublicIp:      aws.String("1.1.1.1"),
 									PublicDnsName: aws.String("test.example.com"),
@@ -1607,7 +1720,7 @@ func TestAwsInstanceToHost(t *testing.T) {
 								PrivateIpAddress: aws.String("10.0.0.1"),
 								PrivateDnsName:   aws.String("test.example.internal"),
 							},
-							&ec2.InstancePrivateIpAddress{
+							{
 								PrivateIpAddress: aws.String("10.0.0.2"),
 								PrivateDnsName:   aws.String("test2.example.internal"),
 							},
@@ -1630,10 +1743,10 @@ func TestAwsInstanceToHost(t *testing.T) {
 				PublicIpAddress:  aws.String("1.1.1.1"),
 				PublicDnsName:    aws.String("test.example.com"),
 				NetworkInterfaces: []*ec2.InstanceNetworkInterface{
-					&ec2.InstanceNetworkInterface{
+					{
 						PrivateIpAddress: aws.String("10.0.0.1"),
 						PrivateIpAddresses: []*ec2.InstancePrivateIpAddress{
-							&ec2.InstancePrivateIpAddress{
+							{
 								Association: &ec2.InstanceNetworkInterfaceAssociation{
 									PublicIp: aws.String("1.1.1.1"),
 								},
@@ -1642,7 +1755,7 @@ func TestAwsInstanceToHost(t *testing.T) {
 						},
 						Ipv6Addresses: []*ec2.InstanceIpv6Address{
 							nil, // Just coverage for nil assertion which is skipped
-							&ec2.InstanceIpv6Address{Ipv6Address: aws.String("some::fake::address")},
+							{Ipv6Address: aws.String("some::fake::address")},
 						},
 					},
 				},

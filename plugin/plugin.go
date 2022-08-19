@@ -14,6 +14,8 @@ import (
 	pb "github.com/hashicorp/boundary/sdk/pbs/plugin"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
+	"google.golang.org/protobuf/proto"
+	"google.golang.org/protobuf/types/known/structpb"
 )
 
 // rotationWaitTimeout controls the time we wait for credential rotation to
@@ -203,6 +205,33 @@ func (p *AwsPlugin) OnDeleteCatalog(ctx context.Context, req *pb.OnDeleteCatalog
 	}
 
 	return &pb.OnDeleteCatalogResponse{}, nil
+}
+
+// NormalizeSetData currently ensures that "filters" is an array value, even
+// though it's accepted as a string value for CLI UX reasons
+func (p *AwsPlugin) NormalizeSetData(ctx context.Context, req *pb.NormalizeSetDataRequest) (*pb.NormalizeSetDataResponse, error) {
+	if req.Attributes == nil {
+		return new(pb.NormalizeSetDataResponse), nil
+	}
+
+	val := req.Attributes.Fields["filters"]
+	if val == nil {
+		return &pb.NormalizeSetDataResponse{Attributes: req.Attributes}, nil
+	}
+	stringVal, ok := val.Kind.(*structpb.Value_StringValue)
+	if !ok {
+		return &pb.NormalizeSetDataResponse{Attributes: req.Attributes}, nil
+	}
+
+	retAttrs := proto.Clone(req.Attributes).(*structpb.Struct)
+	retAttrs.Fields["filters"] = structpb.NewListValue(
+		&structpb.ListValue{
+			Values: []*structpb.Value{
+				structpb.NewStringValue(stringVal.StringValue),
+			},
+		})
+
+	return &pb.NormalizeSetDataResponse{Attributes: retAttrs}, nil
 }
 
 func (p *AwsPlugin) OnCreateSet(ctx context.Context, req *pb.OnCreateSetRequest) (*pb.OnCreateSetResponse, error) {
