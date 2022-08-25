@@ -272,7 +272,7 @@ func (p *AwsPlugin) OnCreateSet(ctx context.Context, req *pb.OnCreateSetRequest)
 		return nil, err
 	}
 
-	ec2Client, err := state.EC2Client(catalogAttributes.Region)
+	ec2Client, err := state.EC2Client(WithRegion(catalogAttributes.Region))
 	if err != nil {
 		return nil, status.Errorf(codes.InvalidArgument, "error getting EC2 client: %s", err)
 	}
@@ -335,7 +335,7 @@ func (p *AwsPlugin) OnUpdateSet(ctx context.Context, req *pb.OnUpdateSetRequest)
 		return nil, err
 	}
 
-	ec2Client, err := state.EC2Client(catalogAttributes.Region)
+	ec2Client, err := state.EC2Client(WithRegion(catalogAttributes.Region))
 	if err != nil {
 		return nil, status.Errorf(codes.InvalidArgument, "error getting EC2 client: %s", err)
 	}
@@ -427,7 +427,7 @@ func (p *AwsPlugin) ListHosts(ctx context.Context, req *pb.ListHostsRequest) (*p
 		}
 	}
 
-	ec2Client, err := state.EC2Client(catalogAttributes.Region)
+	ec2Client, err := state.EC2Client(WithRegion(catalogAttributes.Region))
 	if err != nil {
 		return nil, status.Errorf(codes.InvalidArgument, "error getting EC2 client: %s", err)
 	}

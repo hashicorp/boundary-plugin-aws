@@ -3,6 +3,8 @@ package plugin
 import (
 	"errors"
 	"fmt"
+	"net"
+	"net/http"
 	"time"
 
 	"github.com/aws/aws-sdk-go/aws"
@@ -259,17 +261,40 @@ func (s *awsCatalogPersistedState) GetSession() (*session.Session, error) {
 	return c.GetSession()
 }
 
+var customClient = &http.Client{
+	Transport: &http.Transport{
+		Proxy: http.ProxyFromEnvironment,
+		DialContext: (&net.Dialer{
+			Timeout:   30 * time.Second,
+			KeepAlive: 30 * time.Second,
+			DualStack: true,
+		}).DialContext,
+	},
+}
+
 // EC2Client returns a configured EC2 client based on the session
 // information stored in the state.
-func (s *awsCatalogPersistedState) EC2Client(region string) (ec2iface.EC2API, error) {
+func (s *awsCatalogPersistedState) EC2Client(opt ...Option) (ec2iface.EC2API, error) {
+	opts, err := getOpts(opt...)
+	if err != nil {
+		return nil, fmt.Errorf("error parsing options when fetching EC2 client: %w", err)
+	}
+
 	sess, err := s.GetSession()
 	if err != nil {
-		return nil, fmt.Errorf("error getting AWS session: %w", err)
+		return nil, fmt.Errorf("error getting AWS session when fetching EC2 client: %w", err)
 	}
 
 	if s.testEC2APIFunc != nil {
-		return s.testEC2APIFunc(sess, aws.NewConfig().WithRegion(region))
+		return s.testEC2APIFunc(sess, aws.NewConfig().WithRegion(opts.withRegion))
 	}
 
-	return ec2.New(sess, aws.NewConfig().WithRegion(region)), nil
+	cfg := aws.NewConfig()
+	if opts.withRegion != "" {
+		cfg = cfg.WithRegion(opts.withRegion)
+	}
+
+	cfg.HTTPClient = customClient
+
+	return ec2.New(sess, cfg), nil
 }
