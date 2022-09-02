@@ -73,6 +73,17 @@ func withCredsLastRotatedTime(t time.Time) awsCatalogPersistedStateOption {
 	}
 }
 
+func withRegion(with string) awsCatalogPersistedStateOption {
+	return func(s *awsCatalogPersistedState) error {
+		if s.region != "" {
+			return errors.New("region already set")
+		}
+
+		s.region = with
+		return nil
+	}
+}
+
 type awsCatalogPersistedState struct {
 	AccessKeyId          string
 	SecretAccessKey      string
@@ -83,6 +94,10 @@ type awsCatalogPersistedState struct {
 
 	// testEC2APIFunc provides a way to provide a factory for a mock EC2 client
 	testEC2APIFunc ec2APIFunc
+
+	// Region is not a part of persisted state but if set is passed to clients
+	// created with this state
+	region string
 }
 
 func newAwsCatalogPersistedState(opts ...awsCatalogPersistedStateOption) (*awsCatalogPersistedState, error) {
@@ -146,6 +161,7 @@ func (s *awsCatalogPersistedState) ValidateCreds() error {
 	c, err := awsutil.NewCredentialsConfig(append([]awsutil.Option{
 		awsutil.WithAccessKey(s.AccessKeyId),
 		awsutil.WithSecretKey(s.SecretAccessKey),
+		awsutil.WithRegion(s.region),
 	}, s.testOpts...)...)
 	if err != nil {
 		return fmt.Errorf("error loading credentials: %w", err)
@@ -162,6 +178,7 @@ func (s *awsCatalogPersistedState) RotateCreds() error {
 	c, err := awsutil.NewCredentialsConfig(append([]awsutil.Option{
 		awsutil.WithAccessKey(s.AccessKeyId),
 		awsutil.WithSecretKey(s.SecretAccessKey),
+		awsutil.WithRegion(s.region),
 	}, s.testOpts...)...)
 	if err != nil {
 		return fmt.Errorf("error loading credentials: %w", err)
@@ -219,6 +236,7 @@ func (s *awsCatalogPersistedState) DeleteCreds() error {
 	c, err := awsutil.NewCredentialsConfig(append([]awsutil.Option{
 		awsutil.WithAccessKey(s.AccessKeyId),
 		awsutil.WithSecretKey(s.SecretAccessKey),
+		awsutil.WithRegion(s.region),
 	}, s.testOpts...)...)
 	if err != nil {
 		return fmt.Errorf("error loading credentials: %w", err)
@@ -253,6 +271,7 @@ func (s *awsCatalogPersistedState) GetSession() (*session.Session, error) {
 	c, err := awsutil.NewCredentialsConfig(append([]awsutil.Option{
 		awsutil.WithAccessKey(s.AccessKeyId),
 		awsutil.WithSecretKey(s.SecretAccessKey),
+		awsutil.WithRegion(s.region),
 	}, s.testOpts...)...)
 	if err != nil {
 		return nil, err
@@ -280,18 +299,23 @@ func (s *awsCatalogPersistedState) EC2Client(opt ...Option) (ec2iface.EC2API, er
 		return nil, fmt.Errorf("error parsing options when fetching EC2 client: %w", err)
 	}
 
+	region := opts.withRegion
+	if region == "" {
+		region = s.region
+	}
+
 	sess, err := s.GetSession()
 	if err != nil {
 		return nil, fmt.Errorf("error getting AWS session when fetching EC2 client: %w", err)
 	}
 
 	if s.testEC2APIFunc != nil {
-		return s.testEC2APIFunc(sess, aws.NewConfig().WithRegion(opts.withRegion))
+		return s.testEC2APIFunc(sess, aws.NewConfig().WithRegion(region))
 	}
 
 	cfg := aws.NewConfig()
-	if opts.withRegion != "" {
-		cfg = cfg.WithRegion(opts.withRegion)
+	if region != "" {
+		cfg = cfg.WithRegion(region)
 	}
 
 	cfg.HTTPClient = customClient

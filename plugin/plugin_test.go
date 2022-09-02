@@ -651,7 +651,7 @@ func TestPluginOnCreateSetErr(t *testing.T) {
 					awsutil.MockOptionErr(errors.New(testOptionErr)),
 				}),
 			},
-			expectedErrContains: fmt.Sprintf("error getting EC2 client: error getting AWS session: error reading options in NewCredentialsConfig: %s", testOptionErr),
+			expectedErrContains: fmt.Sprintf("error getting EC2 client: error getting AWS session when fetching EC2 client: error reading options in NewCredentialsConfig: %s", testOptionErr),
 			expectedErrCode:     codes.InvalidArgument,
 		},
 		{
@@ -950,7 +950,7 @@ func TestPluginOnUpdateSetErr(t *testing.T) {
 					awsutil.MockOptionErr(errors.New(testOptionErr)),
 				}),
 			},
-			expectedErrContains: fmt.Sprintf("error getting EC2 client: error getting AWS session: error reading options in NewCredentialsConfig: %s", testOptionErr),
+			expectedErrContains: fmt.Sprintf("error getting EC2 client: error getting AWS session when fetching EC2 client: error reading options in NewCredentialsConfig: %s", testOptionErr),
 			expectedErrCode:     codes.InvalidArgument,
 		},
 		{
@@ -1248,7 +1248,7 @@ func TestPluginListHostsErr(t *testing.T) {
 					awsutil.MockOptionErr(errors.New(testOptionErr)),
 				}),
 			},
-			expectedErrContains: fmt.Sprintf("error getting EC2 client: error getting AWS session: error reading options in NewCredentialsConfig: %s", testOptionErr),
+			expectedErrContains: fmt.Sprintf("error getting EC2 client: error getting AWS session when fetching EC2 client: error reading options in NewCredentialsConfig: %s", testOptionErr),
 			expectedErrCode:     codes.InvalidArgument,
 		},
 		{
