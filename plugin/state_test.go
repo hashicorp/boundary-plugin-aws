@@ -14,10 +14,12 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-const testOptionErr = "test option error"
-const testGetCallerIdentityErr = "test error for GetCallerIdentity"
-const testGetUserErr = "test error for GetUser"
-const testDeleteAccessKeyErr = "test error for DeleteAccessKey"
+const (
+	testOptionErr            = "test option error"
+	testGetCallerIdentityErr = "test error for GetCallerIdentity"
+	testGetUserErr           = "test error for GetUser"
+	testDeleteAccessKeyErr   = "test error for DeleteAccessKey"
+)
 
 func TestNewAwsCatalogPersistedState(t *testing.T) {
 	staticTime := time.Now()
@@ -65,6 +67,15 @@ func TestNewAwsCatalogPersistedState(t *testing.T) {
 			},
 		},
 		{
+			name: "region key",
+			opts: []awsCatalogPersistedStateOption{
+				withRegion("foobar"),
+			},
+			expected: &awsCatalogPersistedState{
+				region: "foobar",
+			},
+		},
+		{
 			name: "double set access key id",
 			opts: []awsCatalogPersistedStateOption{
 				withAccessKeyId("foobar"),
@@ -73,7 +84,7 @@ func TestNewAwsCatalogPersistedState(t *testing.T) {
 			expectedErr: "access key id already set",
 		},
 		{
-			name: "secret access key",
+			name: "double set secret access key",
 			opts: []awsCatalogPersistedStateOption{
 				withSecretAccessKey("bazqux"),
 				withSecretAccessKey("threefour"),
@@ -81,12 +92,20 @@ func TestNewAwsCatalogPersistedState(t *testing.T) {
 			expectedErr: "secret access key already set",
 		},
 		{
-			name: "rotation time",
+			name: "double set rotation time",
 			opts: []awsCatalogPersistedStateOption{
 				withCredsLastRotatedTime(staticTime),
 				withCredsLastRotatedTime(time.Now()),
 			},
 			expectedErr: "last rotation time already set",
+		},
+		{
+			name: "double set region",
+			opts: []awsCatalogPersistedStateOption{
+				withRegion("foobar"),
+				withRegion("barfoo"),
+			},
+			expectedErr: "region already set",
 		},
 	}
 
@@ -219,11 +238,13 @@ func TestAwsCatalogPersistedStateFromProto(t *testing.T) {
 			},
 			opts: []awsCatalogPersistedStateOption{
 				withAccessKeyId("ignored"),
+				withRegion("someregion"),
 			},
 			expected: &awsCatalogPersistedState{
 				AccessKeyId:          "foobar",
 				SecretAccessKey:      "bazqux",
 				CredsLastRotatedTime: time.Time{},
+				region:               "someregion",
 			},
 		},
 	}
@@ -641,8 +662,8 @@ func TestAwsCatalogPersistedStateEC2ClientErr(t *testing.T) {
 	)
 	require.NoError(err)
 
-	_, err = state.EC2Client("someregion")
-	require.EqualError(err, fmt.Sprintf("error getting AWS session: error reading options in NewCredentialsConfig: %s", testOptionErr))
+	_, err = state.EC2Client(WithRegion("someregion"))
+	require.EqualError(err, fmt.Sprintf("error getting AWS session when fetching EC2 client: error reading options in NewCredentialsConfig: %s", testOptionErr))
 }
 
 func TestAwsCatalogPersistedStateEC2ClientGood(t *testing.T) {
@@ -652,7 +673,7 @@ func TestAwsCatalogPersistedStateEC2ClientGood(t *testing.T) {
 	)
 	require.NoError(err)
 
-	clientRaw, err := state.EC2Client("someregion")
+	clientRaw, err := state.EC2Client(WithRegion("someregion"))
 	require.NoError(err)
 	require.NotNil(clientRaw)
 	client, ok := clientRaw.(*testMockEC2)

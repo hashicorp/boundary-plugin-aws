@@ -70,6 +70,7 @@ func (p *AwsPlugin) OnCreateCatalog(ctx context.Context, req *pb.OnCreateCatalog
 	state, err := newAwsCatalogPersistedState(append([]awsCatalogPersistedStateOption{
 		withAccessKeyId(catalogSecrets.AccessKeyId),
 		withSecretAccessKey(catalogSecrets.SecretAccessKey),
+		withRegion(catalogAttributes.Region),
 	}, p.testStateOpts...)...)
 	if err != nil {
 		return nil, status.Errorf(codes.InvalidArgument, "error setting up persisted state: %s", err)
@@ -136,7 +137,7 @@ func (p *AwsPlugin) OnUpdateCatalog(ctx context.Context, req *pb.OnUpdateCatalog
 	// (implicitly through awsCatalogPersistedStateFromProto) is that
 	// the state will exist and be populated. Personally I think this
 	// is fine and important, but this may change in the future.
-	state, err := awsCatalogPersistedStateFromProto(req.GetPersisted(), p.testStateOpts...)
+	state, err := awsCatalogPersistedStateFromProto(req.GetPersisted(), append(p.testStateOpts, withRegion(catalogAttributes.Region))...)
 	if err != nil {
 		return nil, status.Errorf(codes.InvalidArgument, "error loading persisted state: %s", err)
 	}
@@ -184,13 +185,31 @@ func (p *AwsPlugin) OnUpdateCatalog(ctx context.Context, req *pb.OnUpdateCatalog
 }
 
 func (p *AwsPlugin) OnDeleteCatalog(ctx context.Context, req *pb.OnDeleteCatalogRequest) (*pb.OnDeleteCatalogResponse, error) {
+	catalog := req.GetCatalog()
+	if catalog == nil {
+		return nil, status.Error(codes.InvalidArgument, "new catalog is nil")
+	}
+
+	attrs := catalog.GetAttributes()
+	if attrs == nil {
+		return nil, status.Error(codes.InvalidArgument, "new catalog missing attributes")
+	}
+
+	catalogAttributes, err := getCatalogAttributes(attrs)
+	if err != nil {
+		return nil, err
+	}
+
+	if err := validateRegion(catalogAttributes.Region); err != nil {
+		return nil, err
+	}
 	// Get the persisted data.
 	// NOTE: We return on error here, blocking the delete. This may or
 	// may not be an overzealous approach to maintaining database/state
 	// integrity. May need to be changed at later time if there are
 	// scenarios where we might be deleting things and any secret state
 	// may be corrupt/and or legitimately missing.
-	state, err := awsCatalogPersistedStateFromProto(req.GetPersisted(), p.testStateOpts...)
+	state, err := awsCatalogPersistedStateFromProto(req.GetPersisted(), append(p.testStateOpts, withRegion(catalogAttributes.Region))...)
 	if err != nil {
 		return nil, status.Errorf(codes.InvalidArgument, "error loading persisted state: %s", err)
 	}
@@ -254,7 +273,7 @@ func (p *AwsPlugin) OnCreateSet(ctx context.Context, req *pb.OnCreateSetRequest)
 		return nil, err
 	}
 
-	state, err := awsCatalogPersistedStateFromProto(req.GetPersisted(), p.testStateOpts...)
+	state, err := awsCatalogPersistedStateFromProto(req.GetPersisted(), append(p.testStateOpts, withRegion(catalogAttributes.Region))...)
 	if err != nil {
 		return nil, status.Errorf(codes.InvalidArgument, "error loading persisted state: %s", err)
 	}
@@ -315,7 +334,7 @@ func (p *AwsPlugin) OnUpdateSet(ctx context.Context, req *pb.OnUpdateSetRequest)
 		return nil, err
 	}
 
-	state, err := awsCatalogPersistedStateFromProto(req.GetPersisted(), p.testStateOpts...)
+	state, err := awsCatalogPersistedStateFromProto(req.GetPersisted(), append(p.testStateOpts, withRegion(catalogAttributes.Region))...)
 	if err != nil {
 		return nil, status.Errorf(codes.InvalidArgument, "error loading persisted state: %s", err)
 	}
@@ -384,7 +403,7 @@ func (p *AwsPlugin) ListHosts(ctx context.Context, req *pb.ListHostsRequest) (*p
 		return nil, err
 	}
 
-	state, err := awsCatalogPersistedStateFromProto(req.GetPersisted(), p.testStateOpts...)
+	state, err := awsCatalogPersistedStateFromProto(req.GetPersisted(), append(p.testStateOpts, withRegion(catalogAttributes.Region))...)
 	if err != nil {
 		return nil, status.Errorf(codes.InvalidArgument, "error loading persisted state: %s", err)
 	}
@@ -427,7 +446,7 @@ func (p *AwsPlugin) ListHosts(ctx context.Context, req *pb.ListHostsRequest) (*p
 		}
 	}
 
-	ec2Client, err := state.EC2Client(WithRegion(catalogAttributes.Region))
+	ec2Client, err := state.EC2Client()
 	if err != nil {
 		return nil, status.Errorf(codes.InvalidArgument, "error getting EC2 client: %s", err)
 	}
