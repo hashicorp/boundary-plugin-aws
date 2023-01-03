@@ -1,3 +1,6 @@
+# Copyright (c) HashiCorp, Inc.
+# SPDX-License-Identifier: MPL-2.0
+
 variable "iam_user_prefix" {
   default = "boundary-plugin-host-aws-test-iam-user"
 }
