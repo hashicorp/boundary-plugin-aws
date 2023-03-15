@@ -21,10 +21,16 @@ import (
 	"google.golang.org/protobuf/types/known/structpb"
 )
 
-// rotationWaitTimeout controls the time we wait for credential rotation to
-// succeed. This is important to ensure that rotated credentials can be used
-// right away.
-const rotationWaitTimeout = time.Second * 30
+const (
+	// rotationWaitTimeout controls the time we wait for credential rotation to
+	// succeed. This is important to ensure that rotated credentials can be used
+	// right away.
+	rotationWaitTimeout = time.Second * 30
+
+	// instanceNameTagKey denotes the special AWS tag key that contains an EC2
+	// instance's name. This field is to be matched literally.
+	instanceNameTagKey = "Name"
+)
 
 // AwsPlugin implements the HostPluginServiceServer interface for the
 // AWS plugin.
@@ -595,6 +601,14 @@ func awsInstanceToHost(instance *ec2.Instance) (*pb.ListHostsResponseHost, error
 
 	// External ID is the instance ID.
 	result.ExternalId = aws.StringValue(instance.InstanceId)
+
+	// External Name is the AWS "Name" tag, if it exists.
+	for _, t := range instance.Tags {
+		if aws.StringValue(t.Key) == instanceNameTagKey {
+			result.ExternalName = aws.StringValue(t.Value)
+			break
+		}
+	}
 
 	// First IP address/dns name are always the private fields if they
 	// are populated
