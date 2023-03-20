@@ -1,7 +1,7 @@
 // Copyright (c) HashiCorp, Inc.
 // SPDX-License-Identifier: MPL-2.0
 
-package plugin
+package testing
 
 import (
 	"context"
@@ -12,7 +12,9 @@ import (
 	"time"
 
 	"github.com/aws/aws-sdk-go/aws/awserr"
-	pluginTesting "github.com/hashicorp/boundary-plugin-host-aws/testing"
+	"github.com/hashicorp/boundary-plugin-host-aws/internal/credential"
+	"github.com/hashicorp/boundary-plugin-host-aws/internal/values"
+	"github.com/hashicorp/boundary-plugin-host-aws/plugin/service/host"
 	"github.com/hashicorp/boundary/sdk/pbs/controller/api/resources/hostcatalogs"
 	"github.com/hashicorp/boundary/sdk/pbs/controller/api/resources/hostsets"
 	pb "github.com/hashicorp/boundary/sdk/pbs/plugin"
@@ -41,7 +43,7 @@ func TestPlugin(t *testing.T) {
 	}
 
 	require := require.New(t)
-	tf, err := pluginTesting.NewTestTerraformer("testdata/basic")
+	tf, err := NewTestTerraformer("testdata/host")
 	require.NoError(err)
 	require.NotNil(tf)
 
@@ -88,7 +90,7 @@ func TestPlugin(t *testing.T) {
 	// will cause the state to go out of drift above in the sense that
 	// the access key ID/secret access key will no longer be valid. We
 	// will assert this through the returned state.
-	p := new(AwsPlugin)
+	p := new(host.HostPlugin)
 	ctx := context.Background()
 
 	// ********************
@@ -137,7 +139,7 @@ func TestPlugin(t *testing.T) {
 	// Process the collection of instances and index by expected tag names.
 	expectedTagInstancesMap := make(map[string][]string)
 	for instanceId, instanceTags := range ec2InstanceTags {
-		for tagKey := range instanceTags.(map[string]interface{}) {
+		for tagKey := range instanceTags.(map[string]any) {
 			for _, expectedTag := range expectedTags {
 				if tagKey == expectedTag {
 					expectedTagInstancesMap[tagKey] = append(expectedTagInstancesMap[tagKey], instanceId)
@@ -165,19 +167,19 @@ func TestPlugin(t *testing.T) {
 	}
 }
 
-func testPluginOnCreateCatalog(ctx context.Context, t *testing.T, p *AwsPlugin, region, accessKeyId, secretAccessKey string, rotate bool) (string, string) {
+func testPluginOnCreateCatalog(ctx context.Context, t *testing.T, p *host.HostPlugin, region, accessKeyId, secretAccessKey string, rotate bool) (string, string) {
 	t.Helper()
 	t.Logf("testing OnCreateCatalog (region=%s, rotate=%t)", region, rotate)
 	require := require.New(t)
 
-	reqAttrs, err := structpb.NewStruct(map[string]interface{}{
-		constRegion:                    region,
-		constDisableCredentialRotation: !rotate,
+	reqAttrs, err := structpb.NewStruct(map[string]any{
+		credential.ConstRegion:                    region,
+		credential.ConstDisableCredentialRotation: !rotate,
 	})
 	require.NoError(err)
-	reqSecrets, err := structpb.NewStruct(map[string]interface{}{
-		constAccessKeyId:     accessKeyId,
-		constSecretAccessKey: secretAccessKey,
+	reqSecrets, err := structpb.NewStruct(map[string]any{
+		credential.ConstAccessKeyId:     accessKeyId,
+		credential.ConstSecretAccessKey: secretAccessKey,
 	})
 	require.NoError(err)
 	request := &pb.OnCreateCatalogRequest{
@@ -195,7 +197,7 @@ func testPluginOnCreateCatalog(ctx context.Context, t *testing.T, p *AwsPlugin, 
 	require.NotNil(persisted)
 	persistedSecrets := persisted.GetSecrets()
 	require.NotNil(persistedSecrets)
-	persistedAccessKeyId, err := getStringValue(persistedSecrets, constAccessKeyId, true)
+	persistedAccessKeyId, err := values.GetStringValue(persistedSecrets, credential.ConstAccessKeyId, true)
 	require.NoError(err)
 	require.NotZero(persistedAccessKeyId)
 	if rotate {
@@ -204,7 +206,7 @@ func testPluginOnCreateCatalog(ctx context.Context, t *testing.T, p *AwsPlugin, 
 		require.Equal(accessKeyId, persistedAccessKeyId)
 	}
 
-	persistedSecretAccessKey, err := getStringValue(persistedSecrets, constSecretAccessKey, true)
+	persistedSecretAccessKey, err := values.GetStringValue(persistedSecrets, credential.ConstSecretAccessKey, true)
 	require.NoError(err)
 	require.NotZero(persistedSecretAccessKey)
 	if rotate {
@@ -213,7 +215,7 @@ func testPluginOnCreateCatalog(ctx context.Context, t *testing.T, p *AwsPlugin, 
 		require.Equal(secretAccessKey, persistedSecretAccessKey)
 	}
 
-	persistedCredsLastRotatedTime, err := getTimeValue(persistedSecrets, constCredsLastRotatedTime)
+	persistedCredsLastRotatedTime, err := values.GetTimeValue(persistedSecrets, credential.ConstCredsLastRotatedTime)
 	require.NoError(err)
 	if rotate {
 		require.NotZero(persistedCredsLastRotatedTime)
@@ -226,7 +228,7 @@ func testPluginOnCreateCatalog(ctx context.Context, t *testing.T, p *AwsPlugin, 
 }
 
 func testPluginOnUpdateCatalog(
-	ctx context.Context, t *testing.T, p *AwsPlugin,
+	ctx context.Context, t *testing.T, p *host.HostPlugin,
 	region, currentAccessKeyId, currentSecretAccessKey, newAccessKeyId, newSecretAccessKey string,
 	rotated, rotate bool,
 ) (string, string) {
@@ -239,28 +241,28 @@ func testPluginOnUpdateCatalog(
 	// timestamps.
 	currentCredsLastRotatedTime := time.Now()
 
-	reqCurrentAttrs, err := structpb.NewStruct(map[string]interface{}{
-		constRegion:                    region,
-		constDisableCredentialRotation: !rotated,
+	reqCurrentAttrs, err := structpb.NewStruct(map[string]any{
+		credential.ConstRegion:                    region,
+		credential.ConstDisableCredentialRotation: !rotated,
 	})
 	require.NoError(err)
-	reqNewAttrs, err := structpb.NewStruct(map[string]interface{}{
-		constRegion:                    region,
-		constDisableCredentialRotation: !rotate,
+	reqNewAttrs, err := structpb.NewStruct(map[string]any{
+		credential.ConstRegion:                    region,
+		credential.ConstDisableCredentialRotation: !rotate,
 	})
 	require.NoError(err)
 	var reqSecrets *structpb.Struct
 	if newAccessKeyId != "" && newSecretAccessKey != "" {
-		reqSecrets, err = structpb.NewStruct(map[string]interface{}{
-			constAccessKeyId:     newAccessKeyId,
-			constSecretAccessKey: newSecretAccessKey,
+		reqSecrets, err = structpb.NewStruct(map[string]any{
+			credential.ConstAccessKeyId:     newAccessKeyId,
+			credential.ConstSecretAccessKey: newSecretAccessKey,
 		})
 		require.NoError(err)
 	}
-	reqPersistedSecrets, err := structpb.NewStruct(map[string]interface{}{
-		constAccessKeyId:     currentAccessKeyId,
-		constSecretAccessKey: currentSecretAccessKey,
-		constCredsLastRotatedTime: func() string {
+	reqPersistedSecrets, err := structpb.NewStruct(map[string]any{
+		credential.ConstAccessKeyId:     currentAccessKeyId,
+		credential.ConstSecretAccessKey: currentSecretAccessKey,
+		credential.ConstCredsLastRotatedTime: func() string {
 			if rotated {
 				return currentCredsLastRotatedTime.Format(time.RFC3339Nano)
 			}
@@ -295,13 +297,13 @@ func testPluginOnUpdateCatalog(
 	require.NotNil(persistedSecrets)
 
 	// Complex checks based on the scenarios.
-	persistedAccessKeyId, err := getStringValue(persistedSecrets, constAccessKeyId, true)
+	persistedAccessKeyId, err := values.GetStringValue(persistedSecrets, credential.ConstAccessKeyId, true)
 	require.NoError(err)
 	require.NotZero(persistedAccessKeyId)
-	persistedSecretAccessKey, err := getStringValue(persistedSecrets, constSecretAccessKey, true)
+	persistedSecretAccessKey, err := values.GetStringValue(persistedSecrets, credential.ConstSecretAccessKey, true)
 	require.NoError(err)
 	require.NotZero(persistedSecretAccessKey)
-	persistedCredsLastRotatedTime, err := getTimeValue(persistedSecrets, constCredsLastRotatedTime)
+	persistedCredsLastRotatedTime, err := values.GetTimeValue(persistedSecrets, credential.ConstCredsLastRotatedTime)
 	require.NoError(err)
 
 	// Our test scenarios are complex due the multi-dimensional nature
@@ -403,25 +405,25 @@ func testPluginOnUpdateCatalog(
 	return persistedAccessKeyId, persistedSecretAccessKey
 }
 
-func testPluginOnDeleteCatalog(ctx context.Context, t *testing.T, p *AwsPlugin, region, accessKeyId, secretAccessKey string, rotated bool) {
+func testPluginOnDeleteCatalog(ctx context.Context, t *testing.T, p *host.HostPlugin, region, accessKeyId, secretAccessKey string, rotated bool) {
 	t.Helper()
 	t.Logf("testing OnDeleteCatalog (region=%s, rotated=%t)", region, rotated)
 	require := require.New(t)
 
-	reqAttrs, err := structpb.NewStruct(map[string]interface{}{
-		constRegion:                    region,
-		constDisableCredentialRotation: !rotated,
+	reqAttrs, err := structpb.NewStruct(map[string]any{
+		credential.ConstRegion:                    region,
+		credential.ConstDisableCredentialRotation: !rotated,
 	})
 	require.NoError(err)
-	reqSecrets, err := structpb.NewStruct(map[string]interface{}{
-		constAccessKeyId:     accessKeyId,
-		constSecretAccessKey: secretAccessKey,
+	reqSecrets, err := structpb.NewStruct(map[string]any{
+		credential.ConstAccessKeyId:     accessKeyId,
+		credential.ConstSecretAccessKey: secretAccessKey,
 	})
 	require.NoError(err)
-	reqPersistedSecrets, err := structpb.NewStruct(map[string]interface{}{
-		constAccessKeyId:     accessKeyId,
-		constSecretAccessKey: secretAccessKey,
-		constCredsLastRotatedTime: func() string {
+	reqPersistedSecrets, err := structpb.NewStruct(map[string]any{
+		credential.ConstAccessKeyId:     accessKeyId,
+		credential.ConstSecretAccessKey: secretAccessKey,
+		credential.ConstCredsLastRotatedTime: func() string {
 			if rotated {
 				return time.Now().Format(time.RFC3339Nano)
 			}
@@ -457,23 +459,23 @@ func testPluginOnDeleteCatalog(ctx context.Context, t *testing.T, p *AwsPlugin, 
 	}
 }
 
-func testPluginOnCreateUpdateSet(ctx context.Context, t *testing.T, p *AwsPlugin, region, accessKeyId, secretAccessKey string, tags []string) {
+func testPluginOnCreateUpdateSet(ctx context.Context, t *testing.T, p *host.HostPlugin, region, accessKeyId, secretAccessKey string, tags []string) {
 	t.Helper()
 	t.Logf("testing OnCreateSet (region=%s, tags=%v)", region, tags)
 	require := require.New(t)
-	catalogAttrs, err := structpb.NewStruct(map[string]interface{}{
-		constRegion:                    region,
-		constDisableCredentialRotation: true, // Note that this does nothing in sets, but just noting for tests
+	catalogAttrs, err := structpb.NewStruct(map[string]any{
+		credential.ConstRegion:                    region,
+		credential.ConstDisableCredentialRotation: true, // Note that this does nothing in sets, but just noting for tests
 	})
 	require.NoError(err)
-	setAttrs, err := structpb.NewStruct(map[string]interface{}{
-		constDescribeInstancesFilters: []interface{}{fmt.Sprintf("tag-key=%s", strings.Join(tags, ","))},
+	setAttrs, err := structpb.NewStruct(map[string]any{
+		host.ConstDescribeInstancesFilters: []any{fmt.Sprintf("tag-key=%s", strings.Join(tags, ","))},
 	})
 	require.NoError(err)
-	reqPersistedSecrets, err := structpb.NewStruct(map[string]interface{}{
-		constAccessKeyId:          accessKeyId,
-		constSecretAccessKey:      secretAccessKey,
-		constCredsLastRotatedTime: (time.Time{}).Format(time.RFC3339Nano),
+	reqPersistedSecrets, err := structpb.NewStruct(map[string]any{
+		credential.ConstAccessKeyId:          accessKeyId,
+		credential.ConstSecretAccessKey:      secretAccessKey,
+		credential.ConstCredsLastRotatedTime: (time.Time{}).Format(time.RFC3339Nano),
 	})
 	require.NoError(err)
 	createRequest := &pb.OnCreateSetRequest{
@@ -523,19 +525,19 @@ func testPluginOnCreateUpdateSet(ctx context.Context, t *testing.T, p *AwsPlugin
 	require.NotNil(updateResponse)
 }
 
-func testPluginListHosts(ctx context.Context, t *testing.T, p *AwsPlugin, region, accessKeyId, secretAccessKey string, tags []string, expected map[string][]string) {
+func testPluginListHosts(ctx context.Context, t *testing.T, p *host.HostPlugin, region, accessKeyId, secretAccessKey string, tags []string, expected map[string][]string) {
 	t.Helper()
 	t.Logf("testing ListHosts (region=%s, tags=%v)", region, tags)
 	require := require.New(t)
-	catalogAttrs, err := structpb.NewStruct(map[string]interface{}{
-		constRegion:                    region,
-		constDisableCredentialRotation: true, // Note that this does nothing in sets, but just noting for tests
+	catalogAttrs, err := structpb.NewStruct(map[string]any{
+		credential.ConstRegion:                    region,
+		credential.ConstDisableCredentialRotation: true, // Note that this does nothing in sets, but just noting for tests
 	})
 	require.NoError(err)
 	sets := make([]*hostsets.HostSet, len(tags))
 	for i, tag := range tags {
-		setAttrs, err := structpb.NewStruct(map[string]interface{}{
-			constDescribeInstancesFilters: []interface{}{fmt.Sprintf("tag-key=%s", tag)},
+		setAttrs, err := structpb.NewStruct(map[string]any{
+			host.ConstDescribeInstancesFilters: []any{fmt.Sprintf("tag-key=%s", tag)},
 		})
 		require.NoError(err)
 		sets[i] = &hostsets.HostSet{
@@ -545,10 +547,10 @@ func testPluginListHosts(ctx context.Context, t *testing.T, p *AwsPlugin, region
 			},
 		}
 	}
-	reqPersistedSecrets, err := structpb.NewStruct(map[string]interface{}{
-		constAccessKeyId:          accessKeyId,
-		constSecretAccessKey:      secretAccessKey,
-		constCredsLastRotatedTime: (time.Time{}).Format(time.RFC3339Nano),
+	reqPersistedSecrets, err := structpb.NewStruct(map[string]any{
+		credential.ConstAccessKeyId:          accessKeyId,
+		credential.ConstSecretAccessKey:      secretAccessKey,
+		credential.ConstCredsLastRotatedTime: (time.Time{}).Format(time.RFC3339Nano),
 	})
 	require.NoError(err)
 	request := &pb.ListHostsRequest{

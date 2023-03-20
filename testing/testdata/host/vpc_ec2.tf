@@ -43,16 +43,12 @@ data "aws_ami" "ubuntu" {
 
 resource "aws_vpc" "vpc" {
   cidr_block = "10.0.0.0/16"
-
-  tags = var.project_path_tags
 }
 
 resource "aws_subnet" "subnet" {
   vpc_id            = aws_vpc.vpc.id
   cidr_block        = aws_vpc.vpc.cidr_block
   availability_zone = data.aws_availability_zones.azs.names[0]
-
-  tags = var.project_path_tags
 }
 
 resource "aws_instance" "instances" {
@@ -61,7 +57,7 @@ resource "aws_instance" "instances" {
   instance_type = "t3.nano"
   subnet_id     = aws_subnet.subnet.id
 
-  tags = merge(var.instance_tags[count.index], var.project_path_tags)
+  tags = var.instance_tags[count.index]
 }
 
 output "instance_ids" {

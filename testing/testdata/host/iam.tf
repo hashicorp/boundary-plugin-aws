@@ -19,8 +19,6 @@ resource "aws_iam_user" "user" {
   count         = var.iam_user_count
   name          = random_id.aws_iam_user_name[count.index].dec
   force_destroy = true
-
-  tags = var.project_path_tags
 }
 
 resource "aws_iam_access_key" "user_initial_key" {
@@ -45,8 +43,6 @@ resource "aws_iam_policy" "ec2_describeinstances" {
   ]
 }
 EOF
-
-  tags = var.project_path_tags
 }
 
 resource "aws_iam_user_policy_attachment" "user_ec2_describeinstances_attachment" {
@@ -75,8 +71,6 @@ resource "aws_iam_policy" "user_self_manage_policy" {
   ]
 }
 EOF
-
-  tags = var.project_path_tags
 }
 
 resource "aws_iam_user_policy_attachment" "user_self_manage_policy_attachment" {

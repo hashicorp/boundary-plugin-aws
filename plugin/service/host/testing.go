@@ -1,52 +1,19 @@
-// Copyright (c) HashiCorp, Inc.
-// SPDX-License-Identifier: MPL-2.0
-
-package plugin
+package host
 
 import (
 	"github.com/aws/aws-sdk-go/aws"
 	"github.com/aws/aws-sdk-go/aws/session"
 	"github.com/aws/aws-sdk-go/service/ec2"
 	"github.com/aws/aws-sdk-go/service/ec2/ec2iface"
-	"github.com/aws/aws-sdk-go/service/iam"
-	"github.com/aws/aws-sdk-go/service/iam/iamiface"
-	"github.com/hashicorp/go-secure-stdlib/awsutil"
-	"google.golang.org/protobuf/types/known/structpb"
 )
 
-const testDescribeInstancesError = "DescribeInstances error"
-
-type testMockIAMState struct {
-	DeleteAccessKeyCalled bool
-}
-
-func (s *testMockIAMState) Reset() {
-	s.DeleteAccessKeyCalled = false
-}
-
-type testMockIAM struct {
-	iamiface.IAMAPI
-
-	State *testMockIAMState
-}
-
-func newTestMockIAM(state *testMockIAMState, opts ...awsutil.MockIAMOption) awsutil.IAMAPIFunc {
-	return func(sess *session.Session) (iamiface.IAMAPI, error) {
-		m := &testMockIAM{
-			State: state,
-		}
-		f := awsutil.NewMockIAM(opts...)
-		var err error
-
-		m.IAMAPI, err = f(sess)
-		return m, err
-	}
-}
-
-func (m *testMockIAM) DeleteAccessKey(input *iam.DeleteAccessKeyInput) (*iam.DeleteAccessKeyOutput, error) {
-	m.State.DeleteAccessKeyCalled = true
-	return m.IAMAPI.DeleteAccessKey(input)
-}
+const (
+	testOptionErr              = "test option error"
+	testGetUserErr             = "test error for GetUser"
+	testGetCallerIdentityErr   = "test error for GetCallerIdentity"
+	testDeleteAccessKeyErr     = "test error for DeleteAccessKey"
+	testDescribeInstancesError = "DescribeInstances error"
+)
 
 type testMockEC2State struct {
 	DescribeInstancesCalled      bool
@@ -115,15 +82,6 @@ func (m *testMockEC2) DescribeInstances(input *ec2.DescribeInstancesInput) (*ec2
 	}
 
 	return m.DescribeInstancesOutput, nil
-}
-
-func mustStruct(in map[string]interface{}) *structpb.Struct {
-	out, err := structpb.NewStruct(in)
-	if err != nil {
-		panic(err)
-	}
-
-	return out
 }
 
 type ec2FilterSorter []*ec2.Filter

@@ -1,7 +1,4 @@
-// Copyright (c) HashiCorp, Inc.
-// SPDX-License-Identifier: MPL-2.0
-
-package plugin
+package host
 
 import (
 	"context"
@@ -12,6 +9,7 @@ import (
 
 	"github.com/aws/aws-sdk-go/aws"
 	"github.com/aws/aws-sdk-go/service/ec2"
+	"github.com/hashicorp/boundary-plugin-host-aws/internal/credential"
 	"github.com/hashicorp/boundary/sdk/pbs/controller/api/resources/hostcatalogs"
 	"github.com/hashicorp/boundary/sdk/pbs/controller/api/resources/hostsets"
 	pb "github.com/hashicorp/boundary/sdk/pbs/plugin"
@@ -26,7 +24,8 @@ func TestPluginOnCreateCatalogErr(t *testing.T) {
 	cases := []struct {
 		name                string
 		req                 *pb.OnCreateCatalogRequest
-		opts                []awsCatalogPersistedStateOption
+		credOpts            []credential.AwsCredentialPersistedStateOption
+		catalogOpts         []awsCatalogPersistedStateOption
 		expectedErrContains string
 		expectedErrCode     codes.Code
 	}{
@@ -73,9 +72,11 @@ func TestPluginOnCreateCatalogErr(t *testing.T) {
 				Catalog: &hostcatalogs.HostCatalog{
 					Secrets: new(structpb.Struct),
 					Attrs: &hostcatalogs.HostCatalog_Attributes{
-						Attributes: mustStruct(map[string]interface{}{
-							constRegion: "us-west-2",
-						}),
+						Attributes: &structpb.Struct{
+							Fields: map[string]*structpb.Value{
+								credential.ConstRegion: structpb.NewStringValue("us-west-2"),
+							},
+						},
 					},
 				},
 			},
@@ -86,14 +87,17 @@ func TestPluginOnCreateCatalogErr(t *testing.T) {
 			name: "invalid region",
 			req: &pb.OnCreateCatalogRequest{
 				Catalog: &hostcatalogs.HostCatalog{
-					Secrets: mustStruct(map[string]interface{}{
-						constAccessKeyId:     "foobar",
-						constSecretAccessKey: "bazqux",
-					}),
+					Secrets: &structpb.Struct{
+						Fields: map[string]*structpb.Value{
+							credential.ConstAccessKeyId:     structpb.NewStringValue("foobar"),
+							credential.ConstSecretAccessKey: structpb.NewStringValue("bazqux"),
+						}},
 					Attrs: &hostcatalogs.HostCatalog_Attributes{
-						Attributes: mustStruct(map[string]interface{}{
-							constRegion: "foobar",
-						}),
+						Attributes: &structpb.Struct{
+							Fields: map[string]*structpb.Value{
+								credential.ConstRegion: structpb.NewStringValue("foobar"),
+							},
+						},
 					},
 				},
 			},
@@ -104,18 +108,21 @@ func TestPluginOnCreateCatalogErr(t *testing.T) {
 			name: "persisted state setup error",
 			req: &pb.OnCreateCatalogRequest{
 				Catalog: &hostcatalogs.HostCatalog{
-					Secrets: mustStruct(map[string]interface{}{
-						constAccessKeyId:     "foobar",
-						constSecretAccessKey: "bazqux",
-					}),
+					Secrets: &structpb.Struct{
+						Fields: map[string]*structpb.Value{
+							credential.ConstAccessKeyId:     structpb.NewStringValue("foobar"),
+							credential.ConstSecretAccessKey: structpb.NewStringValue("bazqux"),
+						}},
 					Attrs: &hostcatalogs.HostCatalog_Attributes{
-						Attributes: mustStruct(map[string]interface{}{
-							constRegion: "us-west-2",
-						}),
+						Attributes: &structpb.Struct{
+							Fields: map[string]*structpb.Value{
+								credential.ConstRegion: structpb.NewStringValue("us-west-2"),
+							},
+						},
 					},
 				},
 			},
-			opts: []awsCatalogPersistedStateOption{
+			catalogOpts: []awsCatalogPersistedStateOption{
 				func(s *awsCatalogPersistedState) error {
 					return errors.New(testOptionErr)
 				},
@@ -127,19 +134,22 @@ func TestPluginOnCreateCatalogErr(t *testing.T) {
 			name: "rotation error",
 			req: &pb.OnCreateCatalogRequest{
 				Catalog: &hostcatalogs.HostCatalog{
-					Secrets: mustStruct(map[string]interface{}{
-						constAccessKeyId:     "foobar",
-						constSecretAccessKey: "bazqux",
-					}),
+					Secrets: &structpb.Struct{
+						Fields: map[string]*structpb.Value{
+							credential.ConstAccessKeyId:     structpb.NewStringValue("foobar"),
+							credential.ConstSecretAccessKey: structpb.NewStringValue("bazqux"),
+						}},
 					Attrs: &hostcatalogs.HostCatalog_Attributes{
-						Attributes: mustStruct(map[string]interface{}{
-							constRegion: "us-west-2",
-						}),
+						Attributes: &structpb.Struct{
+							Fields: map[string]*structpb.Value{
+								credential.ConstRegion: structpb.NewStringValue("us-west-2"),
+							},
+						},
 					},
 				},
 			},
-			opts: []awsCatalogPersistedStateOption{
-				withStateTestOpts([]awsutil.Option{
+			credOpts: []credential.AwsCredentialPersistedStateOption{
+				credential.WithStateTestOpts([]awsutil.Option{
 					awsutil.WithIAMAPIFunc(
 						awsutil.NewMockIAM(
 							awsutil.WithGetUserError(errors.New(testGetUserErr)),
@@ -154,20 +164,23 @@ func TestPluginOnCreateCatalogErr(t *testing.T) {
 			name: "validation error",
 			req: &pb.OnCreateCatalogRequest{
 				Catalog: &hostcatalogs.HostCatalog{
-					Secrets: mustStruct(map[string]interface{}{
-						constAccessKeyId:     "foobar",
-						constSecretAccessKey: "bazqux",
-					}),
+					Secrets: &structpb.Struct{
+						Fields: map[string]*structpb.Value{
+							credential.ConstAccessKeyId:     structpb.NewStringValue("foobar"),
+							credential.ConstSecretAccessKey: structpb.NewStringValue("bazqux"),
+						}},
 					Attrs: &hostcatalogs.HostCatalog_Attributes{
-						Attributes: mustStruct(map[string]interface{}{
-							constRegion:                    "us-west-2",
-							constDisableCredentialRotation: true,
-						}),
+						Attributes: &structpb.Struct{
+							Fields: map[string]*structpb.Value{
+								credential.ConstRegion:                    structpb.NewStringValue("us-west-2"),
+								credential.ConstDisableCredentialRotation: structpb.NewBoolValue(true),
+							},
+						},
 					},
 				},
 			},
-			opts: []awsCatalogPersistedStateOption{
-				withStateTestOpts([]awsutil.Option{
+			credOpts: []credential.AwsCredentialPersistedStateOption{
+				credential.WithStateTestOpts([]awsutil.Option{
 					awsutil.WithSTSAPIFunc(
 						awsutil.NewMockSTS(
 							awsutil.WithGetCallerIdentityError(errors.New(testGetCallerIdentityErr)),
@@ -184,8 +197,9 @@ func TestPluginOnCreateCatalogErr(t *testing.T) {
 		tc := tc
 		t.Run(tc.name, func(t *testing.T) {
 			require := require.New(t)
-			p := &AwsPlugin{
-				testStateOpts: tc.opts,
+			p := &HostPlugin{
+				testCredStateOpts:    tc.credOpts,
+				testCatalogStateOpts: tc.catalogOpts,
 			}
 			_, err := p.OnCreateCatalog(context.Background(), tc.req)
 			require.Contains(err.Error(), tc.expectedErrContains)
@@ -198,7 +212,8 @@ func TestPluginOnUpdateCatalogErr(t *testing.T) {
 	cases := []struct {
 		name                string
 		req                 *pb.OnUpdateCatalogRequest
-		opts                []awsCatalogPersistedStateOption
+		credOpts            []credential.AwsCredentialPersistedStateOption
+		catalogOpts         []awsCatalogPersistedStateOption
 		expectedErrContains string
 		expectedErrCode     codes.Code
 	}{
@@ -236,9 +251,11 @@ func TestPluginOnUpdateCatalogErr(t *testing.T) {
 			req: &pb.OnUpdateCatalogRequest{
 				NewCatalog: &hostcatalogs.HostCatalog{
 					Attrs: &hostcatalogs.HostCatalog_Attributes{
-						Attributes: mustStruct(map[string]interface{}{
-							constRegion: "foobar",
-						}),
+						Attributes: &structpb.Struct{
+							Fields: map[string]*structpb.Value{
+								credential.ConstRegion: structpb.NewStringValue("foobar"),
+							},
+						},
 					},
 				},
 			},
@@ -250,20 +267,24 @@ func TestPluginOnUpdateCatalogErr(t *testing.T) {
 			req: &pb.OnUpdateCatalogRequest{
 				NewCatalog: &hostcatalogs.HostCatalog{
 					Attrs: &hostcatalogs.HostCatalog_Attributes{
-						Attributes: mustStruct(map[string]interface{}{
-							constRegion: "us-west-2",
-						}),
+						Attributes: &structpb.Struct{
+							Fields: map[string]*structpb.Value{
+								credential.ConstRegion: structpb.NewStringValue("us-west-2"),
+							},
+						},
 					},
 				},
 				Persisted: &pb.HostCatalogPersisted{
-					Secrets: mustStruct(map[string]interface{}{
-						constAccessKeyId:          "foobar",
-						constSecretAccessKey:      "bazqux",
-						constCredsLastRotatedTime: "2006-01-02T15:04:05+07:00",
-					}),
+					Secrets: &structpb.Struct{
+						Fields: map[string]*structpb.Value{
+							credential.ConstAccessKeyId:          structpb.NewStringValue("foobar"),
+							credential.ConstSecretAccessKey:      structpb.NewStringValue("bazqux"),
+							credential.ConstCredsLastRotatedTime: structpb.NewStringValue("2006-01-02T15:04:05+07:00"),
+						},
+					},
 				},
 			},
-			opts: []awsCatalogPersistedStateOption{
+			catalogOpts: []awsCatalogPersistedStateOption{
 				func(s *awsCatalogPersistedState) error {
 					return errors.New(testOptionErr)
 				},
@@ -276,18 +297,22 @@ func TestPluginOnUpdateCatalogErr(t *testing.T) {
 			req: &pb.OnUpdateCatalogRequest{
 				NewCatalog: &hostcatalogs.HostCatalog{
 					Attrs: &hostcatalogs.HostCatalog_Attributes{
-						Attributes: mustStruct(map[string]interface{}{
-							constRegion:                    "us-west-2",
-							constDisableCredentialRotation: true,
-						}),
+						Attributes: &structpb.Struct{
+							Fields: map[string]*structpb.Value{
+								credential.ConstRegion:                    structpb.NewStringValue("us-west-2"),
+								credential.ConstDisableCredentialRotation: structpb.NewBoolValue(true),
+							},
+						},
 					},
 				},
 				Persisted: &pb.HostCatalogPersisted{
-					Secrets: mustStruct(map[string]interface{}{
-						constAccessKeyId:          "foobar",
-						constSecretAccessKey:      "bazqux",
-						constCredsLastRotatedTime: "2006-01-02T15:04:05+07:00",
-					}),
+					Secrets: &structpb.Struct{
+						Fields: map[string]*structpb.Value{
+							credential.ConstAccessKeyId:          structpb.NewStringValue("foobar"),
+							credential.ConstSecretAccessKey:      structpb.NewStringValue("bazqux"),
+							credential.ConstCredsLastRotatedTime: structpb.NewStringValue("2006-01-02T15:04:05+07:00"),
+						},
+					},
 				},
 			},
 			expectedErrContains: "cannot disable rotation for already-rotated credentials",
@@ -299,17 +324,21 @@ func TestPluginOnUpdateCatalogErr(t *testing.T) {
 				NewCatalog: &hostcatalogs.HostCatalog{
 					Secrets: new(structpb.Struct),
 					Attrs: &hostcatalogs.HostCatalog_Attributes{
-						Attributes: mustStruct(map[string]interface{}{
-							constRegion: "us-west-2",
-						}),
+						Attributes: &structpb.Struct{
+							Fields: map[string]*structpb.Value{
+								credential.ConstRegion: structpb.NewStringValue("us-west-2"),
+							},
+						},
 					},
 				},
 				Persisted: &pb.HostCatalogPersisted{
-					Secrets: mustStruct(map[string]interface{}{
-						constAccessKeyId:          "foobar",
-						constSecretAccessKey:      "bazqux",
-						constCredsLastRotatedTime: "2006-01-02T15:04:05+07:00",
-					}),
+					Secrets: &structpb.Struct{
+						Fields: map[string]*structpb.Value{
+							credential.ConstAccessKeyId:          structpb.NewStringValue("foobar"),
+							credential.ConstSecretAccessKey:      structpb.NewStringValue("bazqux"),
+							credential.ConstCredsLastRotatedTime: structpb.NewStringValue("2006-01-02T15:04:05+07:00"),
+						},
+					},
 				},
 			},
 			expectedErrContains: "missing required value \"access_key_id\"",
@@ -319,27 +348,33 @@ func TestPluginOnUpdateCatalogErr(t *testing.T) {
 			name: "updating secrets, replace error",
 			req: &pb.OnUpdateCatalogRequest{
 				NewCatalog: &hostcatalogs.HostCatalog{
-					Secrets: mustStruct(map[string]interface{}{
-						constAccessKeyId:     "onetwo",
-						constSecretAccessKey: "threefour",
-					}),
+					Secrets: &structpb.Struct{
+						Fields: map[string]*structpb.Value{
+							credential.ConstAccessKeyId:     structpb.NewStringValue("onetwo"),
+							credential.ConstSecretAccessKey: structpb.NewStringValue("threefour"),
+						},
+					},
 					Attrs: &hostcatalogs.HostCatalog_Attributes{
-						Attributes: mustStruct(map[string]interface{}{
-							constRegion:                    "us-west-2",
-							constDisableCredentialRotation: true,
-						}),
+						Attributes: &structpb.Struct{
+							Fields: map[string]*structpb.Value{
+								credential.ConstRegion:                    structpb.NewStringValue("us-west-2"),
+								credential.ConstDisableCredentialRotation: structpb.NewBoolValue(true),
+							},
+						},
 					},
 				},
 				Persisted: &pb.HostCatalogPersisted{
-					Secrets: mustStruct(map[string]interface{}{
-						constAccessKeyId:          "foobar",
-						constSecretAccessKey:      "bazqux",
-						constCredsLastRotatedTime: "2006-01-02T15:04:05+07:00",
-					}),
+					Secrets: &structpb.Struct{
+						Fields: map[string]*structpb.Value{
+							credential.ConstAccessKeyId:          structpb.NewStringValue("foobar"),
+							credential.ConstSecretAccessKey:      structpb.NewStringValue("bazqux"),
+							credential.ConstCredsLastRotatedTime: structpb.NewStringValue("2006-01-02T15:04:05+07:00"),
+						},
+					},
 				},
 			},
-			opts: []awsCatalogPersistedStateOption{
-				withStateTestOpts([]awsutil.Option{
+			credOpts: []credential.AwsCredentialPersistedStateOption{
+				credential.WithStateTestOpts([]awsutil.Option{
 					awsutil.WithIAMAPIFunc(
 						awsutil.NewMockIAM(
 							awsutil.WithDeleteAccessKeyError(errors.New(testDeleteAccessKeyErr)),
@@ -355,20 +390,24 @@ func TestPluginOnUpdateCatalogErr(t *testing.T) {
 			req: &pb.OnUpdateCatalogRequest{
 				NewCatalog: &hostcatalogs.HostCatalog{
 					Attrs: &hostcatalogs.HostCatalog_Attributes{
-						Attributes: mustStruct(map[string]interface{}{
-							constRegion: "us-west-2",
-						}),
+						Attributes: &structpb.Struct{
+							Fields: map[string]*structpb.Value{
+								credential.ConstRegion: structpb.NewStringValue("us-west-2"),
+							},
+						},
 					},
 				},
 				Persisted: &pb.HostCatalogPersisted{
-					Secrets: mustStruct(map[string]interface{}{
-						constAccessKeyId:     "foobar",
-						constSecretAccessKey: "bazqux",
-					}),
+					Secrets: &structpb.Struct{
+						Fields: map[string]*structpb.Value{
+							credential.ConstAccessKeyId:     structpb.NewStringValue("foobar"),
+							credential.ConstSecretAccessKey: structpb.NewStringValue("bazqux"),
+						},
+					},
 				},
 			},
-			opts: []awsCatalogPersistedStateOption{
-				withStateTestOpts([]awsutil.Option{
+			credOpts: []credential.AwsCredentialPersistedStateOption{
+				credential.WithStateTestOpts([]awsutil.Option{
 					awsutil.WithIAMAPIFunc(
 						awsutil.NewMockIAM(
 							awsutil.WithGetUserError(errors.New(testGetUserErr)),
@@ -385,8 +424,9 @@ func TestPluginOnUpdateCatalogErr(t *testing.T) {
 		tc := tc
 		t.Run(tc.name, func(t *testing.T) {
 			require := require.New(t)
-			p := &AwsPlugin{
-				testStateOpts: tc.opts,
+			p := &HostPlugin{
+				testCredStateOpts:    tc.credOpts,
+				testCatalogStateOpts: tc.catalogOpts,
 			}
 			_, err := p.OnUpdateCatalog(context.Background(), tc.req)
 			require.Contains(err.Error(), tc.expectedErrContains)
@@ -399,7 +439,8 @@ func TestPluginOnDeleteCatalogErr(t *testing.T) {
 	cases := []struct {
 		name                string
 		req                 *pb.OnDeleteCatalogRequest
-		opts                []awsCatalogPersistedStateOption
+		credOpts            []credential.AwsCredentialPersistedStateOption
+		catalogOpts         []awsCatalogPersistedStateOption
 		expectedErrContains string
 		expectedErrCode     codes.Code
 	}{
@@ -408,20 +449,24 @@ func TestPluginOnDeleteCatalogErr(t *testing.T) {
 			req: &pb.OnDeleteCatalogRequest{
 				Catalog: &hostcatalogs.HostCatalog{
 					Attrs: &hostcatalogs.HostCatalog_Attributes{
-						Attributes: mustStruct(map[string]interface{}{
-							constRegion: "us-west-2",
-						}),
+						Attributes: &structpb.Struct{
+							Fields: map[string]*structpb.Value{
+								credential.ConstRegion: structpb.NewStringValue("us-west-2"),
+							},
+						},
 					},
 				},
 				Persisted: &pb.HostCatalogPersisted{
-					Secrets: mustStruct(map[string]interface{}{
-						constAccessKeyId:          "foobar",
-						constSecretAccessKey:      "bazqux",
-						constCredsLastRotatedTime: "2006-01-02T15:04:05+07:00",
-					}),
+					Secrets: &structpb.Struct{
+						Fields: map[string]*structpb.Value{
+							credential.ConstAccessKeyId:          structpb.NewStringValue("foobar"),
+							credential.ConstSecretAccessKey:      structpb.NewStringValue("bazqux"),
+							credential.ConstCredsLastRotatedTime: structpb.NewStringValue("2006-01-02T15:04:05+07:00"),
+						},
+					},
 				},
 			},
-			opts: []awsCatalogPersistedStateOption{
+			catalogOpts: []awsCatalogPersistedStateOption{
 				func(s *awsCatalogPersistedState) error {
 					return errors.New(testOptionErr)
 				},
@@ -434,21 +479,25 @@ func TestPluginOnDeleteCatalogErr(t *testing.T) {
 			req: &pb.OnDeleteCatalogRequest{
 				Catalog: &hostcatalogs.HostCatalog{
 					Attrs: &hostcatalogs.HostCatalog_Attributes{
-						Attributes: mustStruct(map[string]interface{}{
-							constRegion: "us-west-2",
-						}),
+						Attributes: &structpb.Struct{
+							Fields: map[string]*structpb.Value{
+								credential.ConstRegion: structpb.NewStringValue("us-west-2"),
+							},
+						},
 					},
 				},
 				Persisted: &pb.HostCatalogPersisted{
-					Secrets: mustStruct(map[string]interface{}{
-						constAccessKeyId:          "foobar",
-						constSecretAccessKey:      "bazqux",
-						constCredsLastRotatedTime: "2006-01-02T15:04:05+07:00",
-					}),
+					Secrets: &structpb.Struct{
+						Fields: map[string]*structpb.Value{
+							credential.ConstAccessKeyId:          structpb.NewStringValue("foobar"),
+							credential.ConstSecretAccessKey:      structpb.NewStringValue("bazqux"),
+							credential.ConstCredsLastRotatedTime: structpb.NewStringValue("2006-01-02T15:04:05+07:00"),
+						},
+					},
 				},
 			},
-			opts: []awsCatalogPersistedStateOption{
-				withStateTestOpts([]awsutil.Option{
+			credOpts: []credential.AwsCredentialPersistedStateOption{
+				credential.WithStateTestOpts([]awsutil.Option{
 					awsutil.WithIAMAPIFunc(
 						awsutil.NewMockIAM(
 							awsutil.WithDeleteAccessKeyError(errors.New(testDeleteAccessKeyErr)),
@@ -465,8 +514,9 @@ func TestPluginOnDeleteCatalogErr(t *testing.T) {
 		tc := tc
 		t.Run(tc.name, func(t *testing.T) {
 			require := require.New(t)
-			p := &AwsPlugin{
-				testStateOpts: tc.opts,
+			p := &HostPlugin{
+				testCredStateOpts:    tc.credOpts,
+				testCatalogStateOpts: tc.catalogOpts,
 			}
 			_, err := p.OnDeleteCatalog(context.Background(), tc.req)
 			require.Contains(err.Error(), tc.expectedErrContains)
@@ -479,7 +529,8 @@ func TestPluginOnCreateSetErr(t *testing.T) {
 	cases := []struct {
 		name                string
 		req                 *pb.OnCreateSetRequest
-		opts                []awsCatalogPersistedStateOption
+		credOpts            []credential.AwsCredentialPersistedStateOption
+		catalogOpts         []awsCatalogPersistedStateOption
 		expectedErrContains string
 		expectedErrCode     codes.Code
 	}{
@@ -517,9 +568,11 @@ func TestPluginOnCreateSetErr(t *testing.T) {
 			req: &pb.OnCreateSetRequest{
 				Catalog: &hostcatalogs.HostCatalog{
 					Attrs: &hostcatalogs.HostCatalog_Attributes{
-						Attributes: mustStruct(map[string]interface{}{
-							constRegion: "foobar",
-						}),
+						Attributes: &structpb.Struct{
+							Fields: map[string]*structpb.Value{
+								credential.ConstRegion: structpb.NewStringValue("foobar"),
+							},
+						},
 					},
 				},
 			},
@@ -531,20 +584,24 @@ func TestPluginOnCreateSetErr(t *testing.T) {
 			req: &pb.OnCreateSetRequest{
 				Catalog: &hostcatalogs.HostCatalog{
 					Attrs: &hostcatalogs.HostCatalog_Attributes{
-						Attributes: mustStruct(map[string]interface{}{
-							constRegion: "us-west-2",
-						}),
+						Attributes: &structpb.Struct{
+							Fields: map[string]*structpb.Value{
+								credential.ConstRegion: structpb.NewStringValue("us-west-2"),
+							},
+						},
 					},
 				},
 				Persisted: &pb.HostCatalogPersisted{
-					Secrets: mustStruct(map[string]interface{}{
-						constAccessKeyId:          "foobar",
-						constSecretAccessKey:      "bazqux",
-						constCredsLastRotatedTime: "2006-01-02T15:04:05+07:00",
-					}),
+					Secrets: &structpb.Struct{
+						Fields: map[string]*structpb.Value{
+							credential.ConstAccessKeyId:          structpb.NewStringValue("foobar"),
+							credential.ConstSecretAccessKey:      structpb.NewStringValue("bazqux"),
+							credential.ConstCredsLastRotatedTime: structpb.NewStringValue("2006-01-02T15:04:05+07:00"),
+						},
+					},
 				},
 			},
-			opts: []awsCatalogPersistedStateOption{
+			catalogOpts: []awsCatalogPersistedStateOption{
 				func(s *awsCatalogPersistedState) error {
 					return errors.New(testOptionErr)
 				},
@@ -557,17 +614,21 @@ func TestPluginOnCreateSetErr(t *testing.T) {
 			req: &pb.OnCreateSetRequest{
 				Catalog: &hostcatalogs.HostCatalog{
 					Attrs: &hostcatalogs.HostCatalog_Attributes{
-						Attributes: mustStruct(map[string]interface{}{
-							constRegion: "us-west-2",
-						}),
+						Attributes: &structpb.Struct{
+							Fields: map[string]*structpb.Value{
+								credential.ConstRegion: structpb.NewStringValue("us-west-2"),
+							},
+						},
 					},
 				},
 				Persisted: &pb.HostCatalogPersisted{
-					Secrets: mustStruct(map[string]interface{}{
-						constAccessKeyId:          "foobar",
-						constSecretAccessKey:      "bazqux",
-						constCredsLastRotatedTime: "2006-01-02T15:04:05+07:00",
-					}),
+					Secrets: &structpb.Struct{
+						Fields: map[string]*structpb.Value{
+							credential.ConstAccessKeyId:          structpb.NewStringValue("foobar"),
+							credential.ConstSecretAccessKey:      structpb.NewStringValue("bazqux"),
+							credential.ConstCredsLastRotatedTime: structpb.NewStringValue("2006-01-02T15:04:05+07:00"),
+						},
+					},
 				},
 			},
 			expectedErrContains: "set is nil",
@@ -578,17 +639,21 @@ func TestPluginOnCreateSetErr(t *testing.T) {
 			req: &pb.OnCreateSetRequest{
 				Catalog: &hostcatalogs.HostCatalog{
 					Attrs: &hostcatalogs.HostCatalog_Attributes{
-						Attributes: mustStruct(map[string]interface{}{
-							constRegion: "us-west-2",
-						}),
+						Attributes: &structpb.Struct{
+							Fields: map[string]*structpb.Value{
+								credential.ConstRegion: structpb.NewStringValue("us-west-2"),
+							},
+						},
 					},
 				},
 				Persisted: &pb.HostCatalogPersisted{
-					Secrets: mustStruct(map[string]interface{}{
-						constAccessKeyId:          "foobar",
-						constSecretAccessKey:      "bazqux",
-						constCredsLastRotatedTime: "2006-01-02T15:04:05+07:00",
-					}),
+					Secrets: &structpb.Struct{
+						Fields: map[string]*structpb.Value{
+							credential.ConstAccessKeyId:          structpb.NewStringValue("foobar"),
+							credential.ConstSecretAccessKey:      structpb.NewStringValue("bazqux"),
+							credential.ConstCredsLastRotatedTime: structpb.NewStringValue("2006-01-02T15:04:05+07:00"),
+						},
+					},
 				},
 				Set: &hostsets.HostSet{},
 			},
@@ -600,24 +665,30 @@ func TestPluginOnCreateSetErr(t *testing.T) {
 			req: &pb.OnCreateSetRequest{
 				Catalog: &hostcatalogs.HostCatalog{
 					Attrs: &hostcatalogs.HostCatalog_Attributes{
-						Attributes: mustStruct(map[string]interface{}{
-							constRegion: "us-west-2",
-						}),
+						Attributes: &structpb.Struct{
+							Fields: map[string]*structpb.Value{
+								credential.ConstRegion: structpb.NewStringValue("us-west-2"),
+							},
+						},
 					},
 				},
 				Persisted: &pb.HostCatalogPersisted{
-					Secrets: mustStruct(map[string]interface{}{
-						constAccessKeyId:          "foobar",
-						constSecretAccessKey:      "bazqux",
-						constCredsLastRotatedTime: "2006-01-02T15:04:05+07:00",
-					}),
+					Secrets: &structpb.Struct{
+						Fields: map[string]*structpb.Value{
+							credential.ConstAccessKeyId:          structpb.NewStringValue("foobar"),
+							credential.ConstSecretAccessKey:      structpb.NewStringValue("bazqux"),
+							credential.ConstCredsLastRotatedTime: structpb.NewStringValue("2006-01-02T15:04:05+07:00"),
+						},
+					},
 				},
 				Set: &hostsets.HostSet{
 					Attrs: &hostsets.HostSet_Attributes{
-						Attributes: mustStruct(map[string]interface{}{
-							"foo": true,
-							"bar": true,
-						}),
+						Attributes: &structpb.Struct{
+							Fields: map[string]*structpb.Value{
+								"foo": structpb.NewBoolValue(true),
+								"bar": structpb.NewBoolValue(true),
+							},
+						},
 					},
 				},
 			},
@@ -629,28 +700,40 @@ func TestPluginOnCreateSetErr(t *testing.T) {
 			req: &pb.OnCreateSetRequest{
 				Catalog: &hostcatalogs.HostCatalog{
 					Attrs: &hostcatalogs.HostCatalog_Attributes{
-						Attributes: mustStruct(map[string]interface{}{
-							constRegion: "us-west-2",
-						}),
+						Attributes: &structpb.Struct{
+							Fields: map[string]*structpb.Value{
+								credential.ConstRegion: structpb.NewStringValue("us-west-2"),
+							},
+						},
 					},
 				},
 				Persisted: &pb.HostCatalogPersisted{
-					Secrets: mustStruct(map[string]interface{}{
-						constAccessKeyId:          "foobar",
-						constSecretAccessKey:      "bazqux",
-						constCredsLastRotatedTime: "2006-01-02T15:04:05+07:00",
-					}),
+					Secrets: &structpb.Struct{
+						Fields: map[string]*structpb.Value{
+							credential.ConstAccessKeyId:          structpb.NewStringValue("foobar"),
+							credential.ConstSecretAccessKey:      structpb.NewStringValue("bazqux"),
+							credential.ConstCredsLastRotatedTime: structpb.NewStringValue("2006-01-02T15:04:05+07:00"),
+						},
+					},
 				},
 				Set: &hostsets.HostSet{
 					Attrs: &hostsets.HostSet_Attributes{
-						Attributes: mustStruct(map[string]interface{}{
-							constDescribeInstancesFilters: []interface{}{"tag-key=foo"},
-						}),
+						Attributes: &structpb.Struct{
+							Fields: map[string]*structpb.Value{
+								ConstDescribeInstancesFilters: structpb.NewListValue(
+									&structpb.ListValue{
+										Values: []*structpb.Value{
+											structpb.NewStringValue("tag-key=foo"),
+										},
+									},
+								),
+							},
+						},
 					},
 				},
 			},
-			opts: []awsCatalogPersistedStateOption{
-				withStateTestOpts([]awsutil.Option{
+			credOpts: []credential.AwsCredentialPersistedStateOption{
+				credential.WithStateTestOpts([]awsutil.Option{
 					awsutil.MockOptionErr(errors.New(testOptionErr)),
 				}),
 			},
@@ -662,27 +745,39 @@ func TestPluginOnCreateSetErr(t *testing.T) {
 			req: &pb.OnCreateSetRequest{
 				Catalog: &hostcatalogs.HostCatalog{
 					Attrs: &hostcatalogs.HostCatalog_Attributes{
-						Attributes: mustStruct(map[string]interface{}{
-							constRegion: "us-west-2",
-						}),
+						Attributes: &structpb.Struct{
+							Fields: map[string]*structpb.Value{
+								credential.ConstRegion: structpb.NewStringValue("us-west-2"),
+							},
+						},
 					},
 				},
 				Persisted: &pb.HostCatalogPersisted{
-					Secrets: mustStruct(map[string]interface{}{
-						constAccessKeyId:          "foobar",
-						constSecretAccessKey:      "bazqux",
-						constCredsLastRotatedTime: "2006-01-02T15:04:05+07:00",
-					}),
+					Secrets: &structpb.Struct{
+						Fields: map[string]*structpb.Value{
+							credential.ConstAccessKeyId:          structpb.NewStringValue("foobar"),
+							credential.ConstSecretAccessKey:      structpb.NewStringValue("bazqux"),
+							credential.ConstCredsLastRotatedTime: structpb.NewStringValue("2006-01-02T15:04:05+07:00"),
+						},
+					},
 				},
 				Set: &hostsets.HostSet{
 					Attrs: &hostsets.HostSet_Attributes{
-						Attributes: mustStruct(map[string]interface{}{
-							constDescribeInstancesFilters: []interface{}{"tag-key=foo"},
-						}),
+						Attributes: &structpb.Struct{
+							Fields: map[string]*structpb.Value{
+								ConstDescribeInstancesFilters: structpb.NewListValue(
+									&structpb.ListValue{
+										Values: []*structpb.Value{
+											structpb.NewStringValue("tag-key=foo"),
+										},
+									},
+								),
+							},
+						},
 					},
 				},
 			},
-			opts: []awsCatalogPersistedStateOption{
+			catalogOpts: []awsCatalogPersistedStateOption{
 				withTestEC2APIFunc(newTestMockEC2(
 					nil,
 					testMockEC2WithDescribeInstancesError(errors.New(testDescribeInstancesError)),
@@ -696,27 +791,39 @@ func TestPluginOnCreateSetErr(t *testing.T) {
 			req: &pb.OnCreateSetRequest{
 				Catalog: &hostcatalogs.HostCatalog{
 					Attrs: &hostcatalogs.HostCatalog_Attributes{
-						Attributes: mustStruct(map[string]interface{}{
-							constRegion: "us-west-2",
-						}),
+						Attributes: &structpb.Struct{
+							Fields: map[string]*structpb.Value{
+								credential.ConstRegion: structpb.NewStringValue("us-west-2"),
+							},
+						},
 					},
 				},
 				Persisted: &pb.HostCatalogPersisted{
-					Secrets: mustStruct(map[string]interface{}{
-						constAccessKeyId:          "foobar",
-						constSecretAccessKey:      "bazqux",
-						constCredsLastRotatedTime: "2006-01-02T15:04:05+07:00",
-					}),
+					Secrets: &structpb.Struct{
+						Fields: map[string]*structpb.Value{
+							credential.ConstAccessKeyId:          structpb.NewStringValue("foobar"),
+							credential.ConstSecretAccessKey:      structpb.NewStringValue("bazqux"),
+							credential.ConstCredsLastRotatedTime: structpb.NewStringValue("2006-01-02T15:04:05+07:00"),
+						},
+					},
 				},
 				Set: &hostsets.HostSet{
 					Attrs: &hostsets.HostSet_Attributes{
-						Attributes: mustStruct(map[string]interface{}{
-							constDescribeInstancesFilters: []interface{}{"tag-key=foo"},
-						}),
+						Attributes: &structpb.Struct{
+							Fields: map[string]*structpb.Value{
+								ConstDescribeInstancesFilters: structpb.NewListValue(
+									&structpb.ListValue{
+										Values: []*structpb.Value{
+											structpb.NewStringValue("tag-key=foo"),
+										},
+									},
+								),
+							},
+						},
 					},
 				},
 			},
-			opts: []awsCatalogPersistedStateOption{
+			catalogOpts: []awsCatalogPersistedStateOption{
 				withTestEC2APIFunc(newTestMockEC2(
 					nil,
 				)),
@@ -729,27 +836,39 @@ func TestPluginOnCreateSetErr(t *testing.T) {
 			req: &pb.OnCreateSetRequest{
 				Catalog: &hostcatalogs.HostCatalog{
 					Attrs: &hostcatalogs.HostCatalog_Attributes{
-						Attributes: mustStruct(map[string]interface{}{
-							constRegion: "us-west-2",
-						}),
+						Attributes: &structpb.Struct{
+							Fields: map[string]*structpb.Value{
+								credential.ConstRegion: structpb.NewStringValue("us-west-2"),
+							},
+						},
 					},
 				},
 				Persisted: &pb.HostCatalogPersisted{
-					Secrets: mustStruct(map[string]interface{}{
-						constAccessKeyId:          "foobar",
-						constSecretAccessKey:      "bazqux",
-						constCredsLastRotatedTime: "2006-01-02T15:04:05+07:00",
-					}),
+					Secrets: &structpb.Struct{
+						Fields: map[string]*structpb.Value{
+							credential.ConstAccessKeyId:          structpb.NewStringValue("foobar"),
+							credential.ConstSecretAccessKey:      structpb.NewStringValue("bazqux"),
+							credential.ConstCredsLastRotatedTime: structpb.NewStringValue("2006-01-02T15:04:05+07:00"),
+						},
+					},
 				},
 				Set: &hostsets.HostSet{
 					Attrs: &hostsets.HostSet_Attributes{
-						Attributes: mustStruct(map[string]interface{}{
-							constDescribeInstancesFilters: []interface{}{"tag-key=foo"},
-						}),
+						Attributes: &structpb.Struct{
+							Fields: map[string]*structpb.Value{
+								ConstDescribeInstancesFilters: structpb.NewListValue(
+									&structpb.ListValue{
+										Values: []*structpb.Value{
+											structpb.NewStringValue("tag-key=foo"),
+										},
+									},
+								),
+							},
+						},
 					},
 				},
 			},
-			opts: []awsCatalogPersistedStateOption{
+			catalogOpts: []awsCatalogPersistedStateOption{
 				withTestEC2APIFunc(newTestMockEC2(
 					nil,
 				)),
@@ -763,8 +882,9 @@ func TestPluginOnCreateSetErr(t *testing.T) {
 		tc := tc
 		t.Run(tc.name, func(t *testing.T) {
 			require := require.New(t)
-			p := &AwsPlugin{
-				testStateOpts: tc.opts,
+			p := &HostPlugin{
+				testCredStateOpts:    tc.credOpts,
+				testCatalogStateOpts: tc.catalogOpts,
 			}
 			_, err := p.OnCreateSet(context.Background(), tc.req)
 			require.Contains(err.Error(), tc.expectedErrContains)
@@ -777,7 +897,8 @@ func TestPluginOnUpdateSetErr(t *testing.T) {
 	cases := []struct {
 		name                string
 		req                 *pb.OnUpdateSetRequest
-		opts                []awsCatalogPersistedStateOption
+		credOpts            []credential.AwsCredentialPersistedStateOption
+		catalogOpts         []awsCatalogPersistedStateOption
 		expectedErrContains string
 		expectedErrCode     codes.Code
 	}{
@@ -816,9 +937,11 @@ func TestPluginOnUpdateSetErr(t *testing.T) {
 				Catalog: &hostcatalogs.HostCatalog{
 					Secrets: new(structpb.Struct),
 					Attrs: &hostcatalogs.HostCatalog_Attributes{
-						Attributes: mustStruct(map[string]interface{}{
-							constRegion: "foobar",
-						}),
+						Attributes: &structpb.Struct{
+							Fields: map[string]*structpb.Value{
+								credential.ConstRegion: structpb.NewStringValue("foobar"),
+							},
+						},
 					},
 				},
 			},
@@ -830,20 +953,24 @@ func TestPluginOnUpdateSetErr(t *testing.T) {
 			req: &pb.OnUpdateSetRequest{
 				Catalog: &hostcatalogs.HostCatalog{
 					Attrs: &hostcatalogs.HostCatalog_Attributes{
-						Attributes: mustStruct(map[string]interface{}{
-							constRegion: "us-west-2",
-						}),
+						Attributes: &structpb.Struct{
+							Fields: map[string]*structpb.Value{
+								credential.ConstRegion: structpb.NewStringValue("us-west-2"),
+							},
+						},
 					},
 				},
 				Persisted: &pb.HostCatalogPersisted{
-					Secrets: mustStruct(map[string]interface{}{
-						constAccessKeyId:          "foobar",
-						constSecretAccessKey:      "bazqux",
-						constCredsLastRotatedTime: "2006-01-02T15:04:05+07:00",
-					}),
+					Secrets: &structpb.Struct{
+						Fields: map[string]*structpb.Value{
+							credential.ConstAccessKeyId:          structpb.NewStringValue("foobar"),
+							credential.ConstSecretAccessKey:      structpb.NewStringValue("bazqux"),
+							credential.ConstCredsLastRotatedTime: structpb.NewStringValue("2006-01-02T15:04:05+07:00"),
+						},
+					},
 				},
 			},
-			opts: []awsCatalogPersistedStateOption{
+			catalogOpts: []awsCatalogPersistedStateOption{
 				func(s *awsCatalogPersistedState) error {
 					return errors.New(testOptionErr)
 				},
@@ -856,17 +983,21 @@ func TestPluginOnUpdateSetErr(t *testing.T) {
 			req: &pb.OnUpdateSetRequest{
 				Catalog: &hostcatalogs.HostCatalog{
 					Attrs: &hostcatalogs.HostCatalog_Attributes{
-						Attributes: mustStruct(map[string]interface{}{
-							constRegion: "us-west-2",
-						}),
+						Attributes: &structpb.Struct{
+							Fields: map[string]*structpb.Value{
+								credential.ConstRegion: structpb.NewStringValue("us-west-2"),
+							},
+						},
 					},
 				},
 				Persisted: &pb.HostCatalogPersisted{
-					Secrets: mustStruct(map[string]interface{}{
-						constAccessKeyId:          "foobar",
-						constSecretAccessKey:      "bazqux",
-						constCredsLastRotatedTime: "2006-01-02T15:04:05+07:00",
-					}),
+					Secrets: &structpb.Struct{
+						Fields: map[string]*structpb.Value{
+							credential.ConstAccessKeyId:          structpb.NewStringValue("foobar"),
+							credential.ConstSecretAccessKey:      structpb.NewStringValue("bazqux"),
+							credential.ConstCredsLastRotatedTime: structpb.NewStringValue("2006-01-02T15:04:05+07:00"),
+						},
+					},
 				},
 			},
 			expectedErrContains: "new set is nil",
@@ -877,17 +1008,21 @@ func TestPluginOnUpdateSetErr(t *testing.T) {
 			req: &pb.OnUpdateSetRequest{
 				Catalog: &hostcatalogs.HostCatalog{
 					Attrs: &hostcatalogs.HostCatalog_Attributes{
-						Attributes: mustStruct(map[string]interface{}{
-							constRegion: "us-west-2",
-						}),
+						Attributes: &structpb.Struct{
+							Fields: map[string]*structpb.Value{
+								credential.ConstRegion: structpb.NewStringValue("us-west-2"),
+							},
+						},
 					},
 				},
 				Persisted: &pb.HostCatalogPersisted{
-					Secrets: mustStruct(map[string]interface{}{
-						constAccessKeyId:          "foobar",
-						constSecretAccessKey:      "bazqux",
-						constCredsLastRotatedTime: "2006-01-02T15:04:05+07:00",
-					}),
+					Secrets: &structpb.Struct{
+						Fields: map[string]*structpb.Value{
+							credential.ConstAccessKeyId:          structpb.NewStringValue("foobar"),
+							credential.ConstSecretAccessKey:      structpb.NewStringValue("bazqux"),
+							credential.ConstCredsLastRotatedTime: structpb.NewStringValue("2006-01-02T15:04:05+07:00"),
+						},
+					},
 				},
 				NewSet: &hostsets.HostSet{},
 			},
@@ -899,24 +1034,30 @@ func TestPluginOnUpdateSetErr(t *testing.T) {
 			req: &pb.OnUpdateSetRequest{
 				Catalog: &hostcatalogs.HostCatalog{
 					Attrs: &hostcatalogs.HostCatalog_Attributes{
-						Attributes: mustStruct(map[string]interface{}{
-							constRegion: "us-west-2",
-						}),
+						Attributes: &structpb.Struct{
+							Fields: map[string]*structpb.Value{
+								credential.ConstRegion: structpb.NewStringValue("us-west-2"),
+							},
+						},
 					},
 				},
 				Persisted: &pb.HostCatalogPersisted{
-					Secrets: mustStruct(map[string]interface{}{
-						constAccessKeyId:          "foobar",
-						constSecretAccessKey:      "bazqux",
-						constCredsLastRotatedTime: "2006-01-02T15:04:05+07:00",
-					}),
+					Secrets: &structpb.Struct{
+						Fields: map[string]*structpb.Value{
+							credential.ConstAccessKeyId:          structpb.NewStringValue("foobar"),
+							credential.ConstSecretAccessKey:      structpb.NewStringValue("bazqux"),
+							credential.ConstCredsLastRotatedTime: structpb.NewStringValue("2006-01-02T15:04:05+07:00"),
+						},
+					},
 				},
 				NewSet: &hostsets.HostSet{
 					Attrs: &hostsets.HostSet_Attributes{
-						Attributes: mustStruct(map[string]interface{}{
-							"foo": true,
-							"bar": true,
-						}),
+						Attributes: &structpb.Struct{
+							Fields: map[string]*structpb.Value{
+								"foo": structpb.NewBoolValue(true),
+								"bar": structpb.NewBoolValue(true),
+							},
+						},
 					},
 				},
 			},
@@ -928,28 +1069,40 @@ func TestPluginOnUpdateSetErr(t *testing.T) {
 			req: &pb.OnUpdateSetRequest{
 				Catalog: &hostcatalogs.HostCatalog{
 					Attrs: &hostcatalogs.HostCatalog_Attributes{
-						Attributes: mustStruct(map[string]interface{}{
-							constRegion: "us-west-2",
-						}),
+						Attributes: &structpb.Struct{
+							Fields: map[string]*structpb.Value{
+								credential.ConstRegion: structpb.NewStringValue("us-west-2"),
+							},
+						},
 					},
 				},
 				Persisted: &pb.HostCatalogPersisted{
-					Secrets: mustStruct(map[string]interface{}{
-						constAccessKeyId:          "foobar",
-						constSecretAccessKey:      "bazqux",
-						constCredsLastRotatedTime: "2006-01-02T15:04:05+07:00",
-					}),
+					Secrets: &structpb.Struct{
+						Fields: map[string]*structpb.Value{
+							credential.ConstAccessKeyId:          structpb.NewStringValue("foobar"),
+							credential.ConstSecretAccessKey:      structpb.NewStringValue("bazqux"),
+							credential.ConstCredsLastRotatedTime: structpb.NewStringValue("2006-01-02T15:04:05+07:00"),
+						},
+					},
 				},
 				NewSet: &hostsets.HostSet{
 					Attrs: &hostsets.HostSet_Attributes{
-						Attributes: mustStruct(map[string]interface{}{
-							constDescribeInstancesFilters: []interface{}{"tag-key=foo"},
-						}),
+						Attributes: &structpb.Struct{
+							Fields: map[string]*structpb.Value{
+								ConstDescribeInstancesFilters: structpb.NewListValue(
+									&structpb.ListValue{
+										Values: []*structpb.Value{
+											structpb.NewStringValue("tag-key=foo"),
+										},
+									},
+								),
+							},
+						},
 					},
 				},
 			},
-			opts: []awsCatalogPersistedStateOption{
-				withStateTestOpts([]awsutil.Option{
+			credOpts: []credential.AwsCredentialPersistedStateOption{
+				credential.WithStateTestOpts([]awsutil.Option{
 					awsutil.MockOptionErr(errors.New(testOptionErr)),
 				}),
 			},
@@ -961,27 +1114,39 @@ func TestPluginOnUpdateSetErr(t *testing.T) {
 			req: &pb.OnUpdateSetRequest{
 				Catalog: &hostcatalogs.HostCatalog{
 					Attrs: &hostcatalogs.HostCatalog_Attributes{
-						Attributes: mustStruct(map[string]interface{}{
-							constRegion: "us-west-2",
-						}),
+						Attributes: &structpb.Struct{
+							Fields: map[string]*structpb.Value{
+								credential.ConstRegion: structpb.NewStringValue("us-west-2"),
+							},
+						},
 					},
 				},
 				Persisted: &pb.HostCatalogPersisted{
-					Secrets: mustStruct(map[string]interface{}{
-						constAccessKeyId:          "foobar",
-						constSecretAccessKey:      "bazqux",
-						constCredsLastRotatedTime: "2006-01-02T15:04:05+07:00",
-					}),
+					Secrets: &structpb.Struct{
+						Fields: map[string]*structpb.Value{
+							credential.ConstAccessKeyId:          structpb.NewStringValue("foobar"),
+							credential.ConstSecretAccessKey:      structpb.NewStringValue("bazqux"),
+							credential.ConstCredsLastRotatedTime: structpb.NewStringValue("2006-01-02T15:04:05+07:00"),
+						},
+					},
 				},
 				NewSet: &hostsets.HostSet{
 					Attrs: &hostsets.HostSet_Attributes{
-						Attributes: mustStruct(map[string]interface{}{
-							constDescribeInstancesFilters: []interface{}{"tag-key=foo"},
-						}),
+						Attributes: &structpb.Struct{
+							Fields: map[string]*structpb.Value{
+								ConstDescribeInstancesFilters: structpb.NewListValue(
+									&structpb.ListValue{
+										Values: []*structpb.Value{
+											structpb.NewStringValue("tag-key=foo"),
+										},
+									},
+								),
+							},
+						},
 					},
 				},
 			},
-			opts: []awsCatalogPersistedStateOption{
+			catalogOpts: []awsCatalogPersistedStateOption{
 				withTestEC2APIFunc(newTestMockEC2(
 					nil,
 					testMockEC2WithDescribeInstancesError(errors.New(testDescribeInstancesError)),
@@ -995,27 +1160,39 @@ func TestPluginOnUpdateSetErr(t *testing.T) {
 			req: &pb.OnUpdateSetRequest{
 				Catalog: &hostcatalogs.HostCatalog{
 					Attrs: &hostcatalogs.HostCatalog_Attributes{
-						Attributes: mustStruct(map[string]interface{}{
-							constRegion: "us-west-2",
-						}),
+						Attributes: &structpb.Struct{
+							Fields: map[string]*structpb.Value{
+								credential.ConstRegion: structpb.NewStringValue("us-west-2"),
+							},
+						},
 					},
 				},
 				Persisted: &pb.HostCatalogPersisted{
-					Secrets: mustStruct(map[string]interface{}{
-						constAccessKeyId:          "foobar",
-						constSecretAccessKey:      "bazqux",
-						constCredsLastRotatedTime: "2006-01-02T15:04:05+07:00",
-					}),
+					Secrets: &structpb.Struct{
+						Fields: map[string]*structpb.Value{
+							credential.ConstAccessKeyId:          structpb.NewStringValue("foobar"),
+							credential.ConstSecretAccessKey:      structpb.NewStringValue("bazqux"),
+							credential.ConstCredsLastRotatedTime: structpb.NewStringValue("2006-01-02T15:04:05+07:00"),
+						},
+					},
 				},
 				NewSet: &hostsets.HostSet{
 					Attrs: &hostsets.HostSet_Attributes{
-						Attributes: mustStruct(map[string]interface{}{
-							constDescribeInstancesFilters: []interface{}{"tag-key=foo"},
-						}),
+						Attributes: &structpb.Struct{
+							Fields: map[string]*structpb.Value{
+								ConstDescribeInstancesFilters: structpb.NewListValue(
+									&structpb.ListValue{
+										Values: []*structpb.Value{
+											structpb.NewStringValue("tag-key=foo"),
+										},
+									},
+								),
+							},
+						},
 					},
 				},
 			},
-			opts: []awsCatalogPersistedStateOption{
+			catalogOpts: []awsCatalogPersistedStateOption{
 				withTestEC2APIFunc(newTestMockEC2(
 					nil,
 				)),
@@ -1029,8 +1206,9 @@ func TestPluginOnUpdateSetErr(t *testing.T) {
 		tc := tc
 		t.Run(tc.name, func(t *testing.T) {
 			require := require.New(t)
-			p := &AwsPlugin{
-				testStateOpts: tc.opts,
+			p := &HostPlugin{
+				testCredStateOpts:    tc.credOpts,
+				testCatalogStateOpts: tc.catalogOpts,
 			}
 			_, err := p.OnUpdateSet(context.Background(), tc.req)
 			require.Contains(err.Error(), tc.expectedErrContains)
@@ -1043,7 +1221,8 @@ func TestPluginListHostsErr(t *testing.T) {
 	cases := []struct {
 		name                string
 		req                 *pb.ListHostsRequest
-		opts                []awsCatalogPersistedStateOption
+		credOpts            []credential.AwsCredentialPersistedStateOption
+		catalogOpts         []awsCatalogPersistedStateOption
 		expectedErrContains string
 		expectedErrCode     codes.Code
 	}{
@@ -1082,9 +1261,11 @@ func TestPluginListHostsErr(t *testing.T) {
 				Catalog: &hostcatalogs.HostCatalog{
 					Secrets: new(structpb.Struct),
 					Attrs: &hostcatalogs.HostCatalog_Attributes{
-						Attributes: mustStruct(map[string]interface{}{
-							constRegion: "foobar",
-						}),
+						Attributes: &structpb.Struct{
+							Fields: map[string]*structpb.Value{
+								credential.ConstRegion: structpb.NewStringValue("foobar"),
+							},
+						},
 					},
 				},
 			},
@@ -1096,20 +1277,24 @@ func TestPluginListHostsErr(t *testing.T) {
 			req: &pb.ListHostsRequest{
 				Catalog: &hostcatalogs.HostCatalog{
 					Attrs: &hostcatalogs.HostCatalog_Attributes{
-						Attributes: mustStruct(map[string]interface{}{
-							constRegion: "us-west-2",
-						}),
+						Attributes: &structpb.Struct{
+							Fields: map[string]*structpb.Value{
+								credential.ConstRegion: structpb.NewStringValue("us-west-2"),
+							},
+						},
 					},
 				},
 				Persisted: &pb.HostCatalogPersisted{
-					Secrets: mustStruct(map[string]interface{}{
-						constAccessKeyId:          "foobar",
-						constSecretAccessKey:      "bazqux",
-						constCredsLastRotatedTime: "2006-01-02T15:04:05+07:00",
-					}),
+					Secrets: &structpb.Struct{
+						Fields: map[string]*structpb.Value{
+							credential.ConstAccessKeyId:          structpb.NewStringValue("foobar"),
+							credential.ConstSecretAccessKey:      structpb.NewStringValue("bazqux"),
+							credential.ConstCredsLastRotatedTime: structpb.NewStringValue("2006-01-02T15:04:05+07:00"),
+						},
+					},
 				},
 			},
-			opts: []awsCatalogPersistedStateOption{
+			catalogOpts: []awsCatalogPersistedStateOption{
 				func(s *awsCatalogPersistedState) error {
 					return errors.New(testOptionErr)
 				},
@@ -1122,17 +1307,21 @@ func TestPluginListHostsErr(t *testing.T) {
 			req: &pb.ListHostsRequest{
 				Catalog: &hostcatalogs.HostCatalog{
 					Attrs: &hostcatalogs.HostCatalog_Attributes{
-						Attributes: mustStruct(map[string]interface{}{
-							constRegion: "us-west-2",
-						}),
+						Attributes: &structpb.Struct{
+							Fields: map[string]*structpb.Value{
+								credential.ConstRegion: structpb.NewStringValue("us-west-2"),
+							},
+						},
 					},
 				},
 				Persisted: &pb.HostCatalogPersisted{
-					Secrets: mustStruct(map[string]interface{}{
-						constAccessKeyId:          "foobar",
-						constSecretAccessKey:      "bazqux",
-						constCredsLastRotatedTime: "2006-01-02T15:04:05+07:00",
-					}),
+					Secrets: &structpb.Struct{
+						Fields: map[string]*structpb.Value{
+							credential.ConstAccessKeyId:          structpb.NewStringValue("foobar"),
+							credential.ConstSecretAccessKey:      structpb.NewStringValue("bazqux"),
+							credential.ConstCredsLastRotatedTime: structpb.NewStringValue("2006-01-02T15:04:05+07:00"),
+						},
+					},
 				},
 			},
 			expectedErrContains: "sets is nil",
@@ -1143,17 +1332,21 @@ func TestPluginListHostsErr(t *testing.T) {
 			req: &pb.ListHostsRequest{
 				Catalog: &hostcatalogs.HostCatalog{
 					Attrs: &hostcatalogs.HostCatalog_Attributes{
-						Attributes: mustStruct(map[string]interface{}{
-							constRegion: "us-west-2",
-						}),
+						Attributes: &structpb.Struct{
+							Fields: map[string]*structpb.Value{
+								credential.ConstRegion: structpb.NewStringValue("us-west-2"),
+							},
+						},
 					},
 				},
 				Persisted: &pb.HostCatalogPersisted{
-					Secrets: mustStruct(map[string]interface{}{
-						constAccessKeyId:          "foobar",
-						constSecretAccessKey:      "bazqux",
-						constCredsLastRotatedTime: "2006-01-02T15:04:05+07:00",
-					}),
+					Secrets: &structpb.Struct{
+						Fields: map[string]*structpb.Value{
+							credential.ConstAccessKeyId:          structpb.NewStringValue("foobar"),
+							credential.ConstSecretAccessKey:      structpb.NewStringValue("bazqux"),
+							credential.ConstCredsLastRotatedTime: structpb.NewStringValue("2006-01-02T15:04:05+07:00"),
+						},
+					},
 				},
 				Sets: []*hostsets.HostSet{{}},
 			},
@@ -1165,17 +1358,21 @@ func TestPluginListHostsErr(t *testing.T) {
 			req: &pb.ListHostsRequest{
 				Catalog: &hostcatalogs.HostCatalog{
 					Attrs: &hostcatalogs.HostCatalog_Attributes{
-						Attributes: mustStruct(map[string]interface{}{
-							constRegion: "us-west-2",
-						}),
+						Attributes: &structpb.Struct{
+							Fields: map[string]*structpb.Value{
+								credential.ConstRegion: structpb.NewStringValue("us-west-2"),
+							},
+						},
 					},
 				},
 				Persisted: &pb.HostCatalogPersisted{
-					Secrets: mustStruct(map[string]interface{}{
-						constAccessKeyId:          "foobar",
-						constSecretAccessKey:      "bazqux",
-						constCredsLastRotatedTime: "2006-01-02T15:04:05+07:00",
-					}),
+					Secrets: &structpb.Struct{
+						Fields: map[string]*structpb.Value{
+							credential.ConstAccessKeyId:          structpb.NewStringValue("foobar"),
+							credential.ConstSecretAccessKey:      structpb.NewStringValue("bazqux"),
+							credential.ConstCredsLastRotatedTime: structpb.NewStringValue("2006-01-02T15:04:05+07:00"),
+						},
+					},
 				},
 				Sets: []*hostsets.HostSet{
 					{
@@ -1191,26 +1388,32 @@ func TestPluginListHostsErr(t *testing.T) {
 			req: &pb.ListHostsRequest{
 				Catalog: &hostcatalogs.HostCatalog{
 					Attrs: &hostcatalogs.HostCatalog_Attributes{
-						Attributes: mustStruct(map[string]interface{}{
-							constRegion: "us-west-2",
-						}),
+						Attributes: &structpb.Struct{
+							Fields: map[string]*structpb.Value{
+								credential.ConstRegion: structpb.NewStringValue("us-west-2"),
+							},
+						},
 					},
 				},
 				Persisted: &pb.HostCatalogPersisted{
-					Secrets: mustStruct(map[string]interface{}{
-						constAccessKeyId:          "foobar",
-						constSecretAccessKey:      "bazqux",
-						constCredsLastRotatedTime: "2006-01-02T15:04:05+07:00",
-					}),
+					Secrets: &structpb.Struct{
+						Fields: map[string]*structpb.Value{
+							credential.ConstAccessKeyId:          structpb.NewStringValue("foobar"),
+							credential.ConstSecretAccessKey:      structpb.NewStringValue("bazqux"),
+							credential.ConstCredsLastRotatedTime: structpb.NewStringValue("2006-01-02T15:04:05+07:00"),
+						},
+					},
 				},
 				Sets: []*hostsets.HostSet{
 					{
 						Id: "foobar",
 						Attrs: &hostsets.HostSet_Attributes{
-							Attributes: mustStruct(map[string]interface{}{
-								"foo": true,
-								"bar": true,
-							}),
+							Attributes: &structpb.Struct{
+								Fields: map[string]*structpb.Value{
+									"foo": structpb.NewBoolValue(true),
+									"bar": structpb.NewBoolValue(true),
+								},
+							},
 						},
 					},
 				},
@@ -1223,31 +1426,43 @@ func TestPluginListHostsErr(t *testing.T) {
 			req: &pb.ListHostsRequest{
 				Catalog: &hostcatalogs.HostCatalog{
 					Attrs: &hostcatalogs.HostCatalog_Attributes{
-						Attributes: mustStruct(map[string]interface{}{
-							constRegion: "us-west-2",
-						}),
+						Attributes: &structpb.Struct{
+							Fields: map[string]*structpb.Value{
+								credential.ConstRegion: structpb.NewStringValue("us-west-2"),
+							},
+						},
 					},
 				},
 				Persisted: &pb.HostCatalogPersisted{
-					Secrets: mustStruct(map[string]interface{}{
-						constAccessKeyId:          "foobar",
-						constSecretAccessKey:      "bazqux",
-						constCredsLastRotatedTime: "2006-01-02T15:04:05+07:00",
-					}),
+					Secrets: &structpb.Struct{
+						Fields: map[string]*structpb.Value{
+							credential.ConstAccessKeyId:          structpb.NewStringValue("foobar"),
+							credential.ConstSecretAccessKey:      structpb.NewStringValue("bazqux"),
+							credential.ConstCredsLastRotatedTime: structpb.NewStringValue("2006-01-02T15:04:05+07:00"),
+						},
+					},
 				},
 				Sets: []*hostsets.HostSet{
 					{
 						Id: "foobar",
 						Attrs: &hostsets.HostSet_Attributes{
-							Attributes: mustStruct(map[string]interface{}{
-								constDescribeInstancesFilters: []interface{}{"tag-key=foo"},
-							}),
+							Attributes: &structpb.Struct{
+								Fields: map[string]*structpb.Value{
+									ConstDescribeInstancesFilters: structpb.NewListValue(
+										&structpb.ListValue{
+											Values: []*structpb.Value{
+												structpb.NewStringValue("tag-key=foo"),
+											},
+										},
+									),
+								},
+							},
 						},
 					},
 				},
 			},
-			opts: []awsCatalogPersistedStateOption{
-				withStateTestOpts([]awsutil.Option{
+			credOpts: []credential.AwsCredentialPersistedStateOption{
+				credential.WithStateTestOpts([]awsutil.Option{
 					awsutil.MockOptionErr(errors.New(testOptionErr)),
 				}),
 			},
@@ -1259,30 +1474,42 @@ func TestPluginListHostsErr(t *testing.T) {
 			req: &pb.ListHostsRequest{
 				Catalog: &hostcatalogs.HostCatalog{
 					Attrs: &hostcatalogs.HostCatalog_Attributes{
-						Attributes: mustStruct(map[string]interface{}{
-							constRegion: "us-west-2",
-						}),
+						Attributes: &structpb.Struct{
+							Fields: map[string]*structpb.Value{
+								credential.ConstRegion: structpb.NewStringValue("us-west-2"),
+							},
+						},
 					},
 				},
 				Persisted: &pb.HostCatalogPersisted{
-					Secrets: mustStruct(map[string]interface{}{
-						constAccessKeyId:          "foobar",
-						constSecretAccessKey:      "bazqux",
-						constCredsLastRotatedTime: "2006-01-02T15:04:05+07:00",
-					}),
+					Secrets: &structpb.Struct{
+						Fields: map[string]*structpb.Value{
+							credential.ConstAccessKeyId:          structpb.NewStringValue("foobar"),
+							credential.ConstSecretAccessKey:      structpb.NewStringValue("bazqux"),
+							credential.ConstCredsLastRotatedTime: structpb.NewStringValue("2006-01-02T15:04:05+07:00"),
+						},
+					},
 				},
 				Sets: []*hostsets.HostSet{
 					{
 						Id: "foobar",
 						Attrs: &hostsets.HostSet_Attributes{
-							Attributes: mustStruct(map[string]interface{}{
-								constDescribeInstancesFilters: []interface{}{"tag-key=foo"},
-							}),
+							Attributes: &structpb.Struct{
+								Fields: map[string]*structpb.Value{
+									ConstDescribeInstancesFilters: structpb.NewListValue(
+										&structpb.ListValue{
+											Values: []*structpb.Value{
+												structpb.NewStringValue("tag-key=foo"),
+											},
+										},
+									),
+								},
+							},
 						},
 					},
 				},
 			},
-			opts: []awsCatalogPersistedStateOption{
+			catalogOpts: []awsCatalogPersistedStateOption{
 				withTestEC2APIFunc(newTestMockEC2(
 					nil,
 					testMockEC2WithDescribeInstancesError(errors.New(testDescribeInstancesError)),
@@ -1296,30 +1523,42 @@ func TestPluginListHostsErr(t *testing.T) {
 			req: &pb.ListHostsRequest{
 				Catalog: &hostcatalogs.HostCatalog{
 					Attrs: &hostcatalogs.HostCatalog_Attributes{
-						Attributes: mustStruct(map[string]interface{}{
-							constRegion: "us-west-2",
-						}),
+						Attributes: &structpb.Struct{
+							Fields: map[string]*structpb.Value{
+								credential.ConstRegion: structpb.NewStringValue("us-west-2"),
+							},
+						},
 					},
 				},
 				Persisted: &pb.HostCatalogPersisted{
-					Secrets: mustStruct(map[string]interface{}{
-						constAccessKeyId:          "foobar",
-						constSecretAccessKey:      "bazqux",
-						constCredsLastRotatedTime: "2006-01-02T15:04:05+07:00",
-					}),
+					Secrets: &structpb.Struct{
+						Fields: map[string]*structpb.Value{
+							credential.ConstAccessKeyId:          structpb.NewStringValue("foobar"),
+							credential.ConstSecretAccessKey:      structpb.NewStringValue("bazqux"),
+							credential.ConstCredsLastRotatedTime: structpb.NewStringValue("2006-01-02T15:04:05+07:00"),
+						},
+					},
 				},
 				Sets: []*hostsets.HostSet{
 					{
 						Id: "foobar",
 						Attrs: &hostsets.HostSet_Attributes{
-							Attributes: mustStruct(map[string]interface{}{
-								constDescribeInstancesFilters: []interface{}{"tag-key=foo"},
-							}),
+							Attributes: &structpb.Struct{
+								Fields: map[string]*structpb.Value{
+									ConstDescribeInstancesFilters: structpb.NewListValue(
+										&structpb.ListValue{
+											Values: []*structpb.Value{
+												structpb.NewStringValue("tag-key=foo"),
+											},
+										},
+									),
+								},
+							},
 						},
 					},
 				},
 			},
-			opts: []awsCatalogPersistedStateOption{
+			catalogOpts: []awsCatalogPersistedStateOption{
 				withTestEC2APIFunc(newTestMockEC2(
 					nil,
 					testMockEC2WithDescribeInstancesOutput(
@@ -1346,8 +1585,9 @@ func TestPluginListHostsErr(t *testing.T) {
 		tc := tc
 		t.Run(tc.name, func(t *testing.T) {
 			require := require.New(t)
-			p := &AwsPlugin{
-				testStateOpts: tc.opts,
+			p := &HostPlugin{
+				testCredStateOpts:    tc.credOpts,
+				testCatalogStateOpts: tc.catalogOpts,
 			}
 			_, err := p.ListHosts(context.Background(), tc.req)
 			require.Contains(err.Error(), tc.expectedErrContains)
@@ -1359,17 +1599,15 @@ func TestPluginListHostsErr(t *testing.T) {
 func TestBuildFilters(t *testing.T) {
 	cases := []struct {
 		name                string
-		in                  *structpb.Struct
+		in                  map[string]any
 		expected            []*ec2.Filter
 		expectedErrContains string
 	}{
 		{
 			name: "good without instance-state-name",
-			in: mustStruct(map[string]interface{}{
-				constDescribeInstancesFilters: []interface{}{
-					"foo=bar",
-				},
-			}),
+			in: map[string]any{
+				ConstDescribeInstancesFilters: []any{"foo=bar"},
+			},
 			expected: []*ec2.Filter{
 				{
 					Name:   aws.String("foo"),
@@ -1383,12 +1621,12 @@ func TestBuildFilters(t *testing.T) {
 		},
 		{
 			name: "good with instance-state-name",
-			in: mustStruct(map[string]interface{}{
-				constDescribeInstancesFilters: []interface{}{
+			in: map[string]any{
+				ConstDescribeInstancesFilters: []any{
 					"foo=bar",
 					"instance-state-name=static",
 				},
-			}),
+			},
 			expected: []*ec2.Filter{
 				{
 					Name:   aws.String("foo"),
@@ -1402,11 +1640,11 @@ func TestBuildFilters(t *testing.T) {
 		},
 		{
 			name: "good with multiple values",
-			in: mustStruct(map[string]interface{}{
-				constDescribeInstancesFilters: []interface{}{
+			in: map[string]any{
+				ConstDescribeInstancesFilters: []any{
 					"foo=bar,baz",
 				},
-			}),
+			},
 			expected: []*ec2.Filter{
 				{
 					Name:   aws.String("foo"),
@@ -1420,9 +1658,9 @@ func TestBuildFilters(t *testing.T) {
 		},
 		{
 			name: "empty filter set",
-			in: mustStruct(map[string]interface{}{
-				constDescribeInstancesFilters: []interface{}{},
-			}),
+			in: map[string]any{
+				ConstDescribeInstancesFilters: []any{},
+			},
 			expected: []*ec2.Filter{
 				{
 					Name:   aws.String("instance-state-name"),
@@ -1436,7 +1674,11 @@ func TestBuildFilters(t *testing.T) {
 		tc := tc
 		t.Run(tc.name, func(t *testing.T) {
 			require := require.New(t)
-			attrs, err := getSetAttributes(tc.in)
+
+			input, err := structpb.NewStruct(tc.in)
+			require.NoError(err)
+
+			attrs, err := getSetAttributes(input)
 			require.NoError(err)
 			actual, err := buildFilters(attrs)
 			if tc.expectedErrContains != "" {
@@ -1454,18 +1696,18 @@ func TestBuildFilters(t *testing.T) {
 func TestBuildDescribeInstancesInput(t *testing.T) {
 	cases := []struct {
 		name        string
-		in          *structpb.Struct
+		in          map[string]any
 		dryRun      bool
 		expected    *ec2.DescribeInstancesInput
 		expectedErr string
 	}{
 		{
 			name: "good, dry run",
-			in: mustStruct(map[string]interface{}{
-				constDescribeInstancesFilters: []interface{}{
+			in: map[string]any{
+				ConstDescribeInstancesFilters: []any{
 					"foo=bar",
 				},
-			}),
+			},
 			dryRun: true,
 			expected: &ec2.DescribeInstancesInput{
 				DryRun: aws.Bool(true),
@@ -1483,11 +1725,11 @@ func TestBuildDescribeInstancesInput(t *testing.T) {
 		},
 		{
 			name: "good, real run",
-			in: mustStruct(map[string]interface{}{
-				constDescribeInstancesFilters: []interface{}{
+			in: map[string]any{
+				ConstDescribeInstancesFilters: []any{
 					"foo=bar",
 				},
-			}),
+			},
 			dryRun: false,
 			expected: &ec2.DescribeInstancesInput{
 				DryRun: aws.Bool(false),
@@ -1509,7 +1751,11 @@ func TestBuildDescribeInstancesInput(t *testing.T) {
 		tc := tc
 		t.Run(tc.name, func(t *testing.T) {
 			require := require.New(t)
-			attrs, err := getSetAttributes(tc.in)
+
+			input, err := structpb.NewStruct(tc.in)
+			require.NoError(err)
+
+			attrs, err := getSetAttributes(input)
 			require.NoError(err)
 			actual, err := buildDescribeInstancesInput(attrs, tc.dryRun)
 			if tc.expectedErr != "" {
@@ -1767,6 +2013,43 @@ func TestAwsInstanceToHost(t *testing.T) {
 				ExternalId:  "foobar",
 				IpAddresses: []string{"10.0.0.1", "1.1.1.1", "some::fake::address"},
 				DnsNames:    []string{"test.example.internal", "test.example.com"},
+			},
+		},
+		{
+			name: "good, single IP w/public addr and external name",
+			instance: &ec2.Instance{
+				InstanceId:       aws.String("foobar"),
+				PrivateIpAddress: aws.String("10.0.0.1"),
+				PrivateDnsName:   aws.String("test.example.internal"),
+				PublicIpAddress:  aws.String("1.1.1.1"),
+				PublicDnsName:    aws.String("test.example.com"),
+				Tags: []*ec2.Tag{
+					{Key: aws.String("Name"), Value: aws.String("test-instance-actual-name")}, // The tag name is "Name", not "name".
+					{Key: aws.String("name"), Value: aws.String("test-instance-fake-name")},
+					{Key: aws.String("contains-Name"), Value: aws.String("test-instance-contains-name")},
+				},
+				NetworkInterfaces: []*ec2.InstanceNetworkInterface{
+					{
+						PrivateIpAddress: aws.String("10.0.0.1"),
+						PrivateDnsName:   aws.String("test.example.internal"),
+						PrivateIpAddresses: []*ec2.InstancePrivateIpAddress{
+							{
+								Association: &ec2.InstanceNetworkInterfaceAssociation{
+									PublicIp:      aws.String("1.1.1.1"),
+									PublicDnsName: aws.String("test.example.com"),
+								},
+								PrivateIpAddress: aws.String("10.0.0.1"),
+								PrivateDnsName:   aws.String("test.example.internal"),
+							},
+						},
+					},
+				},
+			},
+			expected: &pb.ListHostsResponseHost{
+				ExternalId:   "foobar",
+				ExternalName: "test-instance-actual-name",
+				IpAddresses:  []string{"10.0.0.1", "1.1.1.1"},
+				DnsNames:     []string{"test.example.internal", "test.example.com"},
 			},
 		},
 		{

@@ -108,7 +108,7 @@ func (t *TestTerraformer) Destroy() error {
 //
 // Outputs for the root module are supported only. It's an error to
 // run this when no state exists.
-func (t *TestTerraformer) GetOutput(key string) (interface{}, error) {
+func (t *TestTerraformer) GetOutput(key string) (any, error) {
 	if key == "" {
 		return nil, errors.New("key must not be empty")
 	}
@@ -155,13 +155,13 @@ func (t *TestTerraformer) GetOutputString(key string) (string, error) {
 
 // GetOutputMap wraps GetOutput and returns the value as a map. It's an
 // error if the return value is actually not a map.
-func (t *TestTerraformer) GetOutputMap(key string) (map[string]interface{}, error) {
+func (t *TestTerraformer) GetOutputMap(key string) (map[string]any, error) {
 	value, err := t.GetOutput(key)
 	if err != nil {
 		return nil, err
 	}
 
-	m, ok := value.(map[string]interface{})
+	m, ok := value.(map[string]any)
 	if !ok {
 		return nil, fmt.Errorf("expected output value at key %q to be map, got %T", key, value)
 	}
@@ -171,13 +171,13 @@ func (t *TestTerraformer) GetOutputMap(key string) (map[string]interface{}, erro
 
 // GetOutputSlice wraps GetOutput and returns the value as a slice. It's an
 // error if the return value is actually not a slice.
-func (t *TestTerraformer) GetOutputSlice(key string) ([]interface{}, error) {
+func (t *TestTerraformer) GetOutputSlice(key string) ([]any, error) {
 	value, err := t.GetOutput(key)
 	if err != nil {
 		return nil, err
 	}
 
-	m, ok := value.([]interface{})
+	m, ok := value.([]any)
 	if !ok {
 		return nil, fmt.Errorf("expected output value at key %q to be slice, got %T", key, value)
 	}
