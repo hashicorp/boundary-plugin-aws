@@ -1769,6 +1769,43 @@ func TestAwsInstanceToHost(t *testing.T) {
 				DnsNames:    []string{"test.example.internal", "test.example.com"},
 			},
 		},
+		{
+			name: "good, single IP w/public addr and external name",
+			instance: &ec2.Instance{
+				InstanceId:       aws.String("foobar"),
+				PrivateIpAddress: aws.String("10.0.0.1"),
+				PrivateDnsName:   aws.String("test.example.internal"),
+				PublicIpAddress:  aws.String("1.1.1.1"),
+				PublicDnsName:    aws.String("test.example.com"),
+				Tags: []*ec2.Tag{
+					{Key: aws.String("Name"), Value: aws.String("test-instance-actual-name")}, // The tag name is "Name", not "name".
+					{Key: aws.String("name"), Value: aws.String("test-instance-fake-name")},
+					{Key: aws.String("contains-Name"), Value: aws.String("test-instance-contains-name")},
+				},
+				NetworkInterfaces: []*ec2.InstanceNetworkInterface{
+					{
+						PrivateIpAddress: aws.String("10.0.0.1"),
+						PrivateDnsName:   aws.String("test.example.internal"),
+						PrivateIpAddresses: []*ec2.InstancePrivateIpAddress{
+							{
+								Association: &ec2.InstanceNetworkInterfaceAssociation{
+									PublicIp:      aws.String("1.1.1.1"),
+									PublicDnsName: aws.String("test.example.com"),
+								},
+								PrivateIpAddress: aws.String("10.0.0.1"),
+								PrivateDnsName:   aws.String("test.example.internal"),
+							},
+						},
+					},
+				},
+			},
+			expected: &pb.ListHostsResponseHost{
+				ExternalId:   "foobar",
+				ExternalName: "test-instance-actual-name",
+				IpAddresses:  []string{"10.0.0.1", "1.1.1.1"},
+				DnsNames:     []string{"test.example.internal", "test.example.com"},
+			},
+		},
 	}
 
 	for _, tc := range cases {
