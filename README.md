@@ -26,6 +26,9 @@ given credentials will be used to create a new credential, and then the given
 credential will be revoked. In this way, after rotation, only Boundary knows the
 client secret in use by this plugin.
 
+Credential rotation can be turned off by setting the 
+`disable_credential_rotation` attribute to `true`.
+
 ## Getting Started
 
 Refer to [Attributes and Secrets](#attributes-and-secrets) for more detail on
