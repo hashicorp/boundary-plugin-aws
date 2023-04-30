@@ -425,6 +425,7 @@ func (p *AwsPlugin) ListHosts(ctx context.Context, req *pb.ListHostsRequest) (*p
 	// Build all the queries in advance.
 	type hostSetQuery struct {
 		Id          string
+		OnlyDefault bool
 		Input       *ec2.DescribeInstancesInput
 		Output      *ec2.DescribeInstancesOutput
 		OutputHosts []*pb.ListHostsResponseHost
@@ -450,8 +451,9 @@ func (p *AwsPlugin) ListHosts(ctx context.Context, req *pb.ListHostsRequest) (*p
 			return nil, status.Errorf(codes.InvalidArgument, "error building DescribeInstances parameters for host set id %q: %s", set.GetId(), err)
 		}
 		queries[i] = hostSetQuery{
-			Id:    set.GetId(),
-			Input: input,
+			Id:          set.GetId(),
+			Input:       input,
+			OnlyDefault: setAttrs.OnlyDefault,
 		}
 	}
 
@@ -474,7 +476,7 @@ func (p *AwsPlugin) ListHosts(ctx context.Context, req *pb.ListHostsRequest) (*p
 		// set of hosts afterwards (possibly removing duplicates).
 		for _, reservation := range output.Reservations {
 			for _, instance := range reservation.Instances {
-				host, err := awsInstanceToHost(instance)
+				host, err := awsInstanceToHost(instance, query.OnlyDefault)
 				if err != nil {
 					return nil, status.Errorf(codes.InvalidArgument, "error processing host results for host set id %q: %s", query.Id, err)
 				}
@@ -586,12 +588,20 @@ func buildDescribeInstancesInput(attrs *SetAttributes, dryRun bool) (*ec2.Descri
 // awsInstanceToHost processes data from an ec2.Instance and returns
 // a ListHostsResponseHost with the ID and network addresses
 // populated.
-func awsInstanceToHost(instance *ec2.Instance) (*pb.ListHostsResponseHost, error) {
+func awsInstanceToHost(instance *ec2.Instance, onlyDefault bool) (*pb.ListHostsResponseHost, error) {
 	// Integrity check: some fields should always be non-nil. Check
 	// those.
 	if instance == nil {
 		return nil, errors.New("response integrity error: missing instance entry")
 	}
+
+	var (
+		defaultPrivateDNS  string
+		defaultPrivateIPv4 string
+		defaultPublicIPv4  string
+		defaultIPv6        string
+		defaultPublicDNS   string
+	)
 
 	if aws.StringValue(instance.InstanceId) == "" {
 		return nil, errors.New("response integrity error: missing instance id")
@@ -614,17 +624,21 @@ func awsInstanceToHost(instance *ec2.Instance) (*pb.ListHostsResponseHost, error
 	// are populated
 	if aws.StringValue(instance.PrivateIpAddress) != "" {
 		result.IpAddresses = append(result.IpAddresses, aws.StringValue(instance.PrivateIpAddress))
+		setIfEmpty(&defaultPrivateIPv4, instance.PrivateIpAddress)
 	}
 	if aws.StringValue(instance.PrivateDnsName) != "" {
 		result.DnsNames = append(result.DnsNames, aws.StringValue(instance.PrivateDnsName))
+		setIfEmpty(&defaultPrivateDNS, instance.PrivateDnsName)
 	}
 
 	// Public IP address/dns names are next
 	if aws.StringValue(instance.PublicIpAddress) != "" {
 		result.IpAddresses = append(result.IpAddresses, aws.StringValue(instance.PublicIpAddress))
+		setIfEmpty(&defaultPublicIPv4, instance.PublicIpAddress)
 	}
 	if aws.StringValue(instance.PublicDnsName) != "" {
 		result.DnsNames = append(result.DnsNames, aws.StringValue(instance.PublicDnsName))
+		setIfEmpty(&defaultPublicDNS, instance.PublicDnsName)
 	}
 
 	// Now go through all of the interfaces and log the IP address of
@@ -635,13 +649,28 @@ func awsInstanceToHost(instance *ec2.Instance) (*pb.ListHostsResponseHost, error
 			return nil, errors.New("response integrity error: interface entry is nil")
 		}
 
+		// detect if this is the primary network device
+		primaryDevice := iface.Attachment != nil && iface.Attachment.DeviceIndex != nil && aws.Int64Value(iface.Attachment.DeviceIndex) == 0
+		// set default ips from first network device
+		if primaryDevice {
+			if len(iface.Ipv6Addresses) > 0 && iface.Ipv6Addresses[0] != nil {
+				setIfEmpty(&defaultIPv6, iface.Ipv6Addresses[0].Ipv6Address)
+			}
+		}
+
 		// Populate default IP addresses/DNS name similar to how we do
 		// for the entire instance.
 		if aws.StringValue(iface.PrivateIpAddress) != "" && !stringInSlice(result.IpAddresses, aws.StringValue(iface.PrivateIpAddress)) {
 			result.IpAddresses = append(result.IpAddresses, aws.StringValue(iface.PrivateIpAddress))
+			if primaryDevice {
+				setIfEmpty(&defaultPrivateIPv4, iface.PrivateIpAddress)
+			}
 		}
 		if aws.StringValue(iface.PrivateDnsName) != "" && !stringInSlice(result.DnsNames, aws.StringValue(iface.PrivateDnsName)) {
 			result.DnsNames = append(result.DnsNames, aws.StringValue(iface.PrivateDnsName))
+			if primaryDevice {
+				setIfEmpty(&defaultPrivateDNS, iface.PrivateDnsName)
+			}
 		}
 
 		// Iterate through the private IP addresses and log the
@@ -654,17 +683,29 @@ func awsInstanceToHost(instance *ec2.Instance) (*pb.ListHostsResponseHost, error
 			// Add private address/dns name if they have not been added yet
 			if aws.StringValue(addr.PrivateIpAddress) != "" && !stringInSlice(result.IpAddresses, aws.StringValue(addr.PrivateIpAddress)) {
 				result.IpAddresses = append(result.IpAddresses, aws.StringValue(addr.PrivateIpAddress))
+				if primaryDevice && aws.BoolValue(addr.Primary) {
+					setIfEmpty(&defaultPrivateIPv4, addr.PrivateIpAddress)
+				}
 			}
 			if aws.StringValue(addr.PrivateDnsName) != "" && !stringInSlice(result.DnsNames, aws.StringValue(addr.PrivateDnsName)) {
 				result.DnsNames = append(result.DnsNames, aws.StringValue(addr.PrivateDnsName))
+				if primaryDevice && aws.BoolValue(addr.Primary) {
+					setIfEmpty(&defaultPrivateDNS, addr.PrivateDnsName)
+				}
 			}
 
 			// Add public address/dns name if they have not been added yet
 			if addr.Association != nil && aws.StringValue(addr.Association.PublicIp) != "" && !stringInSlice(result.IpAddresses, aws.StringValue(addr.Association.PublicIp)) {
 				result.IpAddresses = append(result.IpAddresses, aws.StringValue(addr.Association.PublicIp))
+				if primaryDevice && aws.BoolValue(addr.Primary) {
+					setIfEmpty(&defaultPublicIPv4, addr.Association.PublicIp)
+				}
 			}
 			if addr.Association != nil && aws.StringValue(addr.Association.PublicDnsName) != "" && !stringInSlice(result.DnsNames, aws.StringValue(addr.Association.PublicDnsName)) {
 				result.DnsNames = append(result.DnsNames, aws.StringValue(addr.Association.PublicDnsName))
+				if primaryDevice && aws.BoolValue(addr.Primary) {
+					setIfEmpty(&defaultPublicDNS, addr.Association.PublicDnsName)
+				}
 			}
 		}
 
@@ -676,8 +717,16 @@ func awsInstanceToHost(instance *ec2.Instance) (*pb.ListHostsResponseHost, error
 
 			if addr.Ipv6Address != nil && aws.StringValue(addr.Ipv6Address) != "" {
 				result.IpAddresses = append(result.IpAddresses, aws.StringValue(addr.Ipv6Address))
+				if primaryDevice {
+					setIfEmpty(&defaultIPv6, addr.Ipv6Address)
+				}
 			}
 		}
+	}
+
+	if onlyDefault {
+		result.IpAddresses = appendIfNotEmpty([]string{}, defaultPrivateIPv4, defaultPublicIPv4, defaultIPv6)
+		result.DnsNames = appendIfNotEmpty([]string{}, defaultPrivateDNS, defaultPublicDNS)
 	}
 
 	// Done
@@ -692,4 +741,25 @@ func stringInSlice(s []string, x string) bool {
 	}
 
 	return false
+}
+
+// setIfEmpty sets the value of s if it is not already set to a non-empty value
+// and if the provided val is not nil and not ""
+func setIfEmpty(s *string, val *string) {
+	if val == nil || *val == "" {
+		return
+	}
+	if *s == "" {
+		*s = *val
+	}
+}
+
+// appendIfNotEmpty appends strings to the slice only if they are not empty ("")
+func appendIfNotEmpty(s []string, vs ...string) []string {
+	for _, v := range vs {
+		if v != "" {
+			s = append(s, v)
+		}
+	}
+	return s
 }

@@ -10,4 +10,5 @@ const (
 	constDisableCredentialRotation = "disable_credential_rotation"
 	constCredsLastRotatedTime      = "creds_last_rotated_time"
 	constDescribeInstancesFilters  = "filters"
+	constOnlyDefault               = "only_default"
 )
