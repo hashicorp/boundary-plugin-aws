@@ -101,7 +101,8 @@ func getCatalogSecrets(in *structpb.Struct) (*CatalogSecrets, error) {
 // SetAttributes is a Go-native representation of the Attributes map that can be
 // used for decoding the incoming map via mapstructure.
 type SetAttributes struct {
-	Filters []string
+	Filters     []string
+	OnlyDefault bool
 }
 
 func getSetAttributes(in *structpb.Struct) (*SetAttributes, error) {
@@ -113,6 +114,7 @@ func getSetAttributes(in *structpb.Struct) (*SetAttributes, error) {
 	unknownFields := structFields(in)
 	badFields := make(map[string]string)
 	delete(unknownFields, constDescribeInstancesFilters)
+	delete(unknownFields, constOnlyDefault)
 	for a := range unknownFields {
 		badFields[fmt.Sprintf("attributes.%s", a)] = "unrecognized field"
 	}
