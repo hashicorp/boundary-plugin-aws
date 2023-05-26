@@ -120,6 +120,20 @@ func TestGetCredentialsConfig(t *testing.T) {
 			expectedErrContains: "secrets.bar: unrecognized field, secrets.foo: unrecognized field",
 		},
 		{
+			name: "valid ignore creds_last_rotated_time",
+			in: map[string]any{
+				ConstAccessKeyId:          "foobar",
+				ConstSecretAccessKey:      "bazqux",
+				ConstCredsLastRotatedTime: "2006-01-02T15:04:05+07:00",
+			},
+			region: "us-west-2",
+			expected: &awsutil.CredentialsConfig{
+				AccessKey: "foobar",
+				SecretKey: "bazqux",
+				Region:    "us-west-2",
+			},
+		},
+		{
 			name: "good",
 			in: map[string]any{
 				ConstAccessKeyId:     "foobar",

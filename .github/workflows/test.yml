@@ -6,13 +6,17 @@ on:
 
 jobs:
   test:
-    runs-on: ubuntu-latest
+    runs-on: [self-hosted, ondemand, linux, small]
+    env:
+      GO111MODULE: on
+    permissions:
+      id-token: write
+      contents: read
     steps:
-      - uses: actions/checkout@ac593985615ec2ede58e132d2e21d2b1cbd6127c # v3.3.0
       - name: Set up Go
         uses: actions/setup-go@6edd4406fa81c3da01a34fa6f6343087c207a568 # v3.5.0
         with:
           go-version-file: 'go.mod'
           cache: true
       - name: Run Tests
-        run: go test -v ./plugin/...
+        run: go test -v ./plugin/... ./internal/...

@@ -44,6 +44,9 @@ func GetCredentialsConfig(in *structpb.Struct, region string) (*awsutil.Credenti
 		badFields[fmt.Sprintf("attributes.%s", ConstRegion)] = err.Error()
 	}
 
+	// the creds_last_rotated_time field will be found in the input struct for
+	// persisted secrets, this value is not needed for creating the CredentialsConfig
+	delete(unknownFields, ConstCredsLastRotatedTime)
 	for s := range unknownFields {
 		badFields[fmt.Sprintf("secrets.%s", s)] = "unrecognized field"
 	}
