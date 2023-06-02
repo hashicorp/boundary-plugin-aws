@@ -3,7 +3,7 @@ package storage
 import (
 	"testing"
 
-	cred "github.com/hashicorp/boundary-plugin-host-aws/internal/credential"
+	cred "github.com/hashicorp/boundary-plugin-aws/internal/credential"
 	"github.com/stretchr/testify/require"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"

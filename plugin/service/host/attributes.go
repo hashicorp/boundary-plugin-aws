@@ -3,9 +3,9 @@ package host
 import (
 	"fmt"
 
-	cred "github.com/hashicorp/boundary-plugin-host-aws/internal/credential"
-	"github.com/hashicorp/boundary-plugin-host-aws/internal/errors"
-	"github.com/hashicorp/boundary-plugin-host-aws/internal/values"
+	cred "github.com/hashicorp/boundary-plugin-aws/internal/credential"
+	"github.com/hashicorp/boundary-plugin-aws/internal/errors"
+	"github.com/hashicorp/boundary-plugin-aws/internal/values"
 	"github.com/mitchellh/mapstructure"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"

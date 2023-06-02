@@ -3,7 +3,7 @@ package host
 import (
 	"testing"
 
-	"github.com/hashicorp/boundary-plugin-host-aws/internal/credential"
+	"github.com/hashicorp/boundary-plugin-aws/internal/credential"
 	"github.com/stretchr/testify/require"
 )
 

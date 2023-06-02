@@ -12,9 +12,9 @@ import (
 	"time"
 
 	"github.com/aws/aws-sdk-go/aws/awserr"
-	"github.com/hashicorp/boundary-plugin-host-aws/internal/credential"
-	"github.com/hashicorp/boundary-plugin-host-aws/internal/values"
-	"github.com/hashicorp/boundary-plugin-host-aws/plugin/service/host"
+	"github.com/hashicorp/boundary-plugin-aws/internal/credential"
+	"github.com/hashicorp/boundary-plugin-aws/internal/values"
+	"github.com/hashicorp/boundary-plugin-aws/plugin/service/host"
 	"github.com/hashicorp/boundary/sdk/pbs/controller/api/resources/hostcatalogs"
 	"github.com/hashicorp/boundary/sdk/pbs/controller/api/resources/hostsets"
 	pb "github.com/hashicorp/boundary/sdk/pbs/plugin"
