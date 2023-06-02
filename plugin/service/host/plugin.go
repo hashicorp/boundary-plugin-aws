@@ -18,8 +18,8 @@ import (
 	"google.golang.org/protobuf/proto"
 	"google.golang.org/protobuf/types/known/structpb"
 
-	"github.com/hashicorp/boundary-plugin-host-aws/internal/credential"
-	cred "github.com/hashicorp/boundary-plugin-host-aws/internal/credential"
+	"github.com/hashicorp/boundary-plugin-aws/internal/credential"
+	cred "github.com/hashicorp/boundary-plugin-aws/internal/credential"
 )
 
 // HostPlugin implements the HostPluginServiceServer interface for the

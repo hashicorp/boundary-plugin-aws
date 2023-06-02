@@ -4,8 +4,8 @@ import (
 	"fmt"
 
 	"github.com/aws/aws-sdk-go/aws/endpoints"
-	"github.com/hashicorp/boundary-plugin-host-aws/internal/errors"
-	"github.com/hashicorp/boundary-plugin-host-aws/internal/values"
+	"github.com/hashicorp/boundary-plugin-aws/internal/errors"
+	"github.com/hashicorp/boundary-plugin-aws/internal/values"
 	"github.com/hashicorp/go-secure-stdlib/awsutil"
 	"google.golang.org/protobuf/types/known/structpb"
 )

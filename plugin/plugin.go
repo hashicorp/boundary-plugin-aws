@@ -1,8 +1,8 @@
 package plugin
 
 import (
-	"github.com/hashicorp/boundary-plugin-host-aws/plugin/service/host"
-	"github.com/hashicorp/boundary-plugin-host-aws/plugin/service/storage"
+	"github.com/hashicorp/boundary-plugin-aws/plugin/service/host"
+	"github.com/hashicorp/boundary-plugin-aws/plugin/service/storage"
 	pb "github.com/hashicorp/boundary/sdk/pbs/plugin"
 )
 
