@@ -66,7 +66,7 @@ Example policy:
 The following `attributes` are valid on an AWS storage bucket resource:
 
 - `disable_credential_rotation` (bool): If `true`, credential rotation will not
-  be performed. See the [Credential Rotation](#credential-rotation) section
+  be performed. See the [Credential Rotation](../../../README.md#credential-rotation) section
   above.
 - `region` (string): The region to configure the storage bucket for.
 - `endpoint-url` (string): The endpoint to configure the storage.
