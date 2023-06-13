@@ -9,9 +9,10 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/aws/aws-sdk-go/aws"
-	"github.com/aws/aws-sdk-go/aws/awserr"
-	"github.com/aws/aws-sdk-go/service/ec2"
+	"github.com/aws/aws-sdk-go-v2/aws"
+	"github.com/aws/aws-sdk-go-v2/service/ec2"
+	"github.com/aws/aws-sdk-go-v2/service/ec2/types"
+	awserr "github.com/aws/smithy-go"
 	pb "github.com/hashicorp/boundary/sdk/pbs/plugin"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
@@ -324,7 +325,11 @@ func (p *HostPlugin) OnCreateSet(ctx context.Context, req *pb.OnCreateSetRequest
 		return nil, err
 	}
 
-	ec2Client, err := catalogState.EC2Client(catalogAttributes.Region)
+	opts := []ec2Option{}
+	if catalogAttributes.Region != "" {
+		opts = append(opts, WithRegion(catalogAttributes.Region))
+	}
+	ec2Client, err := catalogState.EC2Client(ctx, opts...)
 	if err != nil {
 		return nil, status.Errorf(codes.InvalidArgument, "error getting EC2 client: %s", err)
 	}
@@ -334,12 +339,12 @@ func (p *HostPlugin) OnCreateSet(ctx context.Context, req *pb.OnCreateSetRequest
 		return nil, status.Errorf(codes.InvalidArgument, "error building DescribeInstances parameters: %s", err)
 	}
 
-	_, err = ec2Client.DescribeInstances(input)
+	_, err = ec2Client.DescribeInstances(ctx, input)
 	if err == nil {
 		return nil, status.Error(codes.FailedPrecondition, "query error: DescribeInstances DryRun should have returned error, but none was found")
 	}
 
-	if awsErr, ok := err.(awserr.Error); ok && awsErr.Code() == "DryRunOperation" {
+	if awsErr, ok := err.(awserr.APIError); ok && awsErr.ErrorCode() == "DryRunOperation" {
 		// Success
 		return &pb.OnCreateSetResponse{}, nil
 	}
@@ -395,7 +400,11 @@ func (p *HostPlugin) OnUpdateSet(ctx context.Context, req *pb.OnUpdateSetRequest
 		return nil, err
 	}
 
-	ec2Client, err := catalogState.EC2Client(catalogAttributes.Region)
+	opts := []ec2Option{}
+	if catalogAttributes.Region != "" {
+		opts = append(opts, WithRegion(catalogAttributes.Region))
+	}
+	ec2Client, err := catalogState.EC2Client(ctx, opts...)
 	if err != nil {
 		return nil, status.Errorf(codes.InvalidArgument, "error getting EC2 client: %s", err)
 	}
@@ -405,12 +414,12 @@ func (p *HostPlugin) OnUpdateSet(ctx context.Context, req *pb.OnUpdateSetRequest
 		return nil, status.Errorf(codes.InvalidArgument, "error building DescribeInstances parameters: %s", err)
 	}
 
-	_, err = ec2Client.DescribeInstances(input)
+	_, err = ec2Client.DescribeInstances(ctx, input)
 	if err == nil {
 		return nil, status.Error(codes.FailedPrecondition, "query error: DescribeInstances DryRun should have returned error, but none was found")
 	}
 
-	if awsErr, ok := err.(awserr.Error); ok && awsErr.Code() == "DryRunOperation" {
+	if awsErr, ok := err.(awserr.APIError); ok && awsErr.ErrorCode() == "DryRunOperation" {
 		// Success
 		return &pb.OnUpdateSetResponse{}, nil
 	}
@@ -494,7 +503,11 @@ func (p *HostPlugin) ListHosts(ctx context.Context, req *pb.ListHostsRequest) (*
 		}
 	}
 
-	ec2Client, err := catalogState.EC2Client(catalogAttributes.Region)
+	opts := []ec2Option{}
+	if catalogAttributes.Region != "" {
+		opts = append(opts, WithRegion(catalogAttributes.Region))
+	}
+	ec2Client, err := catalogState.EC2Client(ctx, opts...)
 	if err != nil {
 		return nil, status.Errorf(codes.InvalidArgument, "error getting EC2 client: %s", err)
 	}
@@ -502,7 +515,7 @@ func (p *HostPlugin) ListHosts(ctx context.Context, req *pb.ListHostsRequest) (*
 	// Run all queries now and assemble output.
 	var maxLen int
 	for i, query := range queries {
-		output, err := ec2Client.DescribeInstances(query.Input)
+		output, err := ec2Client.DescribeInstances(ctx, query.Input)
 		if err != nil {
 			return nil, status.Errorf(codes.InvalidArgument, "error running DescribeInstances for host set id %q: %s", query.Id, err)
 		}
@@ -556,8 +569,8 @@ func (p *HostPlugin) ListHosts(ctx context.Context, req *pb.ListHostsRequest) (*
 	}, nil
 }
 
-func buildFilters(attrs *SetAttributes) ([]*ec2.Filter, error) {
-	var filters []*ec2.Filter
+func buildFilters(attrs *SetAttributes) ([]types.Filter, error) {
+	var filters []types.Filter
 	var foundStateFilter bool
 	for _, filterAttr := range attrs.Filters {
 		// Each filter arrives in "k=v1,v2" format. First, split on equal sign.
@@ -576,14 +589,9 @@ func buildFilters(attrs *SetAttributes) ([]*ec2.Filter, error) {
 			foundStateFilter = true
 		}
 
-		var filterValues []*string
-		for _, val := range strings.Split(filterValue, ",") {
-			filterValues = append(filterValues, aws.String(val))
-		}
-
-		filters = append(filters, &ec2.Filter{
+		filters = append(filters, types.Filter{
 			Name:   aws.String(filterKey),
-			Values: filterValues,
+			Values: strings.Split(filterValue, ","),
 		})
 	}
 
@@ -592,9 +600,9 @@ func buildFilters(attrs *SetAttributes) ([]*ec2.Filter, error) {
 		// instance-state-name = ["running"] to the filter set. This
 		// ensures that we filter on running instances only at the API
 		// side, saving time when processing results.
-		filters = append(filters, &ec2.Filter{
+		filters = append(filters, types.Filter{
 			Name:   aws.String("instance-state-name"),
-			Values: aws.StringSlice([]string{ec2.InstanceStateNameRunning}),
+			Values: []string{string(types.InstanceStateNameRunning)},
 		})
 	}
 
@@ -616,97 +624,49 @@ func buildDescribeInstancesInput(attrs *SetAttributes, dryRun bool) (*ec2.Descri
 // awsInstanceToHost processes data from an ec2.Instance and returns
 // a ListHostsResponseHost with the ID and network addresses
 // populated.
-func awsInstanceToHost(instance *ec2.Instance) (*pb.ListHostsResponseHost, error) {
-	// Integrity check: some fields should always be non-nil. Check
-	// those.
-	if instance == nil {
-		return nil, errors.New("response integrity error: missing instance entry")
-	}
-
-	if aws.StringValue(instance.InstanceId) == "" {
+func awsInstanceToHost(instance types.Instance) (*pb.ListHostsResponseHost, error) {
+	if aws.ToString(instance.InstanceId) == "" {
 		return nil, errors.New("response integrity error: missing instance id")
 	}
 
 	result := new(pb.ListHostsResponseHost)
 
 	// External ID is the instance ID.
-	result.ExternalId = aws.StringValue(instance.InstanceId)
+	result.ExternalId = aws.ToString(instance.InstanceId)
 
 	// External Name is the AWS "Name" tag, if it exists.
 	for _, t := range instance.Tags {
-		if aws.StringValue(t.Key) == ConstInstanceNameTagKey {
-			result.ExternalName = aws.StringValue(t.Value)
+		if aws.ToString(t.Key) == ConstInstanceNameTagKey {
+			result.ExternalName = aws.ToString(t.Value)
 			break
 		}
 	}
 
-	// First IP address/dns name are always the private fields if they
-	// are populated
-	if aws.StringValue(instance.PrivateIpAddress) != "" {
-		result.IpAddresses = append(result.IpAddresses, aws.StringValue(instance.PrivateIpAddress))
-	}
-	if aws.StringValue(instance.PrivateDnsName) != "" {
-		result.DnsNames = append(result.DnsNames, aws.StringValue(instance.PrivateDnsName))
-	}
-
-	// Public IP address/dns names are next
-	if aws.StringValue(instance.PublicIpAddress) != "" {
-		result.IpAddresses = append(result.IpAddresses, aws.StringValue(instance.PublicIpAddress))
-	}
-	if aws.StringValue(instance.PublicDnsName) != "" {
-		result.DnsNames = append(result.DnsNames, aws.StringValue(instance.PublicDnsName))
-	}
+	result.IpAddresses = appendDistinct(result.IpAddresses, instance.PrivateIpAddress, instance.PublicIpAddress)
+	result.DnsNames = appendDistinct(result.DnsNames, instance.PrivateDnsName, instance.PublicDnsName)
 
 	// Now go through all of the interfaces and log the IP address of
 	// every interface.
 	for _, iface := range instance.NetworkInterfaces {
-		if iface == nil {
-			// Probably will never happen, but just in case
-			return nil, errors.New("response integrity error: interface entry is nil")
-		}
-
 		// Populate default IP addresses/DNS name similar to how we do
 		// for the entire instance.
-		if aws.StringValue(iface.PrivateIpAddress) != "" && !stringInSlice(result.IpAddresses, aws.StringValue(iface.PrivateIpAddress)) {
-			result.IpAddresses = append(result.IpAddresses, aws.StringValue(iface.PrivateIpAddress))
-		}
-		if aws.StringValue(iface.PrivateDnsName) != "" && !stringInSlice(result.DnsNames, aws.StringValue(iface.PrivateDnsName)) {
-			result.DnsNames = append(result.DnsNames, aws.StringValue(iface.PrivateDnsName))
-		}
+		result.IpAddresses = appendDistinct(result.IpAddresses, iface.PrivateIpAddress)
+		result.DnsNames = appendDistinct(result.DnsNames, iface.PrivateDnsName)
 
 		// Iterate through the private IP addresses and log the
 		// information.
 		for _, addr := range iface.PrivateIpAddresses {
-			if addr == nil {
-				return nil, errors.New("response integrity error: interface address entry is nil")
-			}
-
-			// Add private address/dns name if they have not been added yet
-			if aws.StringValue(addr.PrivateIpAddress) != "" && !stringInSlice(result.IpAddresses, aws.StringValue(addr.PrivateIpAddress)) {
-				result.IpAddresses = append(result.IpAddresses, aws.StringValue(addr.PrivateIpAddress))
-			}
-			if aws.StringValue(addr.PrivateDnsName) != "" && !stringInSlice(result.DnsNames, aws.StringValue(addr.PrivateDnsName)) {
-				result.DnsNames = append(result.DnsNames, aws.StringValue(addr.PrivateDnsName))
-			}
-
-			// Add public address/dns name if they have not been added yet
-			if addr.Association != nil && aws.StringValue(addr.Association.PublicIp) != "" && !stringInSlice(result.IpAddresses, aws.StringValue(addr.Association.PublicIp)) {
-				result.IpAddresses = append(result.IpAddresses, aws.StringValue(addr.Association.PublicIp))
-			}
-			if addr.Association != nil && aws.StringValue(addr.Association.PublicDnsName) != "" && !stringInSlice(result.DnsNames, aws.StringValue(addr.Association.PublicDnsName)) {
-				result.DnsNames = append(result.DnsNames, aws.StringValue(addr.Association.PublicDnsName))
+			result.IpAddresses = appendDistinct(result.IpAddresses, addr.PrivateIpAddress)
+			result.DnsNames = appendDistinct(result.DnsNames, addr.PrivateDnsName)
+			if addr.Association != nil {
+				result.IpAddresses = appendDistinct(result.IpAddresses, addr.Association.PublicIp)
+				result.DnsNames = appendDistinct(result.DnsNames, addr.Association.PublicDnsName)
 			}
 		}
 
 		// Add the IPv6 addresses.
 		for _, addr := range iface.Ipv6Addresses {
-			if addr == nil {
-				continue
-			}
-
-			if addr.Ipv6Address != nil && aws.StringValue(addr.Ipv6Address) != "" {
-				result.IpAddresses = append(result.IpAddresses, aws.StringValue(addr.Ipv6Address))
-			}
+			result.IpAddresses = appendDistinct(result.IpAddresses, addr.Ipv6Address)
 		}
 	}
 
@@ -714,12 +674,25 @@ func awsInstanceToHost(instance *ec2.Instance) (*pb.ListHostsResponseHost, error
 	return result, nil
 }
 
+// appendDistinct will append the elements to the slice
+// if an element is not nil, empty, and does not exist in slice.
+func appendDistinct(slice []string, elems ...*string) []string {
+	for _, e := range elems {
+		value := aws.ToString(e)
+		if value == "" || stringInSlice(slice, value) {
+			continue
+		}
+		slice = append(slice, value)
+	}
+	return slice
+}
+
+// stringInSlice returns true if the slice contains the given element.
 func stringInSlice(s []string, x string) bool {
 	for _, y := range s {
 		if x == y {
 			return true
 		}
 	}
-
 	return false
 }

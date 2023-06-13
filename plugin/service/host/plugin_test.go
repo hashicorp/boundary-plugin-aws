@@ -10,8 +10,9 @@ import (
 	"sort"
 	"testing"
 
-	"github.com/aws/aws-sdk-go/aws"
-	"github.com/aws/aws-sdk-go/service/ec2"
+	"github.com/aws/aws-sdk-go-v2/aws"
+	"github.com/aws/aws-sdk-go-v2/service/ec2"
+	"github.com/aws/aws-sdk-go-v2/service/ec2/types"
 	"github.com/hashicorp/boundary-plugin-aws/internal/credential"
 	"github.com/hashicorp/boundary/sdk/pbs/controller/api/resources/hostcatalogs"
 	"github.com/hashicorp/boundary/sdk/pbs/controller/api/resources/hostsets"
@@ -1566,9 +1567,9 @@ func TestPluginListHostsErr(t *testing.T) {
 					nil,
 					testMockEC2WithDescribeInstancesOutput(
 						&ec2.DescribeInstancesOutput{
-							Reservations: []*ec2.Reservation{
+							Reservations: []types.Reservation{
 								{
-									Instances: []*ec2.Instance{
+									Instances: []types.Instance{
 										{
 											// Blank so we error out
 										},
@@ -1603,7 +1604,7 @@ func TestBuildFilters(t *testing.T) {
 	cases := []struct {
 		name                string
 		in                  map[string]any
-		expected            []*ec2.Filter
+		expected            []types.Filter
 		expectedErrContains string
 	}{
 		{
@@ -1611,14 +1612,14 @@ func TestBuildFilters(t *testing.T) {
 			in: map[string]any{
 				ConstDescribeInstancesFilters: []any{"foo=bar"},
 			},
-			expected: []*ec2.Filter{
+			expected: []types.Filter{
 				{
 					Name:   aws.String("foo"),
-					Values: aws.StringSlice([]string{"bar"}),
+					Values: []string{"bar"},
 				},
 				{
 					Name:   aws.String("instance-state-name"),
-					Values: aws.StringSlice([]string{ec2.InstanceStateNameRunning}),
+					Values: []string{string(types.InstanceStateNameRunning)},
 				},
 			},
 		},
@@ -1630,14 +1631,14 @@ func TestBuildFilters(t *testing.T) {
 					"instance-state-name=static",
 				},
 			},
-			expected: []*ec2.Filter{
+			expected: []types.Filter{
 				{
 					Name:   aws.String("foo"),
-					Values: aws.StringSlice([]string{"bar"}),
+					Values: []string{"bar"},
 				},
 				{
 					Name:   aws.String("instance-state-name"),
-					Values: aws.StringSlice([]string{"static"}),
+					Values: []string{"static"},
 				},
 			},
 		},
@@ -1648,14 +1649,14 @@ func TestBuildFilters(t *testing.T) {
 					"foo=bar,baz",
 				},
 			},
-			expected: []*ec2.Filter{
+			expected: []types.Filter{
 				{
 					Name:   aws.String("foo"),
-					Values: aws.StringSlice([]string{"bar", "baz"}),
+					Values: []string{"bar", "baz"},
 				},
 				{
 					Name:   aws.String("instance-state-name"),
-					Values: aws.StringSlice([]string{ec2.InstanceStateNameRunning}),
+					Values: []string{string(types.InstanceStateNameRunning)},
 				},
 			},
 		},
@@ -1664,10 +1665,10 @@ func TestBuildFilters(t *testing.T) {
 			in: map[string]any{
 				ConstDescribeInstancesFilters: []any{},
 			},
-			expected: []*ec2.Filter{
+			expected: []types.Filter{
 				{
 					Name:   aws.String("instance-state-name"),
-					Values: aws.StringSlice([]string{ec2.InstanceStateNameRunning}),
+					Values: []string{string(types.InstanceStateNameRunning)},
 				},
 			},
 		},
@@ -1714,14 +1715,14 @@ func TestBuildDescribeInstancesInput(t *testing.T) {
 			dryRun: true,
 			expected: &ec2.DescribeInstancesInput{
 				DryRun: aws.Bool(true),
-				Filters: []*ec2.Filter{
+				Filters: []types.Filter{
 					{
 						Name:   aws.String("foo"),
-						Values: aws.StringSlice([]string{"bar"}),
+						Values: []string{"bar"},
 					},
 					{
 						Name:   aws.String("instance-state-name"),
-						Values: aws.StringSlice([]string{ec2.InstanceStateNameRunning}),
+						Values: []string{string(types.InstanceStateNameRunning)},
 					},
 				},
 			},
@@ -1736,14 +1737,14 @@ func TestBuildDescribeInstancesInput(t *testing.T) {
 			dryRun: false,
 			expected: &ec2.DescribeInstancesInput{
 				DryRun: aws.Bool(false),
-				Filters: []*ec2.Filter{
+				Filters: []types.Filter{
 					{
 						Name:   aws.String("foo"),
-						Values: aws.StringSlice([]string{"bar"}),
+						Values: []string{"bar"},
 					},
 					{
 						Name:   aws.String("instance-state-name"),
-						Values: aws.StringSlice([]string{ec2.InstanceStateNameRunning}),
+						Values: []string{string(types.InstanceStateNameRunning)},
 					},
 				},
 			},
@@ -1775,55 +1776,30 @@ func TestBuildDescribeInstancesInput(t *testing.T) {
 func TestAwsInstanceToHost(t *testing.T) {
 	cases := []struct {
 		name        string
-		instance    *ec2.Instance
+		instance    types.Instance
 		expected    *pb.ListHostsResponseHost
 		expectedErr string
 	}{
 		{
-			name:        "nil instance",
-			instance:    nil,
-			expectedErr: "response integrity error: missing instance entry",
-		},
-		{
 			name:        "missing instance id",
-			instance:    &ec2.Instance{},
+			instance:    types.Instance{},
 			expectedErr: "response integrity error: missing instance id",
 		},
 		{
-			name: "nil interface entry",
-			instance: &ec2.Instance{
-				InstanceId:        aws.String("foobar"),
-				NetworkInterfaces: []*ec2.InstanceNetworkInterface{nil},
-			},
-			expectedErr: "response integrity error: interface entry is nil",
-		},
-		{
-			name: "nil interface address entry",
-			instance: &ec2.Instance{
-				InstanceId: aws.String("foobar"),
-				NetworkInterfaces: []*ec2.InstanceNetworkInterface{
-					{
-						PrivateIpAddresses: []*ec2.InstancePrivateIpAddress{nil},
-					},
-				},
-			},
-			expectedErr: "response integrity error: interface address entry is nil",
-		},
-		{
 			name: "good, single IP w/public addr",
-			instance: &ec2.Instance{
+			instance: types.Instance{
 				InstanceId:       aws.String("foobar"),
 				PrivateIpAddress: aws.String("10.0.0.1"),
 				PrivateDnsName:   aws.String("test.example.internal"),
 				PublicIpAddress:  aws.String("1.1.1.1"),
 				PublicDnsName:    aws.String("test.example.com"),
-				NetworkInterfaces: []*ec2.InstanceNetworkInterface{
+				NetworkInterfaces: []types.InstanceNetworkInterface{
 					{
 						PrivateIpAddress: aws.String("10.0.0.1"),
 						PrivateDnsName:   aws.String("test.example.internal"),
-						PrivateIpAddresses: []*ec2.InstancePrivateIpAddress{
+						PrivateIpAddresses: []types.InstancePrivateIpAddress{
 							{
-								Association: &ec2.InstanceNetworkInterfaceAssociation{
+								Association: &types.InstanceNetworkInterfaceAssociation{
 									PublicIp:      aws.String("1.1.1.1"),
 									PublicDnsName: aws.String("test.example.com"),
 								},
@@ -1842,15 +1818,15 @@ func TestAwsInstanceToHost(t *testing.T) {
 		},
 		{
 			name: "good, private",
-			instance: &ec2.Instance{
+			instance: types.Instance{
 				InstanceId:       aws.String("foobar"),
 				PrivateIpAddress: aws.String("10.0.0.1"),
 				PrivateDnsName:   aws.String("test.example.internal"),
-				NetworkInterfaces: []*ec2.InstanceNetworkInterface{
+				NetworkInterfaces: []types.InstanceNetworkInterface{
 					{
 						PrivateIpAddress: aws.String("10.0.0.1"),
 						PrivateDnsName:   aws.String("test.example.internal"),
-						PrivateIpAddresses: []*ec2.InstancePrivateIpAddress{
+						PrivateIpAddresses: []types.InstancePrivateIpAddress{
 							{
 								PrivateIpAddress: aws.String("10.0.0.1"),
 								PrivateDnsName:   aws.String("test.example.internal"),
@@ -1867,17 +1843,17 @@ func TestAwsInstanceToHost(t *testing.T) {
 		},
 		{
 			name: "good, multiple interfaces",
-			instance: &ec2.Instance{
+			instance: types.Instance{
 				InstanceId:       aws.String("foobar"),
 				PrivateIpAddress: aws.String("10.0.0.1"),
 				PrivateDnsName:   aws.String("test.example.internal"),
 				PublicIpAddress:  aws.String("1.1.1.1"),
 				PublicDnsName:    aws.String("test.example.com"),
-				NetworkInterfaces: []*ec2.InstanceNetworkInterface{
+				NetworkInterfaces: []types.InstanceNetworkInterface{
 					{
 						PrivateIpAddress: aws.String("10.0.0.2"),
 						PrivateDnsName:   aws.String("test2.example.internal"),
-						PrivateIpAddresses: []*ec2.InstancePrivateIpAddress{
+						PrivateIpAddresses: []types.InstancePrivateIpAddress{
 							{
 								PrivateIpAddress: aws.String("10.0.0.2"),
 								PrivateDnsName:   aws.String("test2.example.internal"),
@@ -1887,9 +1863,9 @@ func TestAwsInstanceToHost(t *testing.T) {
 					{
 						PrivateIpAddress: aws.String("10.0.0.1"),
 						PrivateDnsName:   aws.String("test.example.internal"),
-						PrivateIpAddresses: []*ec2.InstancePrivateIpAddress{
+						PrivateIpAddresses: []types.InstancePrivateIpAddress{
 							{
-								Association: &ec2.InstanceNetworkInterfaceAssociation{
+								Association: &types.InstanceNetworkInterfaceAssociation{
 									PublicIp:      aws.String("1.1.1.1"),
 									PublicDnsName: aws.String("test.example.com"),
 								},
@@ -1908,19 +1884,19 @@ func TestAwsInstanceToHost(t *testing.T) {
 		},
 		{
 			name: "good, multiple public interfaces",
-			instance: &ec2.Instance{
+			instance: types.Instance{
 				InstanceId:       aws.String("foobar"),
 				PrivateIpAddress: aws.String("10.0.0.1"),
 				PrivateDnsName:   aws.String("test.example.internal"),
 				PublicIpAddress:  aws.String("1.1.1.1"),
 				PublicDnsName:    aws.String("test.example.com"),
-				NetworkInterfaces: []*ec2.InstanceNetworkInterface{
+				NetworkInterfaces: []types.InstanceNetworkInterface{
 					{
 						PrivateIpAddress: aws.String("10.0.0.2"),
 						PrivateDnsName:   aws.String("test2.example.internal"),
-						PrivateIpAddresses: []*ec2.InstancePrivateIpAddress{
+						PrivateIpAddresses: []types.InstancePrivateIpAddress{
 							{
-								Association: &ec2.InstanceNetworkInterfaceAssociation{
+								Association: &types.InstanceNetworkInterfaceAssociation{
 									PublicIp:      aws.String("1.1.1.2"),
 									PublicDnsName: aws.String("test2.example.com"),
 								},
@@ -1932,9 +1908,9 @@ func TestAwsInstanceToHost(t *testing.T) {
 					{
 						PrivateIpAddress: aws.String("10.0.0.1"),
 						PrivateDnsName:   aws.String("test.example.internal"),
-						PrivateIpAddresses: []*ec2.InstancePrivateIpAddress{
+						PrivateIpAddresses: []types.InstancePrivateIpAddress{
 							{
-								Association: &ec2.InstanceNetworkInterfaceAssociation{
+								Association: &types.InstanceNetworkInterfaceAssociation{
 									PublicIp:      aws.String("1.1.1.1"),
 									PublicDnsName: aws.String("test.example.com"),
 								},
@@ -1953,19 +1929,19 @@ func TestAwsInstanceToHost(t *testing.T) {
 		},
 		{
 			name: "good, multiple addresses on single interface",
-			instance: &ec2.Instance{
+			instance: types.Instance{
 				InstanceId:       aws.String("foobar"),
 				PrivateIpAddress: aws.String("10.0.0.1"),
 				PrivateDnsName:   aws.String("test.example.internal"),
 				PublicIpAddress:  aws.String("1.1.1.1"),
 				PublicDnsName:    aws.String("test.example.com"),
-				NetworkInterfaces: []*ec2.InstanceNetworkInterface{
+				NetworkInterfaces: []types.InstanceNetworkInterface{
 					{
 						PrivateIpAddress: aws.String("10.0.0.1"),
 						PrivateDnsName:   aws.String("test.example.internal"),
-						PrivateIpAddresses: []*ec2.InstancePrivateIpAddress{
+						PrivateIpAddresses: []types.InstancePrivateIpAddress{
 							{
-								Association: &ec2.InstanceNetworkInterfaceAssociation{
+								Association: &types.InstanceNetworkInterfaceAssociation{
 									PublicIp:      aws.String("1.1.1.1"),
 									PublicDnsName: aws.String("test.example.com"),
 								},
@@ -1988,25 +1964,25 @@ func TestAwsInstanceToHost(t *testing.T) {
 		},
 		{
 			name: "good, single IP w/public addr and IPv6",
-			instance: &ec2.Instance{
+			instance: types.Instance{
 				InstanceId:       aws.String("foobar"),
 				PrivateIpAddress: aws.String("10.0.0.1"),
 				PrivateDnsName:   aws.String("test.example.internal"),
 				PublicIpAddress:  aws.String("1.1.1.1"),
 				PublicDnsName:    aws.String("test.example.com"),
-				NetworkInterfaces: []*ec2.InstanceNetworkInterface{
+				NetworkInterfaces: []types.InstanceNetworkInterface{
 					{
 						PrivateIpAddress: aws.String("10.0.0.1"),
-						PrivateIpAddresses: []*ec2.InstancePrivateIpAddress{
+						PrivateIpAddresses: []types.InstancePrivateIpAddress{
 							{
-								Association: &ec2.InstanceNetworkInterfaceAssociation{
+								Association: &types.InstanceNetworkInterfaceAssociation{
 									PublicIp: aws.String("1.1.1.1"),
 								},
 								PrivateIpAddress: aws.String("10.0.0.1"),
 							},
 						},
-						Ipv6Addresses: []*ec2.InstanceIpv6Address{
-							nil, // Just coverage for nil assertion which is skipped
+						Ipv6Addresses: []types.InstanceIpv6Address{
+							{Ipv6Address: nil}, // Just coverage for nil assertion which is skipped
 							{Ipv6Address: aws.String("some::fake::address")},
 						},
 					},
@@ -2020,24 +1996,24 @@ func TestAwsInstanceToHost(t *testing.T) {
 		},
 		{
 			name: "good, single IP w/public addr and external name",
-			instance: &ec2.Instance{
+			instance: types.Instance{
 				InstanceId:       aws.String("foobar"),
 				PrivateIpAddress: aws.String("10.0.0.1"),
 				PrivateDnsName:   aws.String("test.example.internal"),
 				PublicIpAddress:  aws.String("1.1.1.1"),
 				PublicDnsName:    aws.String("test.example.com"),
-				Tags: []*ec2.Tag{
+				Tags: []types.Tag{
 					{Key: aws.String("Name"), Value: aws.String("test-instance-actual-name")}, // The tag name is "Name", not "name".
 					{Key: aws.String("name"), Value: aws.String("test-instance-fake-name")},
 					{Key: aws.String("contains-Name"), Value: aws.String("test-instance-contains-name")},
 				},
-				NetworkInterfaces: []*ec2.InstanceNetworkInterface{
+				NetworkInterfaces: []types.InstanceNetworkInterface{
 					{
 						PrivateIpAddress: aws.String("10.0.0.1"),
 						PrivateDnsName:   aws.String("test.example.internal"),
-						PrivateIpAddresses: []*ec2.InstancePrivateIpAddress{
+						PrivateIpAddresses: []types.InstancePrivateIpAddress{
 							{
-								Association: &ec2.InstanceNetworkInterfaceAssociation{
+								Association: &types.InstanceNetworkInterfaceAssociation{
 									PublicIp:      aws.String("1.1.1.1"),
 									PublicDnsName: aws.String("test.example.com"),
 								},
@@ -2057,24 +2033,24 @@ func TestAwsInstanceToHost(t *testing.T) {
 		},
 		{
 			name: "good, single IP w/public addr and external name",
-			instance: &ec2.Instance{
+			instance: types.Instance{
 				InstanceId:       aws.String("foobar"),
 				PrivateIpAddress: aws.String("10.0.0.1"),
 				PrivateDnsName:   aws.String("test.example.internal"),
 				PublicIpAddress:  aws.String("1.1.1.1"),
 				PublicDnsName:    aws.String("test.example.com"),
-				Tags: []*ec2.Tag{
+				Tags: []types.Tag{
 					{Key: aws.String("Name"), Value: aws.String("test-instance-actual-name")}, // The tag name is "Name", not "name".
 					{Key: aws.String("name"), Value: aws.String("test-instance-fake-name")},
 					{Key: aws.String("contains-Name"), Value: aws.String("test-instance-contains-name")},
 				},
-				NetworkInterfaces: []*ec2.InstanceNetworkInterface{
+				NetworkInterfaces: []types.InstanceNetworkInterface{
 					{
 						PrivateIpAddress: aws.String("10.0.0.1"),
 						PrivateDnsName:   aws.String("test.example.internal"),
-						PrivateIpAddresses: []*ec2.InstancePrivateIpAddress{
+						PrivateIpAddresses: []types.InstancePrivateIpAddress{
 							{
-								Association: &ec2.InstanceNetworkInterfaceAssociation{
+								Association: &types.InstanceNetworkInterfaceAssociation{
 									PublicIp:      aws.String("1.1.1.1"),
 									PublicDnsName: aws.String("test.example.com"),
 								},
@@ -2106,6 +2082,58 @@ func TestAwsInstanceToHost(t *testing.T) {
 
 			require.NoError(err)
 			require.Equal(tc.expected, actual)
+		})
+	}
+}
+
+func TestAppendDistinct(t *testing.T) {
+	cases := []struct {
+		name     string
+		slice    []string
+		elems    []*string
+		expected []string
+	}{
+		{
+			name:     "empty slice, empty elems",
+			slice:    []string{},
+			elems:    []*string{},
+			expected: []string{},
+		},
+		{
+			name:     "empty elems",
+			slice:    []string{"bar"},
+			elems:    []*string{},
+			expected: []string{"bar"},
+		},
+		{
+			name:     "skip nil elem",
+			slice:    []string{"bar"},
+			elems:    []*string{nil},
+			expected: []string{"bar"},
+		},
+		{
+			name:     "skip empty elem",
+			slice:    []string{"bar"},
+			elems:    []*string{aws.String("")},
+			expected: []string{"bar"},
+		},
+		{
+			name:  "skip duplicate elem",
+			slice: []string{"bar"},
+			elems: []*string{
+				aws.String("bar"),
+				aws.String("foo"),
+				aws.String("foo"),
+			},
+			expected: []string{"bar", "foo"},
+		},
+	}
+	for _, tc := range cases {
+		tc := tc
+		t.Run(tc.name, func(t *testing.T) {
+			require := require.New(t)
+			actual := appendDistinct(tc.slice, tc.elems...)
+			require.ElementsMatch(actual, tc.expected)
 		})
 	}
 }

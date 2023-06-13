@@ -4,6 +4,7 @@
 package host
 
 import (
+	"context"
 	"testing"
 
 	"github.com/hashicorp/boundary-plugin-aws/internal/credential"
@@ -25,7 +26,7 @@ func TestAwsCatalogPersistedStateEC2Client(t *testing.T) {
 	)
 	require.NoError(err)
 
-	clientRaw, err := state.EC2Client("us-west-2")
+	clientRaw, err := state.EC2Client(context.Background(), WithRegion("us-west-2"))
 	require.NoError(err)
 	require.NotNil(clientRaw)
 	client, ok := clientRaw.(*testMockEC2)
