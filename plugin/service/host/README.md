@@ -105,17 +105,18 @@ a configured IAM user for this provider:
 The following `attributes` are valid on an AWS host catalog resource:
 
 - `disable_credential_rotation` (bool): If `true`, credential rotation will not
-  be performed. See the [Credential Rotation](../../../README.md#credential-rotation) section
-  above.
+  be performed. See the [Credential Rotation](../../../README.md#credential-rotation) readme for more information.
 - `region` (string): The region to configure the host catalog for. All host sets
   in this catalog will be configured for this region.
 
-The following `secrets` are valid on an AWS host catalog resource:
+The following `secrets` are required on an AWS host catalog resource:
 
 - `access_key_id` (string): The access key ID for the IAM user to use with this
   host catalog.
 - `secret_access_key` (string): The secret access key for the IAM user to use
   with this host catalog.
+
+See the [Credential Rotation](../../../README.md#credential-rotation) readme for more information.
 
 ### Host Set
 

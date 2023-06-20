@@ -5,14 +5,31 @@ Boundary](https://www.boundaryproject.io/).
 
 ## Credential Rotation
 
-Although credentials are stored encrypted within Boundary, by default this
+This is the following priority for the credential chain:
+static, assume role, environment variables.
+
+### Static Credentials
+
+Although static credentials are stored encrypted within Boundary, by default this
 plugin will attempt to rotate credentials when they are supplied through the
 `secrets` object. The given credentials will be used to create a new credential,
 and then the given credential will be revoked. In this way, after rotation,
-only Boundary knows the client secret in use by this plugin.
+only Boundary knows the client secret in use by this plugin. More information
+about AWS static credentials can be found [here](https://docs.aws.amazon.com/sdkref/latest/guide/feature-static-credentials.html).
 
 Credential rotation can be turned off by setting the 
 `disable_credential_rotation` attribute to `true`.
+
+### Assume Role Credentials
+
+This plugin will attempt to assume a role when a `role_arn` is supplied through the
+`attributes` object. More information about assume an AWS role can be found [here](https://docs.aws.amazon.com/STS/latest/APIReference/API_AssumeRole.html). This feature only works when the plugin is running on a self managed Boundary [worker](https://developer.hashicorp.com/boundary/tutorials/hcp-administration/hcp-manage-workers).
+
+### Environment Credentials
+
+This plugin will attempt to retrieve credentials from environment variables. More
+information about environment variables for AWS credentials can be found [here](https://docs.aws.amazon.com/sdkref/latest/guide/feature-static-credentials.html). This feature only works when the plugin is running on
+a self managed Boundary [worker](https://developer.hashicorp.com/boundary/tutorials/hcp-administration/hcp-manage-workers).
 
 ## Dynamic Hosts
 
