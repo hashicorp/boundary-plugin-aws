@@ -209,7 +209,7 @@ func TestGetTimeValue(t *testing.T) {
 	}
 }
 
-func TestGetMapString(t *testing.T) {
+func TestGetMapStringString(t *testing.T) {
 	cases := []struct {
 		name        string
 		in          *structpb.Struct
@@ -289,7 +289,7 @@ func TestGetMapString(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			require := require.New(t)
 
-			actual, err := GetMapString(tc.in, tc.key, tc.required)
+			actual, err := GetMapStringString(tc.in, tc.key, tc.required)
 			if tc.expectedErr != "" {
 				require.EqualError(err, tc.expectedErr)
 				return

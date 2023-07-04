@@ -84,10 +84,10 @@ func GetTimeValue(in *structpb.Struct, k string) (time.Time, error) {
 	return t, nil
 }
 
-// GetMapString returns a map[string]string value and no error if the given key
+// GetMapStringString returns a map[string]string value and no error if the given key
 // is found in the provided proto struct input. An error is returned if the key
 // is not found or the value type is not map[string]string.
-func GetMapString(in *structpb.Struct, k string, required bool) (map[string]string, error) {
+func GetMapStringString(in *structpb.Struct, k string, required bool) (map[string]string, error) {
 	mv := in.GetFields()
 	v, ok := mv[k]
 	if !ok {

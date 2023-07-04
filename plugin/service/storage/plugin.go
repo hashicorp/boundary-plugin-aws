@@ -9,7 +9,6 @@ import (
 	"context"
 	"crypto/sha256"
 	"encoding/base64"
-	"fmt"
 	"io"
 	"os"
 	"path"
@@ -79,7 +78,6 @@ func (p *StoragePlugin) OnCreateStorageBucket(ctx context.Context, req *pb.OnCre
 
 	// Try to rotate static credentials
 	if cred.HasStaticCredentials(credState.CredentialsConfig.AccessKey) {
-		fmt.Printf("\nSTATIC\n")
 		if !storageAttributes.DisableCredentialRotation {
 			if err := credState.RotateCreds(); err != nil {
 				return nil, status.Errorf(codes.InvalidArgument, "error during credential rotation: %s", err)

@@ -138,7 +138,7 @@ func GetCredentialAttributes(in *structpb.Struct) (*CredentialAttributes, error)
 		badFields[fmt.Sprintf("attributes.%s", ConstRoleSessionName)] = err.Error()
 	}
 
-	roleTags, err := values.GetMapString(in, ConstRoleTags, false)
+	roleTags, err := values.GetMapStringString(in, ConstRoleTags, false)
 	if err != nil {
 		badFields[fmt.Sprintf("attributes.%s", ConstRoleTags)] = err.Error()
 	}
