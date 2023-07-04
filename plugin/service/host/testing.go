@@ -4,10 +4,11 @@
 package host
 
 import (
-	"github.com/aws/aws-sdk-go/aws"
-	"github.com/aws/aws-sdk-go/aws/session"
-	"github.com/aws/aws-sdk-go/service/ec2"
-	"github.com/aws/aws-sdk-go/service/ec2/ec2iface"
+	"context"
+
+	"github.com/aws/aws-sdk-go-v2/aws"
+	"github.com/aws/aws-sdk-go-v2/service/ec2"
+	"github.com/aws/aws-sdk-go-v2/service/ec2/types"
 )
 
 const (
@@ -29,10 +30,11 @@ func (s *testMockEC2State) Reset() {
 }
 
 type testMockEC2 struct {
-	ec2iface.EC2API
+	EC2API
 
-	State                   *testMockEC2State
-	Region                  string
+	State  *testMockEC2State
+	Region string
+
 	DescribeInstancesOutput *ec2.DescribeInstancesOutput
 	DescribeInstancesError  error
 }
@@ -54,7 +56,7 @@ func testMockEC2WithDescribeInstancesError(e error) testMockEC2Option {
 }
 
 func newTestMockEC2(state *testMockEC2State, opts ...testMockEC2Option) ec2APIFunc {
-	return func(sess *session.Session, cfgs ...*aws.Config) (ec2iface.EC2API, error) {
+	return func(cfgs ...aws.Config) (EC2API, error) {
 		m := &testMockEC2{
 			State: state,
 		}
@@ -67,14 +69,17 @@ func newTestMockEC2(state *testMockEC2State, opts ...testMockEC2Option) ec2APIFu
 
 		for _, cfg := range cfgs {
 			// Last region takes precedence
-			m.Region = *cfg.Region
+			if cfg.Region != "" {
+				m.Region = cfg.Region
+			}
+
 		}
 
 		return m, nil
 	}
 }
 
-func (m *testMockEC2) DescribeInstances(input *ec2.DescribeInstancesInput) (*ec2.DescribeInstancesOutput, error) {
+func (m *testMockEC2) DescribeInstances(ctx context.Context, input *ec2.DescribeInstancesInput, optFns ...func(*ec2.Options)) (*ec2.DescribeInstancesOutput, error) {
 	if m.State != nil {
 		m.State.DescribeInstancesCalled = true
 		m.State.DescribeInstancesInputParams = input
@@ -87,7 +92,7 @@ func (m *testMockEC2) DescribeInstances(input *ec2.DescribeInstancesInput) (*ec2
 	return m.DescribeInstancesOutput, nil
 }
 
-type ec2FilterSorter []*ec2.Filter
+type ec2FilterSorter []types.Filter
 
 func (s ec2FilterSorter) Len() int           { return len(s) }
 func (s ec2FilterSorter) Less(i, j int) bool { return *s[i].Name < *s[j].Name }

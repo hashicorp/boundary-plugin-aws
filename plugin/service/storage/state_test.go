@@ -7,7 +7,7 @@ import (
 	"context"
 	"testing"
 
-	"github.com/aws/aws-sdk-go/service/s3"
+	"github.com/aws/aws-sdk-go-v2/service/s3"
 	"github.com/hashicorp/boundary-plugin-aws/internal/credential"
 	"github.com/stretchr/testify/require"
 )
