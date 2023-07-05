@@ -2,7 +2,7 @@ module github.com/hashicorp/boundary-plugin-aws
 
 go 1.20
 
-replace github.com/hashicorp/boundary/sdk => github.com/hashicorp/boundary/sdk v0.0.36-0.20230705165757-c7e98a6f1782
+replace github.com/hashicorp/boundary/sdk => github.com/hashicorp/boundary/sdk v0.0.35-0.20230705165757-c7e98a6f1782
 
 require (
 	github.com/aws/aws-sdk-go v1.44.80
@@ -12,7 +12,7 @@ require (
 	github.com/aws/aws-sdk-go-v2/service/s3 v1.31.1
 	github.com/google/go-cmp v0.5.9
 	github.com/google/uuid v1.3.0
-	github.com/hashicorp/boundary/sdk v0.0.33
+	github.com/hashicorp/boundary/sdk v0.0.35
 	github.com/hashicorp/go-secure-stdlib/awsutil v0.1.6
 	github.com/hashicorp/terraform-json v0.14.0
 	github.com/mitchellh/mapstructure v1.5.0
