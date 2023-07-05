@@ -2,6 +2,8 @@ module github.com/hashicorp/boundary-plugin-aws
 
 go 1.20
 
+replace github.com/hashicorp/boundary/sdk => github.com/hashicorp/boundary/sdk v0.0.36-0.20230705165757-c7e98a6f1782
+
 require (
 	github.com/aws/aws-sdk-go v1.44.80
 	github.com/aws/aws-sdk-go-v2 v1.17.7

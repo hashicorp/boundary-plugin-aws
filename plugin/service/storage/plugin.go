@@ -9,6 +9,7 @@ import (
 	"context"
 	"crypto/sha256"
 	"encoding/base64"
+	"fmt"
 	"io"
 	"os"
 	"path"
@@ -17,6 +18,7 @@ import (
 	"github.com/aws/aws-sdk-go-v2/aws/retry"
 	"github.com/aws/aws-sdk-go-v2/service/s3"
 	"github.com/aws/aws-sdk-go-v2/service/s3/types"
+	"github.com/aws/aws-sdk-go/aws/awserr"
 	"github.com/google/uuid"
 	cred "github.com/hashicorp/boundary-plugin-aws/internal/credential"
 	"github.com/hashicorp/boundary/sdk/pbs/controller/api/resources/storagebuckets"
@@ -714,5 +716,41 @@ func parseAWSErrCode(msg string, err error) error {
 	if retryErr.IsErrorThrottle(err).Bool() {
 		errCode = codes.Unavailable
 	}
-	return status.Errorf(errCode, "%s: %s", msg, err)
+	st := status.New(errCode, fmt.Sprintf("%s: %s", msg, err))
+	if aerr, ok := err.(awserr.Error); ok {
+		detail := &pb.ErrorDetail{
+			Status:  500,
+			Code:    aerr.Code(),
+			Message: aerr.Message(),
+		}
+		// aws error codes are strings that are more granular than status codes
+		// https://docs.aws.amazon.com/AmazonS3/latest/API/ErrorResponses.html
+		switch aerr.Code() {
+		case "AccessDenied":
+			// generic 403 response, who knows, credentials were invalidated, etc
+			detail.Status = 403
+			errCode = codes.Unauthenticated
+		case "InvalidSecurity":
+			// these specific credentials aren't valid
+			fallthrough
+		case "InvalidAccessKeyId":
+			// a specific case for an access key being revoked. this is probably
+			// the one we want to watch out for
+			fallthrough
+		case "UnauthorizedAccess":
+			// standard 401 response, client is no longer authorized and may
+			// need new credentials
+			detail.Status = 401
+			errCode = codes.Unauthenticated
+		default:
+			// we didn't get a code we were expecting, just fallback to previous
+			// logic. if we need to parse more codes in the future, we can.
+		}
+
+		var sterr error
+		if st, sterr = st.WithDetails(detail); sterr != nil {
+			panic(fmt.Sprintf("Unexpected error while attaching AWS error metadata: %v", sterr))
+		}
+	}
+	return st.Err()
 }
