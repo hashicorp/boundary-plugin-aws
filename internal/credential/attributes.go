@@ -34,12 +34,16 @@ func GetCredentialsConfig(in *structpb.Struct, region string) (*awsutil.Credenti
 	accessKey, err := values.GetStringValue(in, ConstAccessKeyId, true)
 	if err != nil {
 		badFields[fmt.Sprintf("secrets.%s", ConstAccessKeyId)] = err.Error()
+	} else if len(accessKey) != 20 {
+		badFields[fmt.Sprintf("secrets.%s", ConstAccessKeyId)] = "value must be 20 characters"
 	}
 	delete(unknownFields, ConstAccessKeyId)
 
 	secretKey, err := values.GetStringValue(in, ConstSecretAccessKey, true)
 	if err != nil {
 		badFields[fmt.Sprintf("secrets.%s", ConstSecretAccessKey)] = err.Error()
+	} else if len(secretKey) != 40 {
+		badFields[fmt.Sprintf("secrets.%s", ConstSecretAccessKey)] = "value must be 40 characters"
 	}
 	delete(unknownFields, ConstSecretAccessKey)
 
