@@ -500,8 +500,8 @@ func TestStoragePlugin_OnUpdateStorageBucket(t *testing.T) {
 					BucketName: "foo",
 					Secrets: &structpb.Struct{
 						Fields: map[string]*structpb.Value{
-							credential.ConstAccessKeyId:     structpb.NewStringValue("--------------onetwo"),
-							credential.ConstSecretAccessKey: structpb.NewStringValue("-------------------------------threefour"),
+							credential.ConstAccessKeyId:     structpb.NewStringValue("00000000000000onetwo"),
+							credential.ConstSecretAccessKey: structpb.NewStringValue("0000000000000000000000000000000threefour"),
 						},
 					},
 					Attributes: &structpb.Struct{

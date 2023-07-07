@@ -353,8 +353,8 @@ func TestPluginOnUpdateCatalogErr(t *testing.T) {
 				NewCatalog: &hostcatalogs.HostCatalog{
 					Secrets: &structpb.Struct{
 						Fields: map[string]*structpb.Value{
-							credential.ConstAccessKeyId:     structpb.NewStringValue("--------------onetwo"),
-							credential.ConstSecretAccessKey: structpb.NewStringValue("-------------------------------threefour"),
+							credential.ConstAccessKeyId:     structpb.NewStringValue("00000000000000onetwo"),
+							credential.ConstSecretAccessKey: structpb.NewStringValue("0000000000000000000000000000000threefour"),
 						},
 					},
 					Attrs: &hostcatalogs.HostCatalog_Attributes{
