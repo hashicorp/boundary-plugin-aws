@@ -127,7 +127,17 @@ func TestGetCredentialsConfig(t *testing.T) {
 				ConstCredsLastRotatedTime: "2006-01-02T15:04:05+07:00",
 			},
 			region:              "us-west-2",
-			expectedErrContains: "secrets.access_key_id: value must be 20 characters, secrets.secret_access_key: value must be 40 characters",
+			expectedErrContains: "secrets.access_key_id: value must be between 16 and 128 characters, secrets.secret_access_key: value must be 40 characters",
+		},
+		{
+			name: "key contains invalid chars",
+			in: map[string]any{
+				ConstAccessKeyId:          "foobarbazbuzquintile-",
+				ConstSecretAccessKey:      "bazqux-not-thinking-of-40-chars-for-this",
+				ConstCredsLastRotatedTime: "2006-01-02T15:04:05+07:00",
+			},
+			region:              "us-west-2",
+			expectedErrContains: "secrets.access_key_id: value must only contain characters matching [\\w]+",
 		},
 		{
 			name:                "getstring error doesn't trigger char len error",
