@@ -93,8 +93,8 @@ func TestPluginOnCreateCatalogErr(t *testing.T) {
 				Catalog: &hostcatalogs.HostCatalog{
 					Secrets: &structpb.Struct{
 						Fields: map[string]*structpb.Value{
-							credential.ConstAccessKeyId:     structpb.NewStringValue("foobar"),
-							credential.ConstSecretAccessKey: structpb.NewStringValue("bazqux"),
+							credential.ConstAccessKeyId:     structpb.NewStringValue("foobarbazbuzquintile"),
+							credential.ConstSecretAccessKey: structpb.NewStringValue("bazqux-not-thinking-of-40-chars-for-this"),
 						}},
 					Attrs: &hostcatalogs.HostCatalog_Attributes{
 						Attributes: &structpb.Struct{
@@ -114,8 +114,8 @@ func TestPluginOnCreateCatalogErr(t *testing.T) {
 				Catalog: &hostcatalogs.HostCatalog{
 					Secrets: &structpb.Struct{
 						Fields: map[string]*structpb.Value{
-							credential.ConstAccessKeyId:     structpb.NewStringValue("foobar"),
-							credential.ConstSecretAccessKey: structpb.NewStringValue("bazqux"),
+							credential.ConstAccessKeyId:     structpb.NewStringValue("foobarbazbuzquintile"),
+							credential.ConstSecretAccessKey: structpb.NewStringValue("bazqux-not-thinking-of-40-chars-for-this"),
 						}},
 					Attrs: &hostcatalogs.HostCatalog_Attributes{
 						Attributes: &structpb.Struct{
@@ -140,8 +140,8 @@ func TestPluginOnCreateCatalogErr(t *testing.T) {
 				Catalog: &hostcatalogs.HostCatalog{
 					Secrets: &structpb.Struct{
 						Fields: map[string]*structpb.Value{
-							credential.ConstAccessKeyId:     structpb.NewStringValue("foobar"),
-							credential.ConstSecretAccessKey: structpb.NewStringValue("bazqux"),
+							credential.ConstAccessKeyId:     structpb.NewStringValue("foobarbazbuzquintile"),
+							credential.ConstSecretAccessKey: structpb.NewStringValue("bazqux-not-thinking-of-40-chars-for-this"),
 						}},
 					Attrs: &hostcatalogs.HostCatalog_Attributes{
 						Attributes: &structpb.Struct{
@@ -170,8 +170,8 @@ func TestPluginOnCreateCatalogErr(t *testing.T) {
 				Catalog: &hostcatalogs.HostCatalog{
 					Secrets: &structpb.Struct{
 						Fields: map[string]*structpb.Value{
-							credential.ConstAccessKeyId:     structpb.NewStringValue("foobar"),
-							credential.ConstSecretAccessKey: structpb.NewStringValue("bazqux"),
+							credential.ConstAccessKeyId:     structpb.NewStringValue("foobarbazbuzquintile"),
+							credential.ConstSecretAccessKey: structpb.NewStringValue("bazqux-not-thinking-of-40-chars-for-this"),
 						}},
 					Attrs: &hostcatalogs.HostCatalog_Attributes{
 						Attributes: &structpb.Struct{
@@ -281,8 +281,8 @@ func TestPluginOnUpdateCatalogErr(t *testing.T) {
 				Persisted: &pb.HostCatalogPersisted{
 					Secrets: &structpb.Struct{
 						Fields: map[string]*structpb.Value{
-							credential.ConstAccessKeyId:          structpb.NewStringValue("foobar"),
-							credential.ConstSecretAccessKey:      structpb.NewStringValue("bazqux"),
+							credential.ConstAccessKeyId:          structpb.NewStringValue("foobarbazbuzquintile"),
+							credential.ConstSecretAccessKey:      structpb.NewStringValue("bazqux-not-thinking-of-40-chars-for-this"),
 							credential.ConstCredsLastRotatedTime: structpb.NewStringValue("2006-01-02T15:04:05+07:00"),
 						},
 					},
@@ -312,8 +312,8 @@ func TestPluginOnUpdateCatalogErr(t *testing.T) {
 				Persisted: &pb.HostCatalogPersisted{
 					Secrets: &structpb.Struct{
 						Fields: map[string]*structpb.Value{
-							credential.ConstAccessKeyId:          structpb.NewStringValue("foobar"),
-							credential.ConstSecretAccessKey:      structpb.NewStringValue("bazqux"),
+							credential.ConstAccessKeyId:          structpb.NewStringValue("foobarbazbuzquintile"),
+							credential.ConstSecretAccessKey:      structpb.NewStringValue("bazqux-not-thinking-of-40-chars-for-this"),
 							credential.ConstCredsLastRotatedTime: structpb.NewStringValue("2006-01-02T15:04:05+07:00"),
 						},
 					},
@@ -338,8 +338,8 @@ func TestPluginOnUpdateCatalogErr(t *testing.T) {
 				Persisted: &pb.HostCatalogPersisted{
 					Secrets: &structpb.Struct{
 						Fields: map[string]*structpb.Value{
-							credential.ConstAccessKeyId:          structpb.NewStringValue("foobar"),
-							credential.ConstSecretAccessKey:      structpb.NewStringValue("bazqux"),
+							credential.ConstAccessKeyId:          structpb.NewStringValue("foobarbazbuzquintile"),
+							credential.ConstSecretAccessKey:      structpb.NewStringValue("bazqux-not-thinking-of-40-chars-for-this"),
 							credential.ConstCredsLastRotatedTime: structpb.NewStringValue("2006-01-02T15:04:05+07:00"),
 						},
 					},
@@ -354,8 +354,8 @@ func TestPluginOnUpdateCatalogErr(t *testing.T) {
 				NewCatalog: &hostcatalogs.HostCatalog{
 					Secrets: &structpb.Struct{
 						Fields: map[string]*structpb.Value{
-							credential.ConstAccessKeyId:     structpb.NewStringValue("onetwo"),
-							credential.ConstSecretAccessKey: structpb.NewStringValue("threefour"),
+							credential.ConstAccessKeyId:     structpb.NewStringValue("00000000000000onetwo"),
+							credential.ConstSecretAccessKey: structpb.NewStringValue("0000000000000000000000000000000threefour"),
 						},
 					},
 					Attrs: &hostcatalogs.HostCatalog_Attributes{
@@ -370,8 +370,8 @@ func TestPluginOnUpdateCatalogErr(t *testing.T) {
 				Persisted: &pb.HostCatalogPersisted{
 					Secrets: &structpb.Struct{
 						Fields: map[string]*structpb.Value{
-							credential.ConstAccessKeyId:          structpb.NewStringValue("foobar"),
-							credential.ConstSecretAccessKey:      structpb.NewStringValue("bazqux"),
+							credential.ConstAccessKeyId:          structpb.NewStringValue("foobarbazbuzquintile"),
+							credential.ConstSecretAccessKey:      structpb.NewStringValue("bazqux-not-thinking-of-40-chars-for-this"),
 							credential.ConstCredsLastRotatedTime: structpb.NewStringValue("2006-01-02T15:04:05+07:00"),
 						},
 					},
@@ -404,8 +404,8 @@ func TestPluginOnUpdateCatalogErr(t *testing.T) {
 				Persisted: &pb.HostCatalogPersisted{
 					Secrets: &structpb.Struct{
 						Fields: map[string]*structpb.Value{
-							credential.ConstAccessKeyId:     structpb.NewStringValue("foobar"),
-							credential.ConstSecretAccessKey: structpb.NewStringValue("bazqux"),
+							credential.ConstAccessKeyId:     structpb.NewStringValue("foobarbazbuzquintile"),
+							credential.ConstSecretAccessKey: structpb.NewStringValue("bazqux-not-thinking-of-40-chars-for-this"),
 						},
 					},
 				},
@@ -463,8 +463,8 @@ func TestPluginOnDeleteCatalogErr(t *testing.T) {
 				Persisted: &pb.HostCatalogPersisted{
 					Secrets: &structpb.Struct{
 						Fields: map[string]*structpb.Value{
-							credential.ConstAccessKeyId:          structpb.NewStringValue("foobar"),
-							credential.ConstSecretAccessKey:      structpb.NewStringValue("bazqux"),
+							credential.ConstAccessKeyId:          structpb.NewStringValue("foobarbazbuzquintile"),
+							credential.ConstSecretAccessKey:      structpb.NewStringValue("bazqux-not-thinking-of-40-chars-for-this"),
 							credential.ConstCredsLastRotatedTime: structpb.NewStringValue("2006-01-02T15:04:05+07:00"),
 						},
 					},
@@ -493,8 +493,8 @@ func TestPluginOnDeleteCatalogErr(t *testing.T) {
 				Persisted: &pb.HostCatalogPersisted{
 					Secrets: &structpb.Struct{
 						Fields: map[string]*structpb.Value{
-							credential.ConstAccessKeyId:          structpb.NewStringValue("foobar"),
-							credential.ConstSecretAccessKey:      structpb.NewStringValue("bazqux"),
+							credential.ConstAccessKeyId:          structpb.NewStringValue("foobarbazbuzquintile"),
+							credential.ConstSecretAccessKey:      structpb.NewStringValue("bazqux-not-thinking-of-40-chars-for-this"),
 							credential.ConstCredsLastRotatedTime: structpb.NewStringValue("2006-01-02T15:04:05+07:00"),
 						},
 					},
@@ -598,8 +598,8 @@ func TestPluginOnCreateSetErr(t *testing.T) {
 				Persisted: &pb.HostCatalogPersisted{
 					Secrets: &structpb.Struct{
 						Fields: map[string]*structpb.Value{
-							credential.ConstAccessKeyId:          structpb.NewStringValue("foobar"),
-							credential.ConstSecretAccessKey:      structpb.NewStringValue("bazqux"),
+							credential.ConstAccessKeyId:          structpb.NewStringValue("foobarbazbuzquintile"),
+							credential.ConstSecretAccessKey:      structpb.NewStringValue("bazqux-not-thinking-of-40-chars-for-this"),
 							credential.ConstCredsLastRotatedTime: structpb.NewStringValue("2006-01-02T15:04:05+07:00"),
 						},
 					},
@@ -628,8 +628,8 @@ func TestPluginOnCreateSetErr(t *testing.T) {
 				Persisted: &pb.HostCatalogPersisted{
 					Secrets: &structpb.Struct{
 						Fields: map[string]*structpb.Value{
-							credential.ConstAccessKeyId:          structpb.NewStringValue("foobar"),
-							credential.ConstSecretAccessKey:      structpb.NewStringValue("bazqux"),
+							credential.ConstAccessKeyId:          structpb.NewStringValue("foobarbazbuzquintile"),
+							credential.ConstSecretAccessKey:      structpb.NewStringValue("bazqux-not-thinking-of-40-chars-for-this"),
 							credential.ConstCredsLastRotatedTime: structpb.NewStringValue("2006-01-02T15:04:05+07:00"),
 						},
 					},
@@ -653,8 +653,8 @@ func TestPluginOnCreateSetErr(t *testing.T) {
 				Persisted: &pb.HostCatalogPersisted{
 					Secrets: &structpb.Struct{
 						Fields: map[string]*structpb.Value{
-							credential.ConstAccessKeyId:          structpb.NewStringValue("foobar"),
-							credential.ConstSecretAccessKey:      structpb.NewStringValue("bazqux"),
+							credential.ConstAccessKeyId:          structpb.NewStringValue("foobarbazbuzquintile"),
+							credential.ConstSecretAccessKey:      structpb.NewStringValue("bazqux-not-thinking-of-40-chars-for-this"),
 							credential.ConstCredsLastRotatedTime: structpb.NewStringValue("2006-01-02T15:04:05+07:00"),
 						},
 					},
@@ -679,8 +679,8 @@ func TestPluginOnCreateSetErr(t *testing.T) {
 				Persisted: &pb.HostCatalogPersisted{
 					Secrets: &structpb.Struct{
 						Fields: map[string]*structpb.Value{
-							credential.ConstAccessKeyId:          structpb.NewStringValue("foobar"),
-							credential.ConstSecretAccessKey:      structpb.NewStringValue("bazqux"),
+							credential.ConstAccessKeyId:          structpb.NewStringValue("foobarbazbuzquintile"),
+							credential.ConstSecretAccessKey:      structpb.NewStringValue("bazqux-not-thinking-of-40-chars-for-this"),
 							credential.ConstCredsLastRotatedTime: structpb.NewStringValue("2006-01-02T15:04:05+07:00"),
 						},
 					},
@@ -714,8 +714,8 @@ func TestPluginOnCreateSetErr(t *testing.T) {
 				Persisted: &pb.HostCatalogPersisted{
 					Secrets: &structpb.Struct{
 						Fields: map[string]*structpb.Value{
-							credential.ConstAccessKeyId:          structpb.NewStringValue("foobar"),
-							credential.ConstSecretAccessKey:      structpb.NewStringValue("bazqux"),
+							credential.ConstAccessKeyId:          structpb.NewStringValue("foobarbazbuzquintile"),
+							credential.ConstSecretAccessKey:      structpb.NewStringValue("bazqux-not-thinking-of-40-chars-for-this"),
 							credential.ConstCredsLastRotatedTime: structpb.NewStringValue("2006-01-02T15:04:05+07:00"),
 						},
 					},
@@ -759,8 +759,8 @@ func TestPluginOnCreateSetErr(t *testing.T) {
 				Persisted: &pb.HostCatalogPersisted{
 					Secrets: &structpb.Struct{
 						Fields: map[string]*structpb.Value{
-							credential.ConstAccessKeyId:          structpb.NewStringValue("foobar"),
-							credential.ConstSecretAccessKey:      structpb.NewStringValue("bazqux"),
+							credential.ConstAccessKeyId:          structpb.NewStringValue("foobarbazbuzquintile"),
+							credential.ConstSecretAccessKey:      structpb.NewStringValue("bazqux-not-thinking-of-40-chars-for-this"),
 							credential.ConstCredsLastRotatedTime: structpb.NewStringValue("2006-01-02T15:04:05+07:00"),
 						},
 					},
@@ -805,8 +805,8 @@ func TestPluginOnCreateSetErr(t *testing.T) {
 				Persisted: &pb.HostCatalogPersisted{
 					Secrets: &structpb.Struct{
 						Fields: map[string]*structpb.Value{
-							credential.ConstAccessKeyId:          structpb.NewStringValue("foobar"),
-							credential.ConstSecretAccessKey:      structpb.NewStringValue("bazqux"),
+							credential.ConstAccessKeyId:          structpb.NewStringValue("foobarbazbuzquintile"),
+							credential.ConstSecretAccessKey:      structpb.NewStringValue("bazqux-not-thinking-of-40-chars-for-this"),
 							credential.ConstCredsLastRotatedTime: structpb.NewStringValue("2006-01-02T15:04:05+07:00"),
 						},
 					},
@@ -850,8 +850,8 @@ func TestPluginOnCreateSetErr(t *testing.T) {
 				Persisted: &pb.HostCatalogPersisted{
 					Secrets: &structpb.Struct{
 						Fields: map[string]*structpb.Value{
-							credential.ConstAccessKeyId:          structpb.NewStringValue("foobar"),
-							credential.ConstSecretAccessKey:      structpb.NewStringValue("bazqux"),
+							credential.ConstAccessKeyId:          structpb.NewStringValue("foobarbazbuzquintile"),
+							credential.ConstSecretAccessKey:      structpb.NewStringValue("bazqux-not-thinking-of-40-chars-for-this"),
 							credential.ConstCredsLastRotatedTime: structpb.NewStringValue("2006-01-02T15:04:05+07:00"),
 						},
 					},
@@ -967,8 +967,8 @@ func TestPluginOnUpdateSetErr(t *testing.T) {
 				Persisted: &pb.HostCatalogPersisted{
 					Secrets: &structpb.Struct{
 						Fields: map[string]*structpb.Value{
-							credential.ConstAccessKeyId:          structpb.NewStringValue("foobar"),
-							credential.ConstSecretAccessKey:      structpb.NewStringValue("bazqux"),
+							credential.ConstAccessKeyId:          structpb.NewStringValue("foobarbazbuzquintile"),
+							credential.ConstSecretAccessKey:      structpb.NewStringValue("bazqux-not-thinking-of-40-chars-for-this"),
 							credential.ConstCredsLastRotatedTime: structpb.NewStringValue("2006-01-02T15:04:05+07:00"),
 						},
 					},
@@ -997,8 +997,8 @@ func TestPluginOnUpdateSetErr(t *testing.T) {
 				Persisted: &pb.HostCatalogPersisted{
 					Secrets: &structpb.Struct{
 						Fields: map[string]*structpb.Value{
-							credential.ConstAccessKeyId:          structpb.NewStringValue("foobar"),
-							credential.ConstSecretAccessKey:      structpb.NewStringValue("bazqux"),
+							credential.ConstAccessKeyId:          structpb.NewStringValue("foobarbazbuzquintile"),
+							credential.ConstSecretAccessKey:      structpb.NewStringValue("bazqux-not-thinking-of-40-chars-for-this"),
 							credential.ConstCredsLastRotatedTime: structpb.NewStringValue("2006-01-02T15:04:05+07:00"),
 						},
 					},
@@ -1022,8 +1022,8 @@ func TestPluginOnUpdateSetErr(t *testing.T) {
 				Persisted: &pb.HostCatalogPersisted{
 					Secrets: &structpb.Struct{
 						Fields: map[string]*structpb.Value{
-							credential.ConstAccessKeyId:          structpb.NewStringValue("foobar"),
-							credential.ConstSecretAccessKey:      structpb.NewStringValue("bazqux"),
+							credential.ConstAccessKeyId:          structpb.NewStringValue("foobarbazbuzquintile"),
+							credential.ConstSecretAccessKey:      structpb.NewStringValue("bazqux-not-thinking-of-40-chars-for-this"),
 							credential.ConstCredsLastRotatedTime: structpb.NewStringValue("2006-01-02T15:04:05+07:00"),
 						},
 					},
@@ -1048,8 +1048,8 @@ func TestPluginOnUpdateSetErr(t *testing.T) {
 				Persisted: &pb.HostCatalogPersisted{
 					Secrets: &structpb.Struct{
 						Fields: map[string]*structpb.Value{
-							credential.ConstAccessKeyId:          structpb.NewStringValue("foobar"),
-							credential.ConstSecretAccessKey:      structpb.NewStringValue("bazqux"),
+							credential.ConstAccessKeyId:          structpb.NewStringValue("foobarbazbuzquintile"),
+							credential.ConstSecretAccessKey:      structpb.NewStringValue("bazqux-not-thinking-of-40-chars-for-this"),
 							credential.ConstCredsLastRotatedTime: structpb.NewStringValue("2006-01-02T15:04:05+07:00"),
 						},
 					},
@@ -1083,8 +1083,8 @@ func TestPluginOnUpdateSetErr(t *testing.T) {
 				Persisted: &pb.HostCatalogPersisted{
 					Secrets: &structpb.Struct{
 						Fields: map[string]*structpb.Value{
-							credential.ConstAccessKeyId:          structpb.NewStringValue("foobar"),
-							credential.ConstSecretAccessKey:      structpb.NewStringValue("bazqux"),
+							credential.ConstAccessKeyId:          structpb.NewStringValue("foobarbazbuzquintile"),
+							credential.ConstSecretAccessKey:      structpb.NewStringValue("bazqux-not-thinking-of-40-chars-for-this"),
 							credential.ConstCredsLastRotatedTime: structpb.NewStringValue("2006-01-02T15:04:05+07:00"),
 						},
 					},
@@ -1128,8 +1128,8 @@ func TestPluginOnUpdateSetErr(t *testing.T) {
 				Persisted: &pb.HostCatalogPersisted{
 					Secrets: &structpb.Struct{
 						Fields: map[string]*structpb.Value{
-							credential.ConstAccessKeyId:          structpb.NewStringValue("foobar"),
-							credential.ConstSecretAccessKey:      structpb.NewStringValue("bazqux"),
+							credential.ConstAccessKeyId:          structpb.NewStringValue("foobarbazbuzquintile"),
+							credential.ConstSecretAccessKey:      structpb.NewStringValue("bazqux-not-thinking-of-40-chars-for-this"),
 							credential.ConstCredsLastRotatedTime: structpb.NewStringValue("2006-01-02T15:04:05+07:00"),
 						},
 					},
@@ -1174,8 +1174,8 @@ func TestPluginOnUpdateSetErr(t *testing.T) {
 				Persisted: &pb.HostCatalogPersisted{
 					Secrets: &structpb.Struct{
 						Fields: map[string]*structpb.Value{
-							credential.ConstAccessKeyId:          structpb.NewStringValue("foobar"),
-							credential.ConstSecretAccessKey:      structpb.NewStringValue("bazqux"),
+							credential.ConstAccessKeyId:          structpb.NewStringValue("foobarbazbuzquintile"),
+							credential.ConstSecretAccessKey:      structpb.NewStringValue("bazqux-not-thinking-of-40-chars-for-this"),
 							credential.ConstCredsLastRotatedTime: structpb.NewStringValue("2006-01-02T15:04:05+07:00"),
 						},
 					},
@@ -1291,8 +1291,8 @@ func TestPluginListHostsErr(t *testing.T) {
 				Persisted: &pb.HostCatalogPersisted{
 					Secrets: &structpb.Struct{
 						Fields: map[string]*structpb.Value{
-							credential.ConstAccessKeyId:          structpb.NewStringValue("foobar"),
-							credential.ConstSecretAccessKey:      structpb.NewStringValue("bazqux"),
+							credential.ConstAccessKeyId:          structpb.NewStringValue("foobarbazbuzquintile"),
+							credential.ConstSecretAccessKey:      structpb.NewStringValue("bazqux-not-thinking-of-40-chars-for-this"),
 							credential.ConstCredsLastRotatedTime: structpb.NewStringValue("2006-01-02T15:04:05+07:00"),
 						},
 					},
@@ -1321,8 +1321,8 @@ func TestPluginListHostsErr(t *testing.T) {
 				Persisted: &pb.HostCatalogPersisted{
 					Secrets: &structpb.Struct{
 						Fields: map[string]*structpb.Value{
-							credential.ConstAccessKeyId:          structpb.NewStringValue("foobar"),
-							credential.ConstSecretAccessKey:      structpb.NewStringValue("bazqux"),
+							credential.ConstAccessKeyId:          structpb.NewStringValue("foobarbazbuzquintile"),
+							credential.ConstSecretAccessKey:      structpb.NewStringValue("bazqux-not-thinking-of-40-chars-for-this"),
 							credential.ConstCredsLastRotatedTime: structpb.NewStringValue("2006-01-02T15:04:05+07:00"),
 						},
 					},
@@ -1346,8 +1346,8 @@ func TestPluginListHostsErr(t *testing.T) {
 				Persisted: &pb.HostCatalogPersisted{
 					Secrets: &structpb.Struct{
 						Fields: map[string]*structpb.Value{
-							credential.ConstAccessKeyId:          structpb.NewStringValue("foobar"),
-							credential.ConstSecretAccessKey:      structpb.NewStringValue("bazqux"),
+							credential.ConstAccessKeyId:          structpb.NewStringValue("foobarbazbuzquintile"),
+							credential.ConstSecretAccessKey:      structpb.NewStringValue("bazqux-not-thinking-of-40-chars-for-this"),
 							credential.ConstCredsLastRotatedTime: structpb.NewStringValue("2006-01-02T15:04:05+07:00"),
 						},
 					},
@@ -1372,8 +1372,8 @@ func TestPluginListHostsErr(t *testing.T) {
 				Persisted: &pb.HostCatalogPersisted{
 					Secrets: &structpb.Struct{
 						Fields: map[string]*structpb.Value{
-							credential.ConstAccessKeyId:          structpb.NewStringValue("foobar"),
-							credential.ConstSecretAccessKey:      structpb.NewStringValue("bazqux"),
+							credential.ConstAccessKeyId:          structpb.NewStringValue("foobarbazbuzquintile"),
+							credential.ConstSecretAccessKey:      structpb.NewStringValue("bazqux-not-thinking-of-40-chars-for-this"),
 							credential.ConstCredsLastRotatedTime: structpb.NewStringValue("2006-01-02T15:04:05+07:00"),
 						},
 					},
@@ -1402,8 +1402,8 @@ func TestPluginListHostsErr(t *testing.T) {
 				Persisted: &pb.HostCatalogPersisted{
 					Secrets: &structpb.Struct{
 						Fields: map[string]*structpb.Value{
-							credential.ConstAccessKeyId:          structpb.NewStringValue("foobar"),
-							credential.ConstSecretAccessKey:      structpb.NewStringValue("bazqux"),
+							credential.ConstAccessKeyId:          structpb.NewStringValue("foobarbazbuzquintile"),
+							credential.ConstSecretAccessKey:      structpb.NewStringValue("bazqux-not-thinking-of-40-chars-for-this"),
 							credential.ConstCredsLastRotatedTime: structpb.NewStringValue("2006-01-02T15:04:05+07:00"),
 						},
 					},
@@ -1440,8 +1440,8 @@ func TestPluginListHostsErr(t *testing.T) {
 				Persisted: &pb.HostCatalogPersisted{
 					Secrets: &structpb.Struct{
 						Fields: map[string]*structpb.Value{
-							credential.ConstAccessKeyId:          structpb.NewStringValue("foobar"),
-							credential.ConstSecretAccessKey:      structpb.NewStringValue("bazqux"),
+							credential.ConstAccessKeyId:          structpb.NewStringValue("foobarbazbuzquintile"),
+							credential.ConstSecretAccessKey:      structpb.NewStringValue("bazqux-not-thinking-of-40-chars-for-this"),
 							credential.ConstCredsLastRotatedTime: structpb.NewStringValue("2006-01-02T15:04:05+07:00"),
 						},
 					},
@@ -1488,8 +1488,8 @@ func TestPluginListHostsErr(t *testing.T) {
 				Persisted: &pb.HostCatalogPersisted{
 					Secrets: &structpb.Struct{
 						Fields: map[string]*structpb.Value{
-							credential.ConstAccessKeyId:          structpb.NewStringValue("foobar"),
-							credential.ConstSecretAccessKey:      structpb.NewStringValue("bazqux"),
+							credential.ConstAccessKeyId:          structpb.NewStringValue("foobarbazbuzquintile"),
+							credential.ConstSecretAccessKey:      structpb.NewStringValue("bazqux-not-thinking-of-40-chars-for-this"),
 							credential.ConstCredsLastRotatedTime: structpb.NewStringValue("2006-01-02T15:04:05+07:00"),
 						},
 					},
@@ -1537,8 +1537,8 @@ func TestPluginListHostsErr(t *testing.T) {
 				Persisted: &pb.HostCatalogPersisted{
 					Secrets: &structpb.Struct{
 						Fields: map[string]*structpb.Value{
-							credential.ConstAccessKeyId:          structpb.NewStringValue("foobar"),
-							credential.ConstSecretAccessKey:      structpb.NewStringValue("bazqux"),
+							credential.ConstAccessKeyId:          structpb.NewStringValue("foobarbazbuzquintile"),
+							credential.ConstSecretAccessKey:      structpb.NewStringValue("bazqux-not-thinking-of-40-chars-for-this"),
 							credential.ConstCredsLastRotatedTime: structpb.NewStringValue("2006-01-02T15:04:05+07:00"),
 						},
 					},

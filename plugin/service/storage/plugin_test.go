@@ -36,8 +36,8 @@ func TestStoragePlugin_OnCreateStorageBucket(t *testing.T) {
 				BucketName: "foo",
 				Secrets: &structpb.Struct{
 					Fields: map[string]*structpb.Value{
-						credential.ConstAccessKeyId:     structpb.NewStringValue("foobar"),
-						credential.ConstSecretAccessKey: structpb.NewStringValue("bazqux"),
+						credential.ConstAccessKeyId:     structpb.NewStringValue("foobarbazbuzquintile"),
+						credential.ConstSecretAccessKey: structpb.NewStringValue("bazqux-not-thinking-of-40-chars-for-this"),
 					}},
 				Attributes: &structpb.Struct{
 					Fields: map[string]*structpb.Value{
@@ -126,8 +126,8 @@ func TestStoragePlugin_OnCreateStorageBucket(t *testing.T) {
 					BucketName: "foo",
 					Secrets: &structpb.Struct{
 						Fields: map[string]*structpb.Value{
-							credential.ConstAccessKeyId:     structpb.NewStringValue("foobar"),
-							credential.ConstSecretAccessKey: structpb.NewStringValue("bazqux"),
+							credential.ConstAccessKeyId:     structpb.NewStringValue("foobarbazbuzquintile"),
+							credential.ConstSecretAccessKey: structpb.NewStringValue("bazqux-not-thinking-of-40-chars-for-this"),
 						}},
 					Attributes: &structpb.Struct{
 						Fields: map[string]*structpb.Value{
@@ -158,8 +158,8 @@ func TestStoragePlugin_OnCreateStorageBucket(t *testing.T) {
 					BucketName: "foo",
 					Secrets: &structpb.Struct{
 						Fields: map[string]*structpb.Value{
-							credential.ConstAccessKeyId:     structpb.NewStringValue("foobar"),
-							credential.ConstSecretAccessKey: structpb.NewStringValue("bazqux"),
+							credential.ConstAccessKeyId:     structpb.NewStringValue("foobarbazbuzquintile"),
+							credential.ConstSecretAccessKey: structpb.NewStringValue("bazqux-not-thinking-of-40-chars-for-this"),
 						}},
 					Attributes: &structpb.Struct{
 						Fields: map[string]*structpb.Value{
@@ -347,8 +347,8 @@ func TestStoragePlugin_OnUpdateStorageBucket(t *testing.T) {
 			Persisted: &storagebuckets.StorageBucketPersisted{
 				Data: &structpb.Struct{
 					Fields: map[string]*structpb.Value{
-						credential.ConstAccessKeyId:     structpb.NewStringValue("foobar"),
-						credential.ConstSecretAccessKey: structpb.NewStringValue("bazqux"),
+						credential.ConstAccessKeyId:     structpb.NewStringValue("foobarbazbuzquintile"),
+						credential.ConstSecretAccessKey: structpb.NewStringValue("bazqux-not-thinking-of-40-chars-for-this"),
 					},
 				},
 			},
@@ -428,8 +428,8 @@ func TestStoragePlugin_OnUpdateStorageBucket(t *testing.T) {
 				Persisted: &storagebuckets.StorageBucketPersisted{
 					Data: &structpb.Struct{
 						Fields: map[string]*structpb.Value{
-							credential.ConstAccessKeyId:          structpb.NewStringValue("foobar"),
-							credential.ConstSecretAccessKey:      structpb.NewStringValue("bazqux"),
+							credential.ConstAccessKeyId:          structpb.NewStringValue("foobarbazbuzquintile"),
+							credential.ConstSecretAccessKey:      structpb.NewStringValue("bazqux-not-thinking-of-40-chars-for-this"),
 							credential.ConstCredsLastRotatedTime: structpb.NewStringValue("2006-01-02T15:04:05+07:00"),
 						},
 					},
@@ -458,8 +458,8 @@ func TestStoragePlugin_OnUpdateStorageBucket(t *testing.T) {
 				Persisted: &storagebuckets.StorageBucketPersisted{
 					Data: &structpb.Struct{
 						Fields: map[string]*structpb.Value{
-							credential.ConstAccessKeyId:          structpb.NewStringValue("foobar"),
-							credential.ConstSecretAccessKey:      structpb.NewStringValue("bazqux"),
+							credential.ConstAccessKeyId:          structpb.NewStringValue("foobarbazbuzquintile"),
+							credential.ConstSecretAccessKey:      structpb.NewStringValue("bazqux-not-thinking-of-40-chars-for-this"),
 							credential.ConstCredsLastRotatedTime: structpb.NewStringValue("2006-01-02T15:04:05+07:00"),
 						},
 					},
@@ -483,8 +483,8 @@ func TestStoragePlugin_OnUpdateStorageBucket(t *testing.T) {
 				Persisted: &storagebuckets.StorageBucketPersisted{
 					Data: &structpb.Struct{
 						Fields: map[string]*structpb.Value{
-							credential.ConstAccessKeyId:          structpb.NewStringValue("foobar"),
-							credential.ConstSecretAccessKey:      structpb.NewStringValue("bazqux"),
+							credential.ConstAccessKeyId:          structpb.NewStringValue("foobarbazbuzquintile"),
+							credential.ConstSecretAccessKey:      structpb.NewStringValue("bazqux-not-thinking-of-40-chars-for-this"),
 							credential.ConstCredsLastRotatedTime: structpb.NewStringValue("2006-01-02T15:04:05+07:00"),
 						},
 					},
@@ -500,8 +500,8 @@ func TestStoragePlugin_OnUpdateStorageBucket(t *testing.T) {
 					BucketName: "foo",
 					Secrets: &structpb.Struct{
 						Fields: map[string]*structpb.Value{
-							credential.ConstAccessKeyId:     structpb.NewStringValue("onetwo"),
-							credential.ConstSecretAccessKey: structpb.NewStringValue("threefour"),
+							credential.ConstAccessKeyId:     structpb.NewStringValue("00000000000000onetwo"),
+							credential.ConstSecretAccessKey: structpb.NewStringValue("0000000000000000000000000000000threefour"),
 						},
 					},
 					Attributes: &structpb.Struct{
@@ -514,8 +514,8 @@ func TestStoragePlugin_OnUpdateStorageBucket(t *testing.T) {
 				Persisted: &storagebuckets.StorageBucketPersisted{
 					Data: &structpb.Struct{
 						Fields: map[string]*structpb.Value{
-							credential.ConstAccessKeyId:          structpb.NewStringValue("foobar"),
-							credential.ConstSecretAccessKey:      structpb.NewStringValue("bazqux"),
+							credential.ConstAccessKeyId:          structpb.NewStringValue("foobarbazbuzquintile"),
+							credential.ConstSecretAccessKey:      structpb.NewStringValue("bazqux-not-thinking-of-40-chars-for-this"),
 							credential.ConstCredsLastRotatedTime: structpb.NewStringValue("2006-01-02T15:04:05+07:00"),
 						},
 					},
@@ -547,8 +547,8 @@ func TestStoragePlugin_OnUpdateStorageBucket(t *testing.T) {
 				Persisted: &storagebuckets.StorageBucketPersisted{
 					Data: &structpb.Struct{
 						Fields: map[string]*structpb.Value{
-							credential.ConstAccessKeyId:     structpb.NewStringValue("foobar"),
-							credential.ConstSecretAccessKey: structpb.NewStringValue("bazqux"),
+							credential.ConstAccessKeyId:     structpb.NewStringValue("foobarbazbuzquintile"),
+							credential.ConstSecretAccessKey: structpb.NewStringValue("bazqux-not-thinking-of-40-chars-for-this"),
 						},
 					},
 				},
@@ -671,8 +671,8 @@ func TestStoragePlugin_OnUpdateStorageBucket(t *testing.T) {
 				Persisted: &storagebuckets.StorageBucketPersisted{
 					Data: &structpb.Struct{
 						Fields: map[string]*structpb.Value{
-							credential.ConstAccessKeyId:     structpb.NewStringValue("foobar"),
-							credential.ConstSecretAccessKey: structpb.NewStringValue("bazqux"),
+							credential.ConstAccessKeyId:     structpb.NewStringValue("foobarbazbuzquintile"),
+							credential.ConstSecretAccessKey: structpb.NewStringValue("bazqux-not-thinking-of-40-chars-for-this"),
 						},
 					},
 				},
@@ -809,8 +809,8 @@ func TestStoragePlugin_OnDeleteStorageBucket(t *testing.T) {
 					BucketName: "foo",
 					Secrets: &structpb.Struct{
 						Fields: map[string]*structpb.Value{
-							credential.ConstAccessKeyId:     structpb.NewStringValue("foobar"),
-							credential.ConstSecretAccessKey: structpb.NewStringValue("bazqux"),
+							credential.ConstAccessKeyId:     structpb.NewStringValue("foobarbazbuzquintile"),
+							credential.ConstSecretAccessKey: structpb.NewStringValue("bazqux-not-thinking-of-40-chars-for-this"),
 						}},
 					Attributes: &structpb.Struct{
 						Fields: map[string]*structpb.Value{
@@ -835,8 +835,8 @@ func TestStoragePlugin_OnDeleteStorageBucket(t *testing.T) {
 				Persisted: &storagebuckets.StorageBucketPersisted{
 					Data: &structpb.Struct{
 						Fields: map[string]*structpb.Value{
-							credential.ConstAccessKeyId:          structpb.NewStringValue("foobar"),
-							credential.ConstSecretAccessKey:      structpb.NewStringValue("bazqux"),
+							credential.ConstAccessKeyId:          structpb.NewStringValue("foobarbazbuzquintile"),
+							credential.ConstSecretAccessKey:      structpb.NewStringValue("bazqux-not-thinking-of-40-chars-for-this"),
 							credential.ConstCredsLastRotatedTime: structpb.NewStringValue("2006-01-02T15:04:05+07:00"),
 						},
 					},
@@ -863,8 +863,8 @@ func TestStoragePlugin_OnDeleteStorageBucket(t *testing.T) {
 				Persisted: &storagebuckets.StorageBucketPersisted{
 					Data: &structpb.Struct{
 						Fields: map[string]*structpb.Value{
-							credential.ConstAccessKeyId:          structpb.NewStringValue("foobar"),
-							credential.ConstSecretAccessKey:      structpb.NewStringValue("bazqux"),
+							credential.ConstAccessKeyId:          structpb.NewStringValue("foobarbazbuzquintile"),
+							credential.ConstSecretAccessKey:      structpb.NewStringValue("bazqux-not-thinking-of-40-chars-for-this"),
 							credential.ConstCredsLastRotatedTime: structpb.NewStringValue("2006-01-02T15:04:05+07:00"),
 						},
 					},
@@ -895,8 +895,8 @@ func TestStoragePlugin_OnDeleteStorageBucket(t *testing.T) {
 				Persisted: &storagebuckets.StorageBucketPersisted{
 					Data: &structpb.Struct{
 						Fields: map[string]*structpb.Value{
-							credential.ConstAccessKeyId:          structpb.NewStringValue("foobar"),
-							credential.ConstSecretAccessKey:      structpb.NewStringValue("bazqux"),
+							credential.ConstAccessKeyId:          structpb.NewStringValue("foobarbazbuzquintile"),
+							credential.ConstSecretAccessKey:      structpb.NewStringValue("bazqux-not-thinking-of-40-chars-for-this"),
 							credential.ConstCredsLastRotatedTime: structpb.NewStringValue("2006-01-02T15:04:05+07:00"),
 						},
 					},
@@ -942,8 +942,8 @@ func TestStoragePlugin_HeadObject(t *testing.T) {
 				BucketName: "foo",
 				Secrets: &structpb.Struct{
 					Fields: map[string]*structpb.Value{
-						credential.ConstAccessKeyId:     structpb.NewStringValue("foobar"),
-						credential.ConstSecretAccessKey: structpb.NewStringValue("bazqux"),
+						credential.ConstAccessKeyId:     structpb.NewStringValue("foobarbazbuzquintile"),
+						credential.ConstSecretAccessKey: structpb.NewStringValue("bazqux-not-thinking-of-40-chars-for-this"),
 					}},
 				Attributes: &structpb.Struct{
 					Fields: map[string]*structpb.Value{
@@ -1142,8 +1142,8 @@ func TestStoragePlugin_ValidatePermissions(t *testing.T) {
 				BucketName: "foo",
 				Secrets: &structpb.Struct{
 					Fields: map[string]*structpb.Value{
-						credential.ConstAccessKeyId:     structpb.NewStringValue("foobar"),
-						credential.ConstSecretAccessKey: structpb.NewStringValue("bazqux"),
+						credential.ConstAccessKeyId:     structpb.NewStringValue("foobarbazbuzquintile"),
+						credential.ConstSecretAccessKey: structpb.NewStringValue("bazqux-not-thinking-of-40-chars-for-this"),
 					}},
 				Attributes: &structpb.Struct{
 					Fields: map[string]*structpb.Value{
@@ -1385,8 +1385,8 @@ func TestStoragePlugin_GetObject(t *testing.T) {
 				BucketName: "foo",
 				Secrets: &structpb.Struct{
 					Fields: map[string]*structpb.Value{
-						credential.ConstAccessKeyId:     structpb.NewStringValue("foobar"),
-						credential.ConstSecretAccessKey: structpb.NewStringValue("bazqux"),
+						credential.ConstAccessKeyId:     structpb.NewStringValue("foobarbazbuzquintile"),
+						credential.ConstSecretAccessKey: structpb.NewStringValue("bazqux-not-thinking-of-40-chars-for-this"),
 					}},
 				Attributes: &structpb.Struct{
 					Fields: map[string]*structpb.Value{
@@ -1618,8 +1618,8 @@ func TestStoragePlugin_PutObject(t *testing.T) {
 				BucketName: "external-obj-store",
 				Secrets: &structpb.Struct{
 					Fields: map[string]*structpb.Value{
-						credential.ConstAccessKeyId:     structpb.NewStringValue("foobar"),
-						credential.ConstSecretAccessKey: structpb.NewStringValue("bazqux"),
+						credential.ConstAccessKeyId:     structpb.NewStringValue("foobarbazbuzquintile"),
+						credential.ConstSecretAccessKey: structpb.NewStringValue("bazqux-not-thinking-of-40-chars-for-this"),
 					},
 				},
 				Attributes: &structpb.Struct{
@@ -1689,8 +1689,8 @@ func TestStoragePlugin_PutObject(t *testing.T) {
 					BucketName: "external-obj-store",
 					Secrets: &structpb.Struct{
 						Fields: map[string]*structpb.Value{
-							credential.ConstAccessKeyId:     structpb.NewStringValue("foobar"),
-							credential.ConstSecretAccessKey: structpb.NewStringValue("bazqux"),
+							credential.ConstAccessKeyId:     structpb.NewStringValue("foobarbazbuzquintile"),
+							credential.ConstSecretAccessKey: structpb.NewStringValue("bazqux-not-thinking-of-40-chars-for-this"),
 						},
 					},
 				},
@@ -1706,8 +1706,8 @@ func TestStoragePlugin_PutObject(t *testing.T) {
 					BucketName: "external-obj-store",
 					Secrets: &structpb.Struct{
 						Fields: map[string]*structpb.Value{
-							credential.ConstAccessKeyId:     structpb.NewStringValue("foobar"),
-							credential.ConstSecretAccessKey: structpb.NewStringValue("bazqux"),
+							credential.ConstAccessKeyId:     structpb.NewStringValue("foobarbazbuzquintile"),
+							credential.ConstSecretAccessKey: structpb.NewStringValue("bazqux-not-thinking-of-40-chars-for-this"),
 						},
 					},
 					Attributes: &structpb.Struct{
@@ -1728,8 +1728,8 @@ func TestStoragePlugin_PutObject(t *testing.T) {
 					BucketName: "external-obj-store",
 					Secrets: &structpb.Struct{
 						Fields: map[string]*structpb.Value{
-							credential.ConstAccessKeyId:     structpb.NewStringValue("foobar"),
-							credential.ConstSecretAccessKey: structpb.NewStringValue("bazqux"),
+							credential.ConstAccessKeyId:     structpb.NewStringValue("foobarbazbuzquintile"),
+							credential.ConstSecretAccessKey: structpb.NewStringValue("bazqux-not-thinking-of-40-chars-for-this"),
 						},
 					},
 					Attributes: &structpb.Struct{
@@ -1751,8 +1751,8 @@ func TestStoragePlugin_PutObject(t *testing.T) {
 					BucketName: "external-obj-store",
 					Secrets: &structpb.Struct{
 						Fields: map[string]*structpb.Value{
-							credential.ConstAccessKeyId:     structpb.NewStringValue("foobar"),
-							credential.ConstSecretAccessKey: structpb.NewStringValue("bazqux"),
+							credential.ConstAccessKeyId:     structpb.NewStringValue("foobarbazbuzquintile"),
+							credential.ConstSecretAccessKey: structpb.NewStringValue("bazqux-not-thinking-of-40-chars-for-this"),
 						},
 					},
 					Attributes: &structpb.Struct{
@@ -1774,8 +1774,8 @@ func TestStoragePlugin_PutObject(t *testing.T) {
 					BucketName: "external-obj-store",
 					Secrets: &structpb.Struct{
 						Fields: map[string]*structpb.Value{
-							credential.ConstAccessKeyId:     structpb.NewStringValue("foobar"),
-							credential.ConstSecretAccessKey: structpb.NewStringValue("bazqux"),
+							credential.ConstAccessKeyId:     structpb.NewStringValue("foobarbazbuzquintile"),
+							credential.ConstSecretAccessKey: structpb.NewStringValue("bazqux-not-thinking-of-40-chars-for-this"),
 						},
 					},
 					Attributes: &structpb.Struct{
@@ -1797,8 +1797,8 @@ func TestStoragePlugin_PutObject(t *testing.T) {
 					BucketName: "external-obj-store",
 					Secrets: &structpb.Struct{
 						Fields: map[string]*structpb.Value{
-							credential.ConstAccessKeyId:     structpb.NewStringValue("foobar"),
-							credential.ConstSecretAccessKey: structpb.NewStringValue("bazqux"),
+							credential.ConstAccessKeyId:     structpb.NewStringValue("foobarbazbuzquintile"),
+							credential.ConstSecretAccessKey: structpb.NewStringValue("bazqux-not-thinking-of-40-chars-for-this"),
 						},
 					},
 					Attributes: &structpb.Struct{
@@ -1818,8 +1818,8 @@ func TestStoragePlugin_PutObject(t *testing.T) {
 					BucketName: "external-obj-store",
 					Secrets: &structpb.Struct{
 						Fields: map[string]*structpb.Value{
-							credential.ConstAccessKeyId:     structpb.NewStringValue("foobar"),
-							credential.ConstSecretAccessKey: structpb.NewStringValue("bazqux"),
+							credential.ConstAccessKeyId:     structpb.NewStringValue("foobarbazbuzquintile"),
+							credential.ConstSecretAccessKey: structpb.NewStringValue("bazqux-not-thinking-of-40-chars-for-this"),
 						},
 					},
 					Attributes: &structpb.Struct{

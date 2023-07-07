@@ -5,6 +5,7 @@ package credential
 
 import (
 	"fmt"
+	"regexp"
 
 	"github.com/aws/aws-sdk-go/aws/endpoints"
 	"github.com/hashicorp/boundary-plugin-aws/internal/errors"
@@ -22,6 +23,8 @@ type CredentialAttributes struct {
 	DisableCredentialRotation bool
 }
 
+var accessKeyRegex = regexp.MustCompile(`^[\w]+$`)
+
 // GetCredentialsConfig parses values out of a protobuf struct input and returns a
 // CredentialsConfig used for configuring an AWS session. An error is returned if
 // any of the following fields are missing from the protobuf struct input or have
@@ -34,12 +37,18 @@ func GetCredentialsConfig(in *structpb.Struct, region string) (*awsutil.Credenti
 	accessKey, err := values.GetStringValue(in, ConstAccessKeyId, true)
 	if err != nil {
 		badFields[fmt.Sprintf("secrets.%s", ConstAccessKeyId)] = err.Error()
+	} else if len(accessKey) < 16 || len(accessKey) > 128 {
+		badFields[fmt.Sprintf("secrets.%s", ConstAccessKeyId)] = "value must be between 16 and 128 characters"
+	} else if !accessKeyRegex.MatchString(accessKey) {
+		badFields[fmt.Sprintf("secrets.%s", ConstAccessKeyId)] = "value must only contain characters matching [\\w]+"
 	}
 	delete(unknownFields, ConstAccessKeyId)
 
 	secretKey, err := values.GetStringValue(in, ConstSecretAccessKey, true)
 	if err != nil {
 		badFields[fmt.Sprintf("secrets.%s", ConstSecretAccessKey)] = err.Error()
+	} else if len(secretKey) != 40 {
+		badFields[fmt.Sprintf("secrets.%s", ConstSecretAccessKey)] = "value must be 40 characters"
 	}
 	delete(unknownFields, ConstSecretAccessKey)
 
