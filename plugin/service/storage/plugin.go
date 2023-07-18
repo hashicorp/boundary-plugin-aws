@@ -51,11 +51,6 @@ func (p *StoragePlugin) OnCreateStorageBucket(ctx context.Context, req *pb.OnCre
 		return nil, status.Error(codes.InvalidArgument, "bucketName is required")
 	}
 
-	secrets := bucket.GetSecrets()
-	if secrets == nil {
-		return nil, status.Error(codes.InvalidArgument, "secrets is required")
-	}
-
 	attrs := bucket.GetAttributes()
 	if attrs == nil {
 		return nil, status.Error(codes.InvalidArgument, "attributes is required")
@@ -66,7 +61,7 @@ func (p *StoragePlugin) OnCreateStorageBucket(ctx context.Context, req *pb.OnCre
 		return nil, err
 	}
 
-	credConfig, err := cred.GetCredentialsConfig(secrets, storageAttributes.Region)
+	credConfig, err := cred.GetCredentialsConfig(bucket.GetSecrets(), storageAttributes.CredentialAttributes, false)
 	if err != nil {
 		return nil, err
 	}
@@ -74,24 +69,24 @@ func (p *StoragePlugin) OnCreateStorageBucket(ctx context.Context, req *pb.OnCre
 	// Set up the creds in our persisted state.
 	credState, err := cred.NewAwsCredentialPersistedState(
 		append([]cred.AwsCredentialPersistedStateOption{
-			cred.WithAccessKeyId(credConfig.AccessKey),
-			cred.WithSecretAccessKey(credConfig.SecretKey),
-			cred.WithRegion(credConfig.Region),
+			cred.WithCredentialsConfig(credConfig),
 		}, p.testCredStateOpts...)...,
 	)
 	if err != nil {
 		return nil, status.Errorf(codes.InvalidArgument, "error setting up persisted state: %s", err)
 	}
 
-	// Try to rotate the credentials if we're not skipping them.
-	if !storageAttributes.DisableCredentialRotation {
-		if err := credState.RotateCreds(); err != nil {
-			return nil, status.Errorf(codes.InvalidArgument, "error during credential rotation: %s", err)
-		}
-	} else {
-		// Simply validate if we aren't rotating.
-		if err := credState.ValidateCreds(); err != nil {
-			return nil, status.Errorf(codes.InvalidArgument, "error during credential validation: %s", err)
+	// Try to rotate static credentials
+	if cred.HasStaticCredentials(credState.CredentialsConfig.AccessKey) {
+		if !storageAttributes.DisableCredentialRotation {
+			if err := credState.RotateCreds(); err != nil {
+				return nil, status.Errorf(codes.InvalidArgument, "error during credential rotation: %s", err)
+			}
+		} else {
+			// Simply validate if we aren't rotating.
+			if err := credState.ValidateCreds(); err != nil {
+				return nil, status.Errorf(codes.InvalidArgument, "error during credential validation: %s", err)
+			}
 		}
 	}
 
@@ -160,39 +155,42 @@ func (p *StoragePlugin) OnUpdateStorageBucket(ctx context.Context, req *pb.OnUpd
 	// is fine and important, but this may change in the future.
 	credState, err := cred.AwsCredentialPersistedStateFromProto(
 		req.GetPersisted().GetData(),
-		append(p.testCredStateOpts, cred.WithRegion(storageAttributes.Region))...)
+		storageAttributes.CredentialAttributes,
+		p.testCredStateOpts...)
 	if err != nil {
 		return nil, status.Errorf(codes.InvalidArgument, "error loading persisted state: %s", err)
 	}
 
-	if storageAttributes.DisableCredentialRotation && !updateSecrets {
-		// This is a validate check to make sure that we aren't disabling
-		// rotation for credentials currently being managed by rotation.
-		// This is not allowed.
-		if !credState.CredsLastRotatedTime.IsZero() {
-			return nil, status.Error(codes.FailedPrecondition, "cannot disable rotation for already-rotated credentials")
-		}
-	}
-
-	if updateSecrets {
-		storageSecrets, err := cred.GetCredentialsConfig(secrets, storageAttributes.Region)
-		if err != nil {
-			return nil, err
+	if cred.HasStaticCredentials(credState.CredentialsConfig.AccessKey) {
+		if storageAttributes.DisableCredentialRotation && !updateSecrets {
+			// This is a validate check to make sure that we aren't disabling
+			// rotation for credentials currently being managed by rotation.
+			// This is not allowed.
+			if !credState.CredsLastRotatedTime.IsZero() {
+				return nil, status.Error(codes.FailedPrecondition, "cannot disable rotation for already-rotated credentials")
+			}
 		}
 
-		// Replace the credentials. This checks the timestamp on the last
-		// rotation time as well and deletes the credentials if we are
-		// managing them (ie: if we've rotated them before).
-		if err := credState.ReplaceCreds(storageSecrets.AccessKey, storageSecrets.SecretKey); err != nil {
-			return nil, status.Errorf(codes.InvalidArgument, "error attempting to replace credentials: %s", err)
-		}
-	}
+		if updateSecrets {
+			storageSecrets, err := cred.GetCredentialsConfig(secrets, storageAttributes.CredentialAttributes, false)
+			if err != nil {
+				return nil, err
+			}
 
-	if !storageAttributes.DisableCredentialRotation && credState.CredsLastRotatedTime.IsZero() {
-		// If we're enabling rotation now but didn't before, or have
-		// freshly replaced credentials, we can rotate here.
-		if err := credState.RotateCreds(); err != nil {
-			return nil, status.Errorf(codes.InvalidArgument, "error during credential rotation: %s", err)
+			// Replace the credentials. This checks the timestamp on the last
+			// rotation time as well and deletes the credentials if we are
+			// managing them (ie: if we've rotated them before).
+			if err := credState.ReplaceCreds(storageSecrets); err != nil {
+				return nil, status.Errorf(codes.InvalidArgument, "error attempting to replace credentials: %s", err)
+			}
+		}
+
+		if !storageAttributes.DisableCredentialRotation && credState.CredsLastRotatedTime.IsZero() {
+			// If we're enabling rotation now but didn't before, or have
+			// freshly replaced credentials, we can rotate here.
+			if err := credState.RotateCreds(); err != nil {
+				return nil, status.Errorf(codes.InvalidArgument, "error during credential rotation: %s", err)
+			}
 		}
 	}
 
@@ -245,7 +243,8 @@ func (p *StoragePlugin) OnDeleteStorageBucket(ctx context.Context, req *pb.OnDel
 	// may be corrupt/and or legitimately missing.
 	credState, err := cred.AwsCredentialPersistedStateFromProto(
 		req.GetPersisted().GetData(),
-		append(p.testCredStateOpts, cred.WithRegion(storageAttributes.Region))...)
+		storageAttributes.CredentialAttributes,
+		p.testCredStateOpts...)
 	if err != nil {
 		return nil, status.Errorf(codes.InvalidArgument, "error loading persisted state: %s", err)
 	}
@@ -259,12 +258,15 @@ func (p *StoragePlugin) OnDeleteStorageBucket(ctx context.Context, req *pb.OnDel
 		return nil, status.Errorf(codes.InvalidArgument, "error loading persisted state: %s", err)
 	}
 
-	if !credState.CredsLastRotatedTime.IsZero() {
-		// Delete old/existing credentials. This is done with the same
-		// credentials to ensure that it has the proper permissions to do
-		// it.
-		if err := credState.DeleteCreds(); err != nil {
-			return nil, status.Errorf(codes.Aborted, "error removing rotated credentials during storage bucket deletion: %s", err)
+	// try to delete static credentials
+	if cred.HasStaticCredentials(credState.CredentialsConfig.AccessKey) {
+		if !credState.CredsLastRotatedTime.IsZero() {
+			// Delete old/existing credentials. This is done with the same
+			// credentials to ensure that it has the proper permissions to do
+			// it.
+			if err := credState.DeleteCreds(); err != nil {
+				return nil, status.Errorf(codes.Aborted, "error removing rotated credentials during storage bucket deletion: %s", err)
+			}
 		}
 	}
 
@@ -286,11 +288,6 @@ func (p *StoragePlugin) HeadObject(ctx context.Context, req *pb.HeadObjectReques
 		return nil, status.Error(codes.InvalidArgument, "bucketName is required")
 	}
 
-	secrets := bucket.GetSecrets()
-	if secrets == nil {
-		return nil, status.Error(codes.InvalidArgument, "secrets is required")
-	}
-
 	attrs := bucket.GetAttributes()
 	if attrs == nil {
 		return nil, status.Error(codes.InvalidArgument, "attributes is required")
@@ -301,7 +298,7 @@ func (p *StoragePlugin) HeadObject(ctx context.Context, req *pb.HeadObjectReques
 		return nil, err
 	}
 
-	credConfig, err := cred.GetCredentialsConfig(secrets, storageAttributes.Region)
+	credConfig, err := cred.GetCredentialsConfig(bucket.GetSecrets(), storageAttributes.CredentialAttributes, false)
 	if err != nil {
 		return nil, err
 	}
@@ -309,9 +306,7 @@ func (p *StoragePlugin) HeadObject(ctx context.Context, req *pb.HeadObjectReques
 	// Set up the creds in our persisted state.
 	credState, err := cred.NewAwsCredentialPersistedState(
 		append([]cred.AwsCredentialPersistedStateOption{
-			cred.WithAccessKeyId(credConfig.AccessKey),
-			cred.WithSecretAccessKey(credConfig.SecretKey),
-			cred.WithRegion(credConfig.Region),
+			cred.WithCredentialsConfig(credConfig),
 		}, p.testCredStateOpts...)...,
 	)
 	if err != nil {
@@ -364,11 +359,6 @@ func (p *StoragePlugin) ValidatePermissions(ctx context.Context, req *pb.Validat
 		return nil, status.Error(codes.InvalidArgument, "bucketName is required")
 	}
 
-	secrets := bucket.GetSecrets()
-	if secrets == nil {
-		return nil, status.Error(codes.InvalidArgument, "secrets is required")
-	}
-
 	attrs := bucket.GetAttributes()
 	if attrs == nil {
 		return nil, status.Error(codes.InvalidArgument, "attributes is required")
@@ -379,7 +369,7 @@ func (p *StoragePlugin) ValidatePermissions(ctx context.Context, req *pb.Validat
 		return nil, err
 	}
 
-	credConfig, err := cred.GetCredentialsConfig(secrets, storageAttributes.Region)
+	credConfig, err := cred.GetCredentialsConfig(bucket.GetSecrets(), storageAttributes.CredentialAttributes, false)
 	if err != nil {
 		return nil, err
 	}
@@ -387,9 +377,7 @@ func (p *StoragePlugin) ValidatePermissions(ctx context.Context, req *pb.Validat
 	// Set up the creds in our persisted state.
 	credState, err := cred.NewAwsCredentialPersistedState(
 		append([]cred.AwsCredentialPersistedStateOption{
-			cred.WithAccessKeyId(credConfig.AccessKey),
-			cred.WithSecretAccessKey(credConfig.SecretKey),
-			cred.WithRegion(credConfig.Region),
+			cred.WithCredentialsConfig(credConfig),
 		}, p.testCredStateOpts...)...,
 	)
 	if err != nil {
@@ -429,11 +417,6 @@ func (p *StoragePlugin) GetObject(req *pb.GetObjectRequest, stream pb.StoragePlu
 		return status.Error(codes.InvalidArgument, "bucketName is required")
 	}
 
-	secrets := bucket.GetSecrets()
-	if secrets == nil {
-		return status.Error(codes.InvalidArgument, "secrets is required")
-	}
-
 	attrs := bucket.GetAttributes()
 	if attrs == nil {
 		return status.Error(codes.InvalidArgument, "attributes is required")
@@ -444,7 +427,7 @@ func (p *StoragePlugin) GetObject(req *pb.GetObjectRequest, stream pb.StoragePlu
 		return err
 	}
 
-	credConfig, err := cred.GetCredentialsConfig(secrets, storageAttributes.Region)
+	credConfig, err := cred.GetCredentialsConfig(bucket.GetSecrets(), storageAttributes.CredentialAttributes, false)
 	if err != nil {
 		return err
 	}
@@ -452,9 +435,7 @@ func (p *StoragePlugin) GetObject(req *pb.GetObjectRequest, stream pb.StoragePlu
 	// Set up the creds in our persisted state.
 	credState, err := cred.NewAwsCredentialPersistedState(
 		append([]cred.AwsCredentialPersistedStateOption{
-			cred.WithAccessKeyId(credConfig.AccessKey),
-			cred.WithSecretAccessKey(credConfig.SecretKey),
-			cred.WithRegion(credConfig.Region),
+			cred.WithCredentialsConfig(credConfig),
 		}, p.testCredStateOpts...)...,
 	)
 	if err != nil {
@@ -533,10 +514,6 @@ func (p *StoragePlugin) PutObject(ctx context.Context, req *pb.PutObjectRequest)
 	if bucket.GetBucketName() == "" {
 		return nil, status.Error(codes.InvalidArgument, "bucketName is required")
 	}
-	secrets := bucket.GetSecrets()
-	if secrets == nil {
-		return nil, status.Error(codes.InvalidArgument, "secrets is required")
-	}
 	attrs := bucket.GetAttributes()
 	if attrs == nil {
 		return nil, status.Error(codes.InvalidArgument, "attributes is required")
@@ -564,7 +541,7 @@ func (p *StoragePlugin) PutObject(ctx context.Context, req *pb.PutObjectRequest)
 		return nil, err
 	}
 
-	credConfig, err := cred.GetCredentialsConfig(secrets, storageAttributes.Region)
+	credConfig, err := cred.GetCredentialsConfig(bucket.GetSecrets(), storageAttributes.CredentialAttributes, false)
 	if err != nil {
 		return nil, err
 	}
@@ -572,9 +549,7 @@ func (p *StoragePlugin) PutObject(ctx context.Context, req *pb.PutObjectRequest)
 	// Set up the creds in our persisted state.
 	credState, err := cred.NewAwsCredentialPersistedState(
 		append([]cred.AwsCredentialPersistedStateOption{
-			cred.WithAccessKeyId(credConfig.AccessKey),
-			cred.WithSecretAccessKey(credConfig.SecretKey),
-			cred.WithRegion(credConfig.Region),
+			cred.WithCredentialsConfig(credConfig),
 		}, p.testCredStateOpts...)...,
 	)
 	if err != nil {

@@ -84,6 +84,33 @@ func GetTimeValue(in *structpb.Struct, k string) (time.Time, error) {
 	return t, nil
 }
 
+// GetMapStringString returns a map[string]string value and no error if the given key
+// is found in the provided proto struct input. An error is returned if the key
+// is not found or the value type is not map[string]string.
+func GetMapStringString(in *structpb.Struct, k string, required bool) (map[string]string, error) {
+	mv := in.GetFields()
+	v, ok := mv[k]
+	if !ok {
+		if required {
+			return nil, fmt.Errorf("missing required value %q", k)
+		}
+		return nil, nil
+	}
+	result := map[string]string{}
+	m, ok := v.AsInterface().(map[string]any)
+	if !ok {
+		return nil, fmt.Errorf("unexpected type for value %q: want map[string]string, got %T", k, v.AsInterface())
+	}
+	for mapKey, mapValue := range m {
+		e, ok := mapValue.(string)
+		if !ok {
+			return nil, fmt.Errorf("unexpected type for value in map[%q]: want string, got %T", mapKey, mapValue)
+		}
+		result[mapKey] = e
+	}
+	return result, nil
+}
+
 // StructFields returns a map[string]struct{} of the
 // proto struct input.
 func StructFields(s *structpb.Struct) map[string]struct{} {

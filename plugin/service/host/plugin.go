@@ -59,7 +59,7 @@ func (p *HostPlugin) OnCreateCatalog(ctx context.Context, req *pb.OnCreateCatalo
 	if err != nil {
 		return nil, err
 	}
-	credConfig, err := cred.GetCredentialsConfig(secrets, catalogAttributes.Region)
+	credConfig, err := cred.GetCredentialsConfig(secrets, catalogAttributes.CredentialAttributes, true)
 	if err != nil {
 		return nil, err
 	}
@@ -67,9 +67,7 @@ func (p *HostPlugin) OnCreateCatalog(ctx context.Context, req *pb.OnCreateCatalo
 	// Set up the creds in our persisted state.
 	credState, err := credential.NewAwsCredentialPersistedState(
 		append([]credential.AwsCredentialPersistedStateOption{
-			credential.WithAccessKeyId(credConfig.AccessKey),
-			credential.WithSecretAccessKey(credConfig.SecretKey),
-			credential.WithRegion(credConfig.Region),
+			credential.WithCredentialsConfig(credConfig),
 		}, p.testCredStateOpts...)...,
 	)
 	if err != nil {
@@ -85,15 +83,17 @@ func (p *HostPlugin) OnCreateCatalog(ctx context.Context, req *pb.OnCreateCatalo
 		return nil, status.Errorf(codes.InvalidArgument, "error setting up persisted state: %s", err)
 	}
 
-	// Try to rotate the credentials if we're not skipping them.
-	if !catalogAttributes.DisableCredentialRotation {
-		if err := credState.RotateCreds(); err != nil {
-			return nil, status.Errorf(codes.InvalidArgument, "error during credential rotation: %s", err)
-		}
-	} else {
-		// Simply validate if we aren't rotating.
-		if err := credState.ValidateCreds(); err != nil {
-			return nil, status.Errorf(codes.InvalidArgument, "error during credential validation: %s", err)
+	// Try to rotate static credentials
+	if cred.HasStaticCredentials(credState.CredentialsConfig.AccessKey) {
+		if !catalogAttributes.DisableCredentialRotation {
+			if err := credState.RotateCreds(); err != nil {
+				return nil, status.Errorf(codes.InvalidArgument, "error during credential rotation: %s", err)
+			}
+		} else {
+			// Simply validate if we aren't rotating.
+			if err := credState.ValidateCreds(); err != nil {
+				return nil, status.Errorf(codes.InvalidArgument, "error during credential validation: %s", err)
+			}
 		}
 	}
 
@@ -145,7 +145,8 @@ func (p *HostPlugin) OnUpdateCatalog(ctx context.Context, req *pb.OnUpdateCatalo
 	// is fine and important, but this may change in the future.
 	credState, err := credential.AwsCredentialPersistedStateFromProto(
 		req.GetPersisted().GetSecrets(),
-		append(p.testCredStateOpts, credential.WithRegion(catalogAttributes.Region))...)
+		catalogAttributes.CredentialAttributes,
+		p.testCredStateOpts...)
 	if err != nil {
 		return nil, status.Errorf(codes.InvalidArgument, "error loading persisted state: %s", err)
 	}
@@ -159,38 +160,39 @@ func (p *HostPlugin) OnUpdateCatalog(ctx context.Context, req *pb.OnUpdateCatalo
 		return nil, status.Errorf(codes.InvalidArgument, "error loading persisted state: %s", err)
 	}
 
-	if catalogAttributes.DisableCredentialRotation && !updateSecrets {
-		// This is a validate check to make sure that we aren't disabling
-		// rotation for credentials currently being managed by rotation.
-		// This is not allowed.
-		if !credState.CredsLastRotatedTime.IsZero() {
-			return nil, status.Error(codes.FailedPrecondition, "cannot disable rotation for already-rotated credentials")
+	if cred.HasStaticCredentials(credState.CredentialsConfig.AccessKey) {
+		if catalogAttributes.DisableCredentialRotation && !updateSecrets {
+			// This is a validate check to make sure that we aren't disabling
+			// rotation for credentials currently being managed by rotation.
+			// This is not allowed.
+			if !credState.CredsLastRotatedTime.IsZero() {
+				return nil, status.Error(codes.FailedPrecondition, "cannot disable rotation for already-rotated credentials")
+			}
+		}
+
+		if updateSecrets {
+			catalogSecrets, err := credential.GetCredentialsConfig(secrets, catalogAttributes.CredentialAttributes, true)
+			if err != nil {
+				return nil, err
+			}
+
+			// Replace the credentials. This checks the timestamp on the last
+			// rotation time as well and deletes the credentials if we are
+			// managing them (ie: if we've rotated them before).
+			if err := credState.ReplaceCreds(catalogSecrets); err != nil {
+				return nil, status.Errorf(codes.InvalidArgument, "error attempting to replace credentials: %s", err)
+			}
+		}
+
+		if !catalogAttributes.DisableCredentialRotation && credState.CredsLastRotatedTime.IsZero() {
+			// If we're enabling rotation now but didn't before, or have
+			// freshly replaced credentials, we can rotate here.
+			if err := credState.RotateCreds(); err != nil {
+				return nil, status.Errorf(codes.InvalidArgument, "error during credential rotation: %s", err)
+			}
 		}
 	}
 
-	if updateSecrets {
-		catalogSecrets, err := credential.GetCredentialsConfig(secrets, catalogAttributes.Region)
-		if err != nil {
-			return nil, err
-		}
-
-		// Replace the credentials. This checks the timestamp on the last
-		// rotation time as well and deletes the credentials if we are
-		// managing them (ie: if we've rotated them before).
-		if err := credState.ReplaceCreds(catalogSecrets.AccessKey, catalogSecrets.SecretKey); err != nil {
-			return nil, status.Errorf(codes.InvalidArgument, "error attempting to replace credentials: %s", err)
-		}
-	}
-
-	if !catalogAttributes.DisableCredentialRotation && credState.CredsLastRotatedTime.IsZero() {
-		// If we're enabling rotation now but didn't before, or have
-		// freshly replaced credentials, we can rotate here.
-		if err := credState.RotateCreds(); err != nil {
-			return nil, status.Errorf(codes.InvalidArgument, "error during credential rotation: %s", err)
-		}
-	}
-
-	// That's it!
 	persistedProto, err := catalogState.toProto()
 	if err != nil {
 		return nil, status.Error(codes.InvalidArgument, err.Error())
@@ -226,7 +228,8 @@ func (p *HostPlugin) OnDeleteCatalog(ctx context.Context, req *pb.OnDeleteCatalo
 	// may be corrupt/and or legitimately missing.
 	credState, err := credential.AwsCredentialPersistedStateFromProto(
 		req.GetPersisted().GetSecrets(),
-		append(p.testCredStateOpts, credential.WithRegion(catalogAttributes.Region))...)
+		catalogAttributes.CredentialAttributes,
+		p.testCredStateOpts...)
 	if err != nil {
 		return nil, status.Errorf(codes.InvalidArgument, "error loading persisted state: %s", err)
 	}
@@ -240,12 +243,15 @@ func (p *HostPlugin) OnDeleteCatalog(ctx context.Context, req *pb.OnDeleteCatalo
 		return nil, status.Errorf(codes.InvalidArgument, "error loading persisted state: %s", err)
 	}
 
-	if !credState.CredsLastRotatedTime.IsZero() {
-		// Delete old/existing credentials. This is done with the same
-		// credentials to ensure that it has the proper permissions to do
-		// it.
-		if err := credState.DeleteCreds(); err != nil {
-			return nil, status.Errorf(codes.Aborted, "error removing rotated credentials during catalog deletion: %s", err)
+	// try to delete static credentials
+	if cred.HasStaticCredentials(credState.CredentialsConfig.AccessKey) {
+		if !credState.CredsLastRotatedTime.IsZero() {
+			// Delete old/existing credentials. This is done with the same
+			// credentials to ensure that it has the proper permissions to do
+			// it.
+			if err := credState.DeleteCreds(); err != nil {
+				return nil, status.Errorf(codes.Aborted, "error removing rotated credentials during catalog deletion: %s", err)
+			}
 		}
 	}
 
@@ -298,7 +304,8 @@ func (p *HostPlugin) OnCreateSet(ctx context.Context, req *pb.OnCreateSetRequest
 
 	credState, err := credential.AwsCredentialPersistedStateFromProto(
 		req.GetPersisted().GetSecrets(),
-		append(p.testCredStateOpts, credential.WithRegion(catalogAttributes.Region))...)
+		catalogAttributes.CredentialAttributes,
+		p.testCredStateOpts...)
 	if err != nil {
 		return nil, status.Errorf(codes.InvalidArgument, "error loading persisted state: %s", err)
 	}
@@ -371,7 +378,8 @@ func (p *HostPlugin) OnUpdateSet(ctx context.Context, req *pb.OnUpdateSetRequest
 
 	credState, err := credential.AwsCredentialPersistedStateFromProto(
 		req.GetPersisted().GetSecrets(),
-		append(p.testCredStateOpts, credential.WithRegion(catalogAttributes.Region))...)
+		catalogAttributes.CredentialAttributes,
+		p.testCredStateOpts...)
 	if err != nil {
 		return nil, status.Errorf(codes.InvalidArgument, "error loading persisted state: %s", err)
 	}
@@ -451,7 +459,10 @@ func (p *HostPlugin) ListHosts(ctx context.Context, req *pb.ListHostsRequest) (*
 		return nil, err
 	}
 
-	credState, err := credential.AwsCredentialPersistedStateFromProto(req.GetPersisted().GetSecrets(), p.testCredStateOpts...)
+	credState, err := credential.AwsCredentialPersistedStateFromProto(
+		req.GetPersisted().GetSecrets(),
+		catalogAttributes.CredentialAttributes,
+		p.testCredStateOpts...)
 	if err != nil {
 		return nil, status.Errorf(codes.InvalidArgument, "error loading persisted state: %s", err)
 	}

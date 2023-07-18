@@ -9,6 +9,7 @@ import (
 
 	"github.com/google/go-cmp/cmp"
 	"github.com/hashicorp/boundary-plugin-aws/internal/credential"
+	cred "github.com/hashicorp/boundary-plugin-aws/internal/credential"
 	"github.com/hashicorp/boundary/sdk/pbs/plugin"
 	"github.com/stretchr/testify/require"
 	"google.golang.org/grpc/codes"
@@ -20,36 +21,34 @@ import (
 func TestGetCatalogAttributes(t *testing.T) {
 	cases := []struct {
 		name                string
-		in                  map[string]any
+		in                  *structpb.Struct
 		expected            *CatalogAttributes
 		expectedErrContains string
 	}{
 		{
-			name:                "missing region",
-			in:                  map[string]any{},
+			name: "missing region",
+			in: &structpb.Struct{
+				Fields: make(map[string]*structpb.Value),
+			},
 			expectedErrContains: "missing required value \"region\"",
 		},
 		{
-			name: "bad value for disable_credential_rotation",
-			in: map[string]any{
-				credential.ConstRegion:                    "us-west-2",
-				credential.ConstDisableCredentialRotation: "sure",
-			},
-			expectedErrContains: "unexpected type for value \"disable_credential_rotation\": want bool, got string",
-		},
-		{
 			name: "unknown fields",
-			in: map[string]any{
-				credential.ConstRegion: "us-west-2",
-				"foo":                  true,
-				"bar":                  true,
+			in: &structpb.Struct{
+				Fields: map[string]*structpb.Value{
+					"region": structpb.NewStringValue("us-west-2"),
+					"foo":    structpb.NewBoolValue(true),
+					"bar":    structpb.NewBoolValue(true),
+				},
 			},
 			expectedErrContains: "attributes.bar: unrecognized field, attributes.foo: unrecognized field",
 		},
 		{
 			name: "default",
-			in: map[string]any{
-				credential.ConstRegion: "us-west-2",
+			in: &structpb.Struct{
+				Fields: map[string]*structpb.Value{
+					"region": structpb.NewStringValue("us-west-2"),
+				},
 			},
 			expected: &CatalogAttributes{
 				CredentialAttributes: &credential.CredentialAttributes{
@@ -59,15 +58,31 @@ func TestGetCatalogAttributes(t *testing.T) {
 			},
 		},
 		{
-			name: "with disable_credential_rotation",
-			in: map[string]any{
-				credential.ConstRegion:                    "us-west-2",
-				credential.ConstDisableCredentialRotation: true,
+			name: "credential attributes",
+			in: &structpb.Struct{
+				Fields: map[string]*structpb.Value{
+					"region":                      structpb.NewStringValue("us-west-2"),
+					"disable_credential_rotation": structpb.NewBoolValue(true),
+					"role_arn":                    structpb.NewStringValue("arn:aws:iam::123456789012:role/S3Access"),
+					"role_external_id":            structpb.NewStringValue("1234567890"),
+					"role_session_name":           structpb.NewStringValue("test-session"),
+					"role_tags": structpb.NewStructValue(&structpb.Struct{
+						Fields: map[string]*structpb.Value{
+							"foo": structpb.NewStringValue("bar"),
+						},
+					}),
+				},
 			},
 			expected: &CatalogAttributes{
-				CredentialAttributes: &credential.CredentialAttributes{
+				CredentialAttributes: &cred.CredentialAttributes{
 					Region:                    "us-west-2",
 					DisableCredentialRotation: true,
+					RoleArn:                   "arn:aws:iam::123456789012:role/S3Access",
+					RoleExternalId:            "1234567890",
+					RoleSessionName:           "test-session",
+					RoleTags: map[string]string{
+						"foo": "bar",
+					},
 				},
 			},
 		},
@@ -78,10 +93,7 @@ func TestGetCatalogAttributes(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			require := require.New(t)
 
-			input, err := structpb.NewStruct(tc.in)
-			require.NoError(err)
-
-			actual, err := getCatalogAttributes(input)
+			actual, err := getCatalogAttributes(tc.in)
 			if tc.expectedErrContains != "" {
 				require.Error(err)
 				require.Contains(err.Error(), tc.expectedErrContains)

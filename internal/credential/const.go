@@ -18,4 +18,16 @@ const (
 
 	// ConstCredsLastRotatedTime is the key for the last rotated time in the aws credentials.
 	ConstCredsLastRotatedTime = "creds_last_rotated_time"
+
+	// ConstRoleArn is the key for assuming a IAM role.
+	ConstRoleArn = "role_arn"
+
+	// ConstRoleExternalId is the key for the external id used for assuming a IAM role.
+	ConstRoleExternalId = "role_external_id"
+
+	// ConstRoleSessionName is the key for the session name used for assuming a IAM role.
+	ConstRoleSessionName = "role_session_name"
+
+	// ConstRoleTags is the key for the tags used for assuming a IAM role.
+	ConstRoleTags = "role_tags"
 )

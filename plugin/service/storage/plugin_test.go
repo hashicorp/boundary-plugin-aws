@@ -34,11 +34,7 @@ func TestStoragePlugin_OnCreateStorageBucket(t *testing.T) {
 		return &pb.OnCreateStorageBucketRequest{
 			Bucket: &storagebuckets.StorageBucket{
 				BucketName: "foo",
-				Secrets: &structpb.Struct{
-					Fields: map[string]*structpb.Value{
-						credential.ConstAccessKeyId:     structpb.NewStringValue("foobar"),
-						credential.ConstSecretAccessKey: structpb.NewStringValue("bazqux"),
-					}},
+				Secrets:    credential.MockStaticCredentialSecrets(),
 				Attributes: &structpb.Struct{
 					Fields: map[string]*structpb.Value{
 						credential.ConstRegion:                    structpb.NewStringValue("us-west-2"),
@@ -49,12 +45,13 @@ func TestStoragePlugin_OnCreateStorageBucket(t *testing.T) {
 		}
 	}
 	cases := []struct {
-		name                string
-		req                 *pb.OnCreateStorageBucketRequest
-		credOpts            []credential.AwsCredentialPersistedStateOption
-		storageOpts         []awsStoragePersistedStateOption
-		expectedErrContains string
-		expectedErrCode     codes.Code
+		name                  string
+		req                   *pb.OnCreateStorageBucketRequest
+		credOpts              []credential.AwsCredentialPersistedStateOption
+		storageOpts           []awsStoragePersistedStateOption
+		expectedErrContains   string
+		expectedErrCode       codes.Code
+		expectedPersistedData map[string]any
 	}{
 		{
 			name:                "nil storage bucket",
@@ -71,21 +68,10 @@ func TestStoragePlugin_OnCreateStorageBucket(t *testing.T) {
 			expectedErrCode:     codes.InvalidArgument,
 		},
 		{
-			name: "nil secrets",
-			req: &pb.OnCreateStorageBucketRequest{
-				Bucket: &storagebuckets.StorageBucket{
-					BucketName: "foo",
-				},
-			},
-			expectedErrContains: "secrets is required",
-			expectedErrCode:     codes.InvalidArgument,
-		},
-		{
 			name: "nil attributes",
 			req: &pb.OnCreateStorageBucketRequest{
 				Bucket: &storagebuckets.StorageBucket{
 					BucketName: "foo",
-					Secrets:    new(structpb.Struct),
 				},
 			},
 			expectedErrContains: "attributes is required",
@@ -96,7 +82,6 @@ func TestStoragePlugin_OnCreateStorageBucket(t *testing.T) {
 			req: &pb.OnCreateStorageBucketRequest{
 				Bucket: &storagebuckets.StorageBucket{
 					BucketName: "foo",
-					Secrets:    new(structpb.Struct),
 					Attributes: new(structpb.Struct),
 				},
 			},
@@ -104,31 +89,10 @@ func TestStoragePlugin_OnCreateStorageBucket(t *testing.T) {
 			expectedErrCode:     codes.InvalidArgument,
 		},
 		{
-			name: "error reading secrets",
-			req: &pb.OnCreateStorageBucketRequest{
-				Bucket: &storagebuckets.StorageBucket{
-					BucketName: "foo",
-					Secrets:    new(structpb.Struct),
-					Attributes: &structpb.Struct{
-						Fields: map[string]*structpb.Value{
-							credential.ConstRegion: structpb.NewStringValue("us-west-2"),
-						},
-					},
-				},
-			},
-			expectedErrContains: "missing required value \"access_key_id\"",
-			expectedErrCode:     codes.InvalidArgument,
-		},
-		{
 			name: "invalid region",
 			req: &pb.OnCreateStorageBucketRequest{
 				Bucket: &storagebuckets.StorageBucket{
 					BucketName: "foo",
-					Secrets: &structpb.Struct{
-						Fields: map[string]*structpb.Value{
-							credential.ConstAccessKeyId:     structpb.NewStringValue("foobar"),
-							credential.ConstSecretAccessKey: structpb.NewStringValue("bazqux"),
-						}},
 					Attributes: &structpb.Struct{
 						Fields: map[string]*structpb.Value{
 							credential.ConstRegion: structpb.NewStringValue("foobar"),
@@ -156,11 +120,7 @@ func TestStoragePlugin_OnCreateStorageBucket(t *testing.T) {
 			req: &pb.OnCreateStorageBucketRequest{
 				Bucket: &storagebuckets.StorageBucket{
 					BucketName: "foo",
-					Secrets: &structpb.Struct{
-						Fields: map[string]*structpb.Value{
-							credential.ConstAccessKeyId:     structpb.NewStringValue("foobar"),
-							credential.ConstSecretAccessKey: structpb.NewStringValue("bazqux"),
-						}},
+					Secrets:    credential.MockStaticCredentialSecrets(),
 					Attributes: &structpb.Struct{
 						Fields: map[string]*structpb.Value{
 							credential.ConstRegion: structpb.NewStringValue("us-west-2"),
@@ -301,6 +261,67 @@ func TestStoragePlugin_OnCreateStorageBucket(t *testing.T) {
 					),
 				),
 			},
+			expectedPersistedData: credential.MockStaticCredentialSecrets().AsMap(),
+		},
+		{
+			name: "success rotate static creds",
+			req: &pb.OnCreateStorageBucketRequest{
+				Bucket: &storagebuckets.StorageBucket{
+					BucketName: "foo",
+					Secrets:    credential.MockStaticCredentialSecrets(),
+					Attributes: &structpb.Struct{
+						Fields: map[string]*structpb.Value{
+							credential.ConstRegion:                    structpb.NewStringValue("us-west-2"),
+							credential.ConstDisableCredentialRotation: structpb.NewBoolValue(false),
+						},
+					},
+				},
+			},
+			credOpts: []credential.AwsCredentialPersistedStateOption{
+				credential.WithStateTestOpts(
+					[]awsutil.Option{
+						awsutil.WithSTSAPIFunc(
+							awsutil.NewMockSTS(),
+						),
+						awsutil.WithIAMAPIFunc(
+							awsutil.NewMockIAM(
+								awsutil.WithGetUserOutput(
+									&iam.GetUserOutput{
+										User: &iam.User{
+											Arn:      aws.String("arn:aws:iam::123456789012:user/JohnDoe"),
+											UserId:   aws.String("AIDAJQABLZS4A3QDU576Q"),
+											UserName: aws.String("JohnDoe"),
+										},
+									},
+								),
+								awsutil.WithCreateAccessKeyOutput(
+									&iam.CreateAccessKeyOutput{
+										AccessKey: &iam.AccessKey{
+											AccessKeyId:     aws.String("one"),
+											SecretAccessKey: aws.String("two"),
+											UserName:        aws.String("JohnDoe"),
+										},
+									},
+								),
+							),
+						),
+					},
+				),
+			},
+			storageOpts: []awsStoragePersistedStateOption{
+				withTestS3APIFunc(
+					newTestMockS3(
+						nil,
+						testMockS3WithPutObjectOutput(&s3.PutObjectOutput{}),
+						testMockS3WithGetObjectOutput(&s3.GetObjectOutput{}),
+						testMockS3WithHeadObjectOutput(&s3.HeadObjectOutput{}),
+					),
+				),
+			},
+			expectedPersistedData: map[string]any{
+				credential.ConstAccessKeyId:     "one",
+				credential.ConstSecretAccessKey: "two",
+			},
 		},
 	}
 
@@ -322,12 +343,12 @@ func TestStoragePlugin_OnCreateStorageBucket(t *testing.T) {
 			require.NotNil(resp)
 			require.NotNil(resp.GetPersisted())
 			require.NotNil(resp.GetPersisted().GetData())
-			require.Equal(
-				resp.GetPersisted().GetData().AsMap()[credential.ConstAccessKeyId],
-				tc.req.Bucket.Secrets.AsMap()[credential.ConstAccessKeyId])
-			require.Equal(
-				resp.GetPersisted().GetData().AsMap()[credential.ConstSecretAccessKey],
-				tc.req.Bucket.Secrets.AsMap()[credential.ConstSecretAccessKey])
+			actualPersistedData := resp.GetPersisted().GetData().AsMap()
+			if len(actualPersistedData) != 0 {
+				require.Equal(tc.expectedPersistedData[credential.ConstAccessKeyId], actualPersistedData[credential.ConstAccessKeyId])
+				require.Equal(tc.expectedPersistedData[credential.ConstSecretAccessKey], actualPersistedData[credential.ConstSecretAccessKey])
+				require.NotEmpty(actualPersistedData[credential.ConstCredsLastRotatedTime])
+			}
 		})
 	}
 }
@@ -345,12 +366,7 @@ func TestStoragePlugin_OnUpdateStorageBucket(t *testing.T) {
 				},
 			},
 			Persisted: &storagebuckets.StorageBucketPersisted{
-				Data: &structpb.Struct{
-					Fields: map[string]*structpb.Value{
-						credential.ConstAccessKeyId:     structpb.NewStringValue("foobar"),
-						credential.ConstSecretAccessKey: structpb.NewStringValue("bazqux"),
-					},
-				},
+				Data: credential.MockStaticCredentialSecrets(),
 			},
 		}
 	}
@@ -428,7 +444,7 @@ func TestStoragePlugin_OnUpdateStorageBucket(t *testing.T) {
 				Persisted: &storagebuckets.StorageBucketPersisted{
 					Data: &structpb.Struct{
 						Fields: map[string]*structpb.Value{
-							credential.ConstAccessKeyId:          structpb.NewStringValue("foobar"),
+							credential.ConstAccessKeyId:          structpb.NewStringValue("AKIA_foobar"),
 							credential.ConstSecretAccessKey:      structpb.NewStringValue("bazqux"),
 							credential.ConstCredsLastRotatedTime: structpb.NewStringValue("2006-01-02T15:04:05+07:00"),
 						},
@@ -458,7 +474,7 @@ func TestStoragePlugin_OnUpdateStorageBucket(t *testing.T) {
 				Persisted: &storagebuckets.StorageBucketPersisted{
 					Data: &structpb.Struct{
 						Fields: map[string]*structpb.Value{
-							credential.ConstAccessKeyId:          structpb.NewStringValue("foobar"),
+							credential.ConstAccessKeyId:          structpb.NewStringValue("AKIA_foobar"),
 							credential.ConstSecretAccessKey:      structpb.NewStringValue("bazqux"),
 							credential.ConstCredsLastRotatedTime: structpb.NewStringValue("2006-01-02T15:04:05+07:00"),
 						},
@@ -469,38 +485,13 @@ func TestStoragePlugin_OnUpdateStorageBucket(t *testing.T) {
 			expectedErrCode:     codes.FailedPrecondition,
 		},
 		{
-			name: "error reading secrets",
-			req: &pb.OnUpdateStorageBucketRequest{
-				NewBucket: &storagebuckets.StorageBucket{
-					BucketName: "foo",
-					Secrets:    new(structpb.Struct),
-					Attributes: &structpb.Struct{
-						Fields: map[string]*structpb.Value{
-							credential.ConstRegion: structpb.NewStringValue("us-west-2"),
-						},
-					},
-				},
-				Persisted: &storagebuckets.StorageBucketPersisted{
-					Data: &structpb.Struct{
-						Fields: map[string]*structpb.Value{
-							credential.ConstAccessKeyId:          structpb.NewStringValue("foobar"),
-							credential.ConstSecretAccessKey:      structpb.NewStringValue("bazqux"),
-							credential.ConstCredsLastRotatedTime: structpb.NewStringValue("2006-01-02T15:04:05+07:00"),
-						},
-					},
-				},
-			},
-			expectedErrContains: "missing required value \"access_key_id\"",
-			expectedErrCode:     codes.InvalidArgument,
-		},
-		{
 			name: "updating secrets, replace error",
 			req: &pb.OnUpdateStorageBucketRequest{
 				NewBucket: &storagebuckets.StorageBucket{
 					BucketName: "foo",
 					Secrets: &structpb.Struct{
 						Fields: map[string]*structpb.Value{
-							credential.ConstAccessKeyId:     structpb.NewStringValue("onetwo"),
+							credential.ConstAccessKeyId:     structpb.NewStringValue("AKIA_onetwo"),
 							credential.ConstSecretAccessKey: structpb.NewStringValue("threefour"),
 						},
 					},
@@ -514,7 +505,7 @@ func TestStoragePlugin_OnUpdateStorageBucket(t *testing.T) {
 				Persisted: &storagebuckets.StorageBucketPersisted{
 					Data: &structpb.Struct{
 						Fields: map[string]*structpb.Value{
-							credential.ConstAccessKeyId:          structpb.NewStringValue("foobar"),
+							credential.ConstAccessKeyId:          structpb.NewStringValue("AKIA_foobar"),
 							credential.ConstSecretAccessKey:      structpb.NewStringValue("bazqux"),
 							credential.ConstCredsLastRotatedTime: structpb.NewStringValue("2006-01-02T15:04:05+07:00"),
 						},
@@ -547,7 +538,7 @@ func TestStoragePlugin_OnUpdateStorageBucket(t *testing.T) {
 				Persisted: &storagebuckets.StorageBucketPersisted{
 					Data: &structpb.Struct{
 						Fields: map[string]*structpb.Value{
-							credential.ConstAccessKeyId:     structpb.NewStringValue("foobar"),
+							credential.ConstAccessKeyId:     structpb.NewStringValue("AKIA_foobar"),
 							credential.ConstSecretAccessKey: structpb.NewStringValue("bazqux"),
 						},
 					},
@@ -671,7 +662,7 @@ func TestStoragePlugin_OnUpdateStorageBucket(t *testing.T) {
 				Persisted: &storagebuckets.StorageBucketPersisted{
 					Data: &structpb.Struct{
 						Fields: map[string]*structpb.Value{
-							credential.ConstAccessKeyId:     structpb.NewStringValue("foobar"),
+							credential.ConstAccessKeyId:     structpb.NewStringValue("AKIA_foobar"),
 							credential.ConstSecretAccessKey: structpb.NewStringValue("bazqux"),
 						},
 					},
@@ -696,7 +687,7 @@ func TestStoragePlugin_OnUpdateStorageBucket(t *testing.T) {
 							awsutil.WithCreateAccessKeyOutput(
 								&iam.CreateAccessKeyOutput{
 									AccessKey: &iam.AccessKey{
-										AccessKeyId:     aws.String("one"),
+										AccessKeyId:     aws.String("AKIA_one"),
 										SecretAccessKey: aws.String("two"),
 										UserName:        aws.String("JohnDoe"),
 									},
@@ -760,7 +751,7 @@ func TestStoragePlugin_OnUpdateStorageBucket(t *testing.T) {
 				disableCredentialRotation = value.(bool)
 			}
 			if !disableCredentialRotation {
-				expectedAccessKey = "one"
+				expectedAccessKey = "AKIA_one"
 				expectedSecretKey = "two"
 			}
 			require.Equal(expectedAccessKey, resp.GetPersisted().GetData().AsMap()[credential.ConstAccessKeyId])
@@ -807,11 +798,7 @@ func TestStoragePlugin_OnDeleteStorageBucket(t *testing.T) {
 			req: &pb.OnDeleteStorageBucketRequest{
 				Bucket: &storagebuckets.StorageBucket{
 					BucketName: "foo",
-					Secrets: &structpb.Struct{
-						Fields: map[string]*structpb.Value{
-							credential.ConstAccessKeyId:     structpb.NewStringValue("foobar"),
-							credential.ConstSecretAccessKey: structpb.NewStringValue("bazqux"),
-						}},
+					Secrets:    credential.MockStaticCredentialSecrets(),
 					Attributes: &structpb.Struct{
 						Fields: map[string]*structpb.Value{
 							credential.ConstRegion: structpb.NewStringValue("foobar"),
@@ -835,7 +822,7 @@ func TestStoragePlugin_OnDeleteStorageBucket(t *testing.T) {
 				Persisted: &storagebuckets.StorageBucketPersisted{
 					Data: &structpb.Struct{
 						Fields: map[string]*structpb.Value{
-							credential.ConstAccessKeyId:          structpb.NewStringValue("foobar"),
+							credential.ConstAccessKeyId:          structpb.NewStringValue("AKIA_foobar"),
 							credential.ConstSecretAccessKey:      structpb.NewStringValue("bazqux"),
 							credential.ConstCredsLastRotatedTime: structpb.NewStringValue("2006-01-02T15:04:05+07:00"),
 						},
@@ -863,7 +850,7 @@ func TestStoragePlugin_OnDeleteStorageBucket(t *testing.T) {
 				Persisted: &storagebuckets.StorageBucketPersisted{
 					Data: &structpb.Struct{
 						Fields: map[string]*structpb.Value{
-							credential.ConstAccessKeyId:          structpb.NewStringValue("foobar"),
+							credential.ConstAccessKeyId:          structpb.NewStringValue("AKIA_foobar"),
 							credential.ConstSecretAccessKey:      structpb.NewStringValue("bazqux"),
 							credential.ConstCredsLastRotatedTime: structpb.NewStringValue("2006-01-02T15:04:05+07:00"),
 						},
@@ -895,7 +882,7 @@ func TestStoragePlugin_OnDeleteStorageBucket(t *testing.T) {
 				Persisted: &storagebuckets.StorageBucketPersisted{
 					Data: &structpb.Struct{
 						Fields: map[string]*structpb.Value{
-							credential.ConstAccessKeyId:          structpb.NewStringValue("foobar"),
+							credential.ConstAccessKeyId:          structpb.NewStringValue("AKIA_foobar"),
 							credential.ConstSecretAccessKey:      structpb.NewStringValue("bazqux"),
 							credential.ConstCredsLastRotatedTime: structpb.NewStringValue("2006-01-02T15:04:05+07:00"),
 						},
@@ -924,6 +911,7 @@ func TestStoragePlugin_OnDeleteStorageBucket(t *testing.T) {
 			}
 			resp, err := p.OnDeleteStorageBucket(context.Background(), tc.req)
 			if tc.expectedErrContains != "" {
+				require.NotNil(err)
 				require.Contains(err.Error(), tc.expectedErrContains)
 				require.Equal(status.Code(err).String(), tc.expectedErrCode.String())
 				return
@@ -940,11 +928,7 @@ func TestStoragePlugin_HeadObject(t *testing.T) {
 			Key: "/foo/bar/key",
 			Bucket: &storagebuckets.StorageBucket{
 				BucketName: "foo",
-				Secrets: &structpb.Struct{
-					Fields: map[string]*structpb.Value{
-						credential.ConstAccessKeyId:     structpb.NewStringValue("foobar"),
-						credential.ConstSecretAccessKey: structpb.NewStringValue("bazqux"),
-					}},
+				Secrets:    credential.MockStaticCredentialSecrets(),
 				Attributes: &structpb.Struct{
 					Fields: map[string]*structpb.Value{
 						credential.ConstRegion: structpb.NewStringValue("us-west-2"),
@@ -984,17 +968,6 @@ func TestStoragePlugin_HeadObject(t *testing.T) {
 				Bucket: &storagebuckets.StorageBucket{},
 			},
 			expectedErrContains: "bucketName is required",
-			expectedErrCode:     codes.InvalidArgument,
-		},
-		{
-			name: "nil secrets",
-			req: &pb.HeadObjectRequest{
-				Key: "/foo/bar/key",
-				Bucket: &storagebuckets.StorageBucket{
-					BucketName: "foo",
-				},
-			},
-			expectedErrContains: "secrets is required",
 			expectedErrCode:     codes.InvalidArgument,
 		},
 		{
@@ -1140,11 +1113,7 @@ func TestStoragePlugin_ValidatePermissions(t *testing.T) {
 		return &pb.ValidatePermissionsRequest{
 			Bucket: &storagebuckets.StorageBucket{
 				BucketName: "foo",
-				Secrets: &structpb.Struct{
-					Fields: map[string]*structpb.Value{
-						credential.ConstAccessKeyId:     structpb.NewStringValue("foobar"),
-						credential.ConstSecretAccessKey: structpb.NewStringValue("bazqux"),
-					}},
+				Secrets:    credential.MockStaticCredentialSecrets(),
 				Attributes: &structpb.Struct{
 					Fields: map[string]*structpb.Value{
 						credential.ConstRegion: structpb.NewStringValue("us-west-2"),
@@ -1173,16 +1142,6 @@ func TestStoragePlugin_ValidatePermissions(t *testing.T) {
 				Bucket: &storagebuckets.StorageBucket{},
 			},
 			expectedErrContains: "bucketName is required",
-			expectedErrCode:     codes.InvalidArgument,
-		},
-		{
-			name: "nil secrets",
-			req: &pb.ValidatePermissionsRequest{
-				Bucket: &storagebuckets.StorageBucket{
-					BucketName: "foo",
-				},
-			},
-			expectedErrContains: "secrets is required",
 			expectedErrCode:     codes.InvalidArgument,
 		},
 		{
@@ -1383,11 +1342,7 @@ func TestStoragePlugin_GetObject(t *testing.T) {
 			Key: "/foo/bar/key",
 			Bucket: &storagebuckets.StorageBucket{
 				BucketName: "foo",
-				Secrets: &structpb.Struct{
-					Fields: map[string]*structpb.Value{
-						credential.ConstAccessKeyId:     structpb.NewStringValue("foobar"),
-						credential.ConstSecretAccessKey: structpb.NewStringValue("bazqux"),
-					}},
+				Secrets:    credential.MockStaticCredentialSecrets(),
 				Attributes: &structpb.Struct{
 					Fields: map[string]*structpb.Value{
 						credential.ConstRegion: structpb.NewStringValue("us-west-2"),
@@ -1426,17 +1381,6 @@ func TestStoragePlugin_GetObject(t *testing.T) {
 				Bucket: &storagebuckets.StorageBucket{},
 			},
 			expectedErrContains: "bucketName is required",
-			expectedErrCode:     codes.InvalidArgument,
-		},
-		{
-			name: "nil secrets",
-			req: &pb.GetObjectRequest{
-				Key: "/foo/bar/key",
-				Bucket: &storagebuckets.StorageBucket{
-					BucketName: "foo",
-				},
-			},
-			expectedErrContains: "secrets is required",
 			expectedErrCode:     codes.InvalidArgument,
 		},
 		{
@@ -1616,12 +1560,7 @@ func TestStoragePlugin_PutObject(t *testing.T) {
 		return &pb.PutObjectRequest{
 			Bucket: &storagebuckets.StorageBucket{
 				BucketName: "external-obj-store",
-				Secrets: &structpb.Struct{
-					Fields: map[string]*structpb.Value{
-						credential.ConstAccessKeyId:     structpb.NewStringValue("foobar"),
-						credential.ConstSecretAccessKey: structpb.NewStringValue("bazqux"),
-					},
-				},
+				Secrets:    credential.MockStaticCredentialSecrets(),
 				Attributes: &structpb.Struct{
 					Fields: map[string]*structpb.Value{
 						credential.ConstRegion: structpb.NewStringValue("us-west-2"),
@@ -1669,17 +1608,6 @@ func TestStoragePlugin_PutObject(t *testing.T) {
 				Key:    "mock-object",
 			},
 			expectedErrContains: "bucketName is required",
-			expectedErrCode:     codes.InvalidArgument,
-		},
-		{
-			name: "missing bucket secrets",
-			request: &pb.PutObjectRequest{
-				Bucket: &storagebuckets.StorageBucket{
-					BucketName: "external-obj-store",
-				},
-				Key: "mock-object",
-			},
-			expectedErrContains: "secrets is required",
 			expectedErrCode:     codes.InvalidArgument,
 		},
 		{

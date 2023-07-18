@@ -61,6 +61,28 @@ func TestGetCredentialAttributes(t *testing.T) {
 				DisableCredentialRotation: true,
 			},
 		},
+		{
+			name: "with assume role",
+			in: map[string]any{
+				ConstRegion:          "us-west-2",
+				ConstRoleArn:         "arn:aws:iam::123456789012:role/S3Access",
+				ConstRoleExternalId:  "1234567890",
+				ConstRoleSessionName: "test-session",
+				ConstRoleTags: map[string]interface{}{
+					"foo": "bar",
+				},
+			},
+			expected: &CredentialAttributes{
+				Region:                    "us-west-2",
+				DisableCredentialRotation: false,
+				RoleArn:                   "arn:aws:iam::123456789012:role/S3Access",
+				RoleExternalId:            "1234567890",
+				RoleSessionName:           "test-session",
+				RoleTags: map[string]string{
+					"foo": "bar",
+				},
+			},
+		},
 	}
 
 	for _, tc := range cases {
@@ -89,44 +111,91 @@ func TestGetCredentialAttributes(t *testing.T) {
 func TestGetCredentialsConfig(t *testing.T) {
 	cases := []struct {
 		name                string
-		in                  map[string]any
-		region              string
+		secrets             *structpb.Struct
+		required            bool
+		attrs               *CredentialAttributes
 		expected            *awsutil.CredentialsConfig
 		expectedErrContains string
 	}{
 		{
-			name:                "missing access_key_id",
-			in:                  map[string]any{},
-			region:              "us-west-2",
-			expectedErrContains: "missing required value \"access_key_id\"",
+			name: "no secrets",
+			attrs: &CredentialAttributes{
+				Region: "us-west-2",
+			},
+			expected: &awsutil.CredentialsConfig{
+				Region: "us-west-2",
+			},
 		},
 		{
-			name: "missing secret_access_key",
-			in: map[string]any{
-				ConstAccessKeyId: "foobar",
+			name: "with static credentials",
+			secrets: &structpb.Struct{
+				Fields: map[string]*structpb.Value{
+					ConstAccessKeyId:     structpb.NewStringValue("foobar"),
+					ConstSecretAccessKey: structpb.NewStringValue("bazqux"),
+				},
 			},
-			region:              "us-west-2",
-			expectedErrContains: "missing required value \"secret_access_key\"",
+			attrs: &CredentialAttributes{
+				Region: "us-west-2",
+			},
+			expected: &awsutil.CredentialsConfig{
+				AccessKey: "foobar",
+				SecretKey: "bazqux",
+				Region:    "us-west-2",
+			},
+		},
+		{
+			name: "missing access key",
+			secrets: &structpb.Struct{
+				Fields: map[string]*structpb.Value{
+					ConstSecretAccessKey: structpb.NewStringValue("bazqux"),
+				},
+			},
+			attrs: &CredentialAttributes{
+				Region: "us-west-2",
+			},
+			required:            true,
+			expectedErrContains: "secrets.access_key_id: missing required value",
+		},
+		{
+			name: "missing secret key",
+			secrets: &structpb.Struct{
+				Fields: map[string]*structpb.Value{
+					ConstAccessKeyId: structpb.NewStringValue("foobar"),
+				},
+			},
+			required: true,
+			attrs: &CredentialAttributes{
+				Region: "us-west-2",
+			},
+			expectedErrContains: "secrets.secret_access_key: missing required value",
 		},
 		{
 			name: "unknown fields",
-			in: map[string]any{
-				ConstAccessKeyId:     "foobar",
-				ConstSecretAccessKey: "bazqux",
-				"foo":                true,
-				"bar":                true,
+			secrets: &structpb.Struct{
+				Fields: map[string]*structpb.Value{
+					ConstAccessKeyId:     structpb.NewStringValue("foobar"),
+					ConstSecretAccessKey: structpb.NewStringValue("bazqux"),
+					"foo":                structpb.NewBoolValue(true),
+					"bar":                structpb.NewBoolValue(true),
+				},
 			},
-			region:              "us-west-2",
+			attrs: &CredentialAttributes{
+				Region: "us-west-2",
+			},
 			expectedErrContains: "secrets.bar: unrecognized field, secrets.foo: unrecognized field",
 		},
 		{
 			name: "valid ignore creds_last_rotated_time",
-			in: map[string]any{
-				ConstAccessKeyId:          "foobar",
-				ConstSecretAccessKey:      "bazqux",
-				ConstCredsLastRotatedTime: "2006-01-02T15:04:05+07:00",
+			secrets: &structpb.Struct{
+				Fields: map[string]*structpb.Value{
+					ConstAccessKeyId:          structpb.NewStringValue("foobar"),
+					ConstSecretAccessKey:      structpb.NewStringValue("bazqux"),
+					ConstCredsLastRotatedTime: structpb.NewStringValue("2006-01-02T15:04:05+07:00"),
+				},
 			},
-			region: "us-west-2",
+			attrs: &CredentialAttributes{
+				Region: "us-west-2",
+			},
 			expected: &awsutil.CredentialsConfig{
 				AccessKey: "foobar",
 				SecretKey: "bazqux",
@@ -134,16 +203,56 @@ func TestGetCredentialsConfig(t *testing.T) {
 			},
 		},
 		{
-			name: "good",
-			in: map[string]any{
-				ConstAccessKeyId:     "foobar",
-				ConstSecretAccessKey: "bazqux",
+			name: "with assume role",
+			secrets: &structpb.Struct{
+				Fields: map[string]*structpb.Value{},
 			},
-			region: "us-west-2",
+			attrs: &CredentialAttributes{
+				Region:          "us-west-2",
+				RoleArn:         "arn:aws:iam::123456789012:role/S3Access",
+				RoleExternalId:  "1234567890",
+				RoleSessionName: "test-session",
+				RoleTags: map[string]string{
+					"foo": "bar",
+				},
+			},
 			expected: &awsutil.CredentialsConfig{
-				AccessKey: "foobar",
-				SecretKey: "bazqux",
-				Region:    "us-west-2",
+				Region:          "us-west-2",
+				RoleARN:         "arn:aws:iam::123456789012:role/S3Access",
+				RoleExternalId:  "1234567890",
+				RoleSessionName: "test-session",
+				RoleTags: map[string]string{
+					"foo": "bar",
+				},
+			},
+		},
+		{
+			name: "with static credential & assume role",
+			secrets: &structpb.Struct{
+				Fields: map[string]*structpb.Value{
+					ConstAccessKeyId:     structpb.NewStringValue("foobar"),
+					ConstSecretAccessKey: structpb.NewStringValue("bazqux"),
+				},
+			},
+			attrs: &CredentialAttributes{
+				Region:          "us-west-2",
+				RoleArn:         "arn:aws:iam::123456789012:role/S3Access",
+				RoleExternalId:  "1234567890",
+				RoleSessionName: "test-session",
+				RoleTags: map[string]string{
+					"foo": "bar",
+				},
+			},
+			expected: &awsutil.CredentialsConfig{
+				AccessKey:       "foobar",
+				SecretKey:       "bazqux",
+				Region:          "us-west-2",
+				RoleARN:         "arn:aws:iam::123456789012:role/S3Access",
+				RoleExternalId:  "1234567890",
+				RoleSessionName: "test-session",
+				RoleTags: map[string]string{
+					"foo": "bar",
+				},
 			},
 		},
 	}
@@ -153,10 +262,7 @@ func TestGetCredentialsConfig(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			require := require.New(t)
 
-			input, err := structpb.NewStruct(tc.in)
-			require.NoError(err)
-
-			actual, err := GetCredentialsConfig(input, tc.region)
+			actual, err := GetCredentialsConfig(tc.secrets, tc.attrs, tc.required)
 			if tc.expectedErrContains != "" {
 				require.Error(err)
 				require.Contains(err.Error(), tc.expectedErrContains)
@@ -168,6 +274,10 @@ func TestGetCredentialsConfig(t *testing.T) {
 			require.Equal(tc.expected.AccessKey, actual.AccessKey)
 			require.Equal(tc.expected.SecretKey, actual.SecretKey)
 			require.Equal(tc.expected.Region, actual.Region)
+			require.Equal(tc.expected.RoleARN, actual.RoleARN)
+			require.Equal(tc.expected.RoleExternalId, actual.RoleExternalId)
+			require.Equal(tc.expected.RoleSessionName, actual.RoleSessionName)
+			require.Equal(tc.expected.RoleTags, actual.RoleTags)
 		})
 	}
 }

@@ -40,14 +40,6 @@ func TestPluginOnCreateCatalogErr(t *testing.T) {
 			expectedErrCode:     codes.InvalidArgument,
 		},
 		{
-			name: "nil secrets",
-			req: &pb.OnCreateCatalogRequest{
-				Catalog: &hostcatalogs.HostCatalog{},
-			},
-			expectedErrContains: "secrets are required",
-			expectedErrCode:     codes.InvalidArgument,
-		},
-		{
 			name: "nil attributes",
 			req: &pb.OnCreateCatalogRequest{
 				Catalog: &hostcatalogs.HostCatalog{
@@ -93,7 +85,7 @@ func TestPluginOnCreateCatalogErr(t *testing.T) {
 				Catalog: &hostcatalogs.HostCatalog{
 					Secrets: &structpb.Struct{
 						Fields: map[string]*structpb.Value{
-							credential.ConstAccessKeyId:     structpb.NewStringValue("foobar"),
+							credential.ConstAccessKeyId:     structpb.NewStringValue("AKIA_foobar"),
 							credential.ConstSecretAccessKey: structpb.NewStringValue("bazqux"),
 						}},
 					Attrs: &hostcatalogs.HostCatalog_Attributes{
@@ -114,7 +106,7 @@ func TestPluginOnCreateCatalogErr(t *testing.T) {
 				Catalog: &hostcatalogs.HostCatalog{
 					Secrets: &structpb.Struct{
 						Fields: map[string]*structpb.Value{
-							credential.ConstAccessKeyId:     structpb.NewStringValue("foobar"),
+							credential.ConstAccessKeyId:     structpb.NewStringValue("AKIA_foobar"),
 							credential.ConstSecretAccessKey: structpb.NewStringValue("bazqux"),
 						}},
 					Attrs: &hostcatalogs.HostCatalog_Attributes{
@@ -140,7 +132,7 @@ func TestPluginOnCreateCatalogErr(t *testing.T) {
 				Catalog: &hostcatalogs.HostCatalog{
 					Secrets: &structpb.Struct{
 						Fields: map[string]*structpb.Value{
-							credential.ConstAccessKeyId:     structpb.NewStringValue("foobar"),
+							credential.ConstAccessKeyId:     structpb.NewStringValue("AKIA_foobar"),
 							credential.ConstSecretAccessKey: structpb.NewStringValue("bazqux"),
 						}},
 					Attrs: &hostcatalogs.HostCatalog_Attributes{
@@ -170,7 +162,7 @@ func TestPluginOnCreateCatalogErr(t *testing.T) {
 				Catalog: &hostcatalogs.HostCatalog{
 					Secrets: &structpb.Struct{
 						Fields: map[string]*structpb.Value{
-							credential.ConstAccessKeyId:     structpb.NewStringValue("foobar"),
+							credential.ConstAccessKeyId:     structpb.NewStringValue("AKIA_foobar"),
 							credential.ConstSecretAccessKey: structpb.NewStringValue("bazqux"),
 						}},
 					Attrs: &hostcatalogs.HostCatalog_Attributes{
@@ -281,7 +273,7 @@ func TestPluginOnUpdateCatalogErr(t *testing.T) {
 				Persisted: &pb.HostCatalogPersisted{
 					Secrets: &structpb.Struct{
 						Fields: map[string]*structpb.Value{
-							credential.ConstAccessKeyId:          structpb.NewStringValue("foobar"),
+							credential.ConstAccessKeyId:          structpb.NewStringValue("AKIA_foobar"),
 							credential.ConstSecretAccessKey:      structpb.NewStringValue("bazqux"),
 							credential.ConstCredsLastRotatedTime: structpb.NewStringValue("2006-01-02T15:04:05+07:00"),
 						},
@@ -312,7 +304,7 @@ func TestPluginOnUpdateCatalogErr(t *testing.T) {
 				Persisted: &pb.HostCatalogPersisted{
 					Secrets: &structpb.Struct{
 						Fields: map[string]*structpb.Value{
-							credential.ConstAccessKeyId:          structpb.NewStringValue("foobar"),
+							credential.ConstAccessKeyId:          structpb.NewStringValue("AKIA_foobar"),
 							credential.ConstSecretAccessKey:      structpb.NewStringValue("bazqux"),
 							credential.ConstCredsLastRotatedTime: structpb.NewStringValue("2006-01-02T15:04:05+07:00"),
 						},
@@ -338,7 +330,7 @@ func TestPluginOnUpdateCatalogErr(t *testing.T) {
 				Persisted: &pb.HostCatalogPersisted{
 					Secrets: &structpb.Struct{
 						Fields: map[string]*structpb.Value{
-							credential.ConstAccessKeyId:          structpb.NewStringValue("foobar"),
+							credential.ConstAccessKeyId:          structpb.NewStringValue("AKIA_foobar"),
 							credential.ConstSecretAccessKey:      structpb.NewStringValue("bazqux"),
 							credential.ConstCredsLastRotatedTime: structpb.NewStringValue("2006-01-02T15:04:05+07:00"),
 						},
@@ -354,7 +346,7 @@ func TestPluginOnUpdateCatalogErr(t *testing.T) {
 				NewCatalog: &hostcatalogs.HostCatalog{
 					Secrets: &structpb.Struct{
 						Fields: map[string]*structpb.Value{
-							credential.ConstAccessKeyId:     structpb.NewStringValue("onetwo"),
+							credential.ConstAccessKeyId:     structpb.NewStringValue("AKIA_onetwo"),
 							credential.ConstSecretAccessKey: structpb.NewStringValue("threefour"),
 						},
 					},
@@ -370,7 +362,7 @@ func TestPluginOnUpdateCatalogErr(t *testing.T) {
 				Persisted: &pb.HostCatalogPersisted{
 					Secrets: &structpb.Struct{
 						Fields: map[string]*structpb.Value{
-							credential.ConstAccessKeyId:          structpb.NewStringValue("foobar"),
+							credential.ConstAccessKeyId:          structpb.NewStringValue("AKIA_foobar"),
 							credential.ConstSecretAccessKey:      structpb.NewStringValue("bazqux"),
 							credential.ConstCredsLastRotatedTime: structpb.NewStringValue("2006-01-02T15:04:05+07:00"),
 						},
@@ -404,7 +396,7 @@ func TestPluginOnUpdateCatalogErr(t *testing.T) {
 				Persisted: &pb.HostCatalogPersisted{
 					Secrets: &structpb.Struct{
 						Fields: map[string]*structpb.Value{
-							credential.ConstAccessKeyId:     structpb.NewStringValue("foobar"),
+							credential.ConstAccessKeyId:     structpb.NewStringValue("AKIA_foobar"),
 							credential.ConstSecretAccessKey: structpb.NewStringValue("bazqux"),
 						},
 					},
@@ -463,7 +455,7 @@ func TestPluginOnDeleteCatalogErr(t *testing.T) {
 				Persisted: &pb.HostCatalogPersisted{
 					Secrets: &structpb.Struct{
 						Fields: map[string]*structpb.Value{
-							credential.ConstAccessKeyId:          structpb.NewStringValue("foobar"),
+							credential.ConstAccessKeyId:          structpb.NewStringValue("AKIA_foobar"),
 							credential.ConstSecretAccessKey:      structpb.NewStringValue("bazqux"),
 							credential.ConstCredsLastRotatedTime: structpb.NewStringValue("2006-01-02T15:04:05+07:00"),
 						},
@@ -493,7 +485,7 @@ func TestPluginOnDeleteCatalogErr(t *testing.T) {
 				Persisted: &pb.HostCatalogPersisted{
 					Secrets: &structpb.Struct{
 						Fields: map[string]*structpb.Value{
-							credential.ConstAccessKeyId:          structpb.NewStringValue("foobar"),
+							credential.ConstAccessKeyId:          structpb.NewStringValue("AKIA_foobar"),
 							credential.ConstSecretAccessKey:      structpb.NewStringValue("bazqux"),
 							credential.ConstCredsLastRotatedTime: structpb.NewStringValue("2006-01-02T15:04:05+07:00"),
 						},
@@ -598,7 +590,7 @@ func TestPluginOnCreateSetErr(t *testing.T) {
 				Persisted: &pb.HostCatalogPersisted{
 					Secrets: &structpb.Struct{
 						Fields: map[string]*structpb.Value{
-							credential.ConstAccessKeyId:          structpb.NewStringValue("foobar"),
+							credential.ConstAccessKeyId:          structpb.NewStringValue("AKIA_foobar"),
 							credential.ConstSecretAccessKey:      structpb.NewStringValue("bazqux"),
 							credential.ConstCredsLastRotatedTime: structpb.NewStringValue("2006-01-02T15:04:05+07:00"),
 						},
@@ -628,7 +620,7 @@ func TestPluginOnCreateSetErr(t *testing.T) {
 				Persisted: &pb.HostCatalogPersisted{
 					Secrets: &structpb.Struct{
 						Fields: map[string]*structpb.Value{
-							credential.ConstAccessKeyId:          structpb.NewStringValue("foobar"),
+							credential.ConstAccessKeyId:          structpb.NewStringValue("AKIA_foobar"),
 							credential.ConstSecretAccessKey:      structpb.NewStringValue("bazqux"),
 							credential.ConstCredsLastRotatedTime: structpb.NewStringValue("2006-01-02T15:04:05+07:00"),
 						},
@@ -653,7 +645,7 @@ func TestPluginOnCreateSetErr(t *testing.T) {
 				Persisted: &pb.HostCatalogPersisted{
 					Secrets: &structpb.Struct{
 						Fields: map[string]*structpb.Value{
-							credential.ConstAccessKeyId:          structpb.NewStringValue("foobar"),
+							credential.ConstAccessKeyId:          structpb.NewStringValue("AKIA_foobar"),
 							credential.ConstSecretAccessKey:      structpb.NewStringValue("bazqux"),
 							credential.ConstCredsLastRotatedTime: structpb.NewStringValue("2006-01-02T15:04:05+07:00"),
 						},
@@ -679,7 +671,7 @@ func TestPluginOnCreateSetErr(t *testing.T) {
 				Persisted: &pb.HostCatalogPersisted{
 					Secrets: &structpb.Struct{
 						Fields: map[string]*structpb.Value{
-							credential.ConstAccessKeyId:          structpb.NewStringValue("foobar"),
+							credential.ConstAccessKeyId:          structpb.NewStringValue("AKIA_foobar"),
 							credential.ConstSecretAccessKey:      structpb.NewStringValue("bazqux"),
 							credential.ConstCredsLastRotatedTime: structpb.NewStringValue("2006-01-02T15:04:05+07:00"),
 						},
@@ -714,7 +706,7 @@ func TestPluginOnCreateSetErr(t *testing.T) {
 				Persisted: &pb.HostCatalogPersisted{
 					Secrets: &structpb.Struct{
 						Fields: map[string]*structpb.Value{
-							credential.ConstAccessKeyId:          structpb.NewStringValue("foobar"),
+							credential.ConstAccessKeyId:          structpb.NewStringValue("AKIA_foobar"),
 							credential.ConstSecretAccessKey:      structpb.NewStringValue("bazqux"),
 							credential.ConstCredsLastRotatedTime: structpb.NewStringValue("2006-01-02T15:04:05+07:00"),
 						},
@@ -741,7 +733,7 @@ func TestPluginOnCreateSetErr(t *testing.T) {
 					awsutil.MockOptionErr(errors.New(testOptionErr)),
 				}),
 			},
-			expectedErrContains: fmt.Sprintf("error getting EC2 client: error getting AWS session when fetching EC2 client: error reading options in NewCredentialsConfig: %s", testOptionErr),
+			expectedErrContains: fmt.Sprintf("error loading persisted state: error reading options in NewCredentialsConfig: %s", testOptionErr),
 			expectedErrCode:     codes.InvalidArgument,
 		},
 		{
@@ -759,7 +751,7 @@ func TestPluginOnCreateSetErr(t *testing.T) {
 				Persisted: &pb.HostCatalogPersisted{
 					Secrets: &structpb.Struct{
 						Fields: map[string]*structpb.Value{
-							credential.ConstAccessKeyId:          structpb.NewStringValue("foobar"),
+							credential.ConstAccessKeyId:          structpb.NewStringValue("AKIA_foobar"),
 							credential.ConstSecretAccessKey:      structpb.NewStringValue("bazqux"),
 							credential.ConstCredsLastRotatedTime: structpb.NewStringValue("2006-01-02T15:04:05+07:00"),
 						},
@@ -805,7 +797,7 @@ func TestPluginOnCreateSetErr(t *testing.T) {
 				Persisted: &pb.HostCatalogPersisted{
 					Secrets: &structpb.Struct{
 						Fields: map[string]*structpb.Value{
-							credential.ConstAccessKeyId:          structpb.NewStringValue("foobar"),
+							credential.ConstAccessKeyId:          structpb.NewStringValue("AKIA_foobar"),
 							credential.ConstSecretAccessKey:      structpb.NewStringValue("bazqux"),
 							credential.ConstCredsLastRotatedTime: structpb.NewStringValue("2006-01-02T15:04:05+07:00"),
 						},
@@ -850,7 +842,7 @@ func TestPluginOnCreateSetErr(t *testing.T) {
 				Persisted: &pb.HostCatalogPersisted{
 					Secrets: &structpb.Struct{
 						Fields: map[string]*structpb.Value{
-							credential.ConstAccessKeyId:          structpb.NewStringValue("foobar"),
+							credential.ConstAccessKeyId:          structpb.NewStringValue("AKIA_foobar"),
 							credential.ConstSecretAccessKey:      structpb.NewStringValue("bazqux"),
 							credential.ConstCredsLastRotatedTime: structpb.NewStringValue("2006-01-02T15:04:05+07:00"),
 						},
@@ -967,7 +959,7 @@ func TestPluginOnUpdateSetErr(t *testing.T) {
 				Persisted: &pb.HostCatalogPersisted{
 					Secrets: &structpb.Struct{
 						Fields: map[string]*structpb.Value{
-							credential.ConstAccessKeyId:          structpb.NewStringValue("foobar"),
+							credential.ConstAccessKeyId:          structpb.NewStringValue("AKIA_foobar"),
 							credential.ConstSecretAccessKey:      structpb.NewStringValue("bazqux"),
 							credential.ConstCredsLastRotatedTime: structpb.NewStringValue("2006-01-02T15:04:05+07:00"),
 						},
@@ -997,7 +989,7 @@ func TestPluginOnUpdateSetErr(t *testing.T) {
 				Persisted: &pb.HostCatalogPersisted{
 					Secrets: &structpb.Struct{
 						Fields: map[string]*structpb.Value{
-							credential.ConstAccessKeyId:          structpb.NewStringValue("foobar"),
+							credential.ConstAccessKeyId:          structpb.NewStringValue("AKIA_foobar"),
 							credential.ConstSecretAccessKey:      structpb.NewStringValue("bazqux"),
 							credential.ConstCredsLastRotatedTime: structpb.NewStringValue("2006-01-02T15:04:05+07:00"),
 						},
@@ -1022,7 +1014,7 @@ func TestPluginOnUpdateSetErr(t *testing.T) {
 				Persisted: &pb.HostCatalogPersisted{
 					Secrets: &structpb.Struct{
 						Fields: map[string]*structpb.Value{
-							credential.ConstAccessKeyId:          structpb.NewStringValue("foobar"),
+							credential.ConstAccessKeyId:          structpb.NewStringValue("AKIA_foobar"),
 							credential.ConstSecretAccessKey:      structpb.NewStringValue("bazqux"),
 							credential.ConstCredsLastRotatedTime: structpb.NewStringValue("2006-01-02T15:04:05+07:00"),
 						},
@@ -1048,7 +1040,7 @@ func TestPluginOnUpdateSetErr(t *testing.T) {
 				Persisted: &pb.HostCatalogPersisted{
 					Secrets: &structpb.Struct{
 						Fields: map[string]*structpb.Value{
-							credential.ConstAccessKeyId:          structpb.NewStringValue("foobar"),
+							credential.ConstAccessKeyId:          structpb.NewStringValue("AKIA_foobar"),
 							credential.ConstSecretAccessKey:      structpb.NewStringValue("bazqux"),
 							credential.ConstCredsLastRotatedTime: structpb.NewStringValue("2006-01-02T15:04:05+07:00"),
 						},
@@ -1083,7 +1075,7 @@ func TestPluginOnUpdateSetErr(t *testing.T) {
 				Persisted: &pb.HostCatalogPersisted{
 					Secrets: &structpb.Struct{
 						Fields: map[string]*structpb.Value{
-							credential.ConstAccessKeyId:          structpb.NewStringValue("foobar"),
+							credential.ConstAccessKeyId:          structpb.NewStringValue("AKIA_foobar"),
 							credential.ConstSecretAccessKey:      structpb.NewStringValue("bazqux"),
 							credential.ConstCredsLastRotatedTime: structpb.NewStringValue("2006-01-02T15:04:05+07:00"),
 						},
@@ -1110,7 +1102,7 @@ func TestPluginOnUpdateSetErr(t *testing.T) {
 					awsutil.MockOptionErr(errors.New(testOptionErr)),
 				}),
 			},
-			expectedErrContains: fmt.Sprintf("error getting EC2 client: error getting AWS session when fetching EC2 client: error reading options in NewCredentialsConfig: %s", testOptionErr),
+			expectedErrContains: fmt.Sprintf("error loading persisted state: error reading options in NewCredentialsConfig: %s", testOptionErr),
 			expectedErrCode:     codes.InvalidArgument,
 		},
 		{
@@ -1128,7 +1120,7 @@ func TestPluginOnUpdateSetErr(t *testing.T) {
 				Persisted: &pb.HostCatalogPersisted{
 					Secrets: &structpb.Struct{
 						Fields: map[string]*structpb.Value{
-							credential.ConstAccessKeyId:          structpb.NewStringValue("foobar"),
+							credential.ConstAccessKeyId:          structpb.NewStringValue("AKIA_foobar"),
 							credential.ConstSecretAccessKey:      structpb.NewStringValue("bazqux"),
 							credential.ConstCredsLastRotatedTime: structpb.NewStringValue("2006-01-02T15:04:05+07:00"),
 						},
@@ -1174,7 +1166,7 @@ func TestPluginOnUpdateSetErr(t *testing.T) {
 				Persisted: &pb.HostCatalogPersisted{
 					Secrets: &structpb.Struct{
 						Fields: map[string]*structpb.Value{
-							credential.ConstAccessKeyId:          structpb.NewStringValue("foobar"),
+							credential.ConstAccessKeyId:          structpb.NewStringValue("AKIA_foobar"),
 							credential.ConstSecretAccessKey:      structpb.NewStringValue("bazqux"),
 							credential.ConstCredsLastRotatedTime: structpb.NewStringValue("2006-01-02T15:04:05+07:00"),
 						},
@@ -1291,7 +1283,7 @@ func TestPluginListHostsErr(t *testing.T) {
 				Persisted: &pb.HostCatalogPersisted{
 					Secrets: &structpb.Struct{
 						Fields: map[string]*structpb.Value{
-							credential.ConstAccessKeyId:          structpb.NewStringValue("foobar"),
+							credential.ConstAccessKeyId:          structpb.NewStringValue("AKIA_foobar"),
 							credential.ConstSecretAccessKey:      structpb.NewStringValue("bazqux"),
 							credential.ConstCredsLastRotatedTime: structpb.NewStringValue("2006-01-02T15:04:05+07:00"),
 						},
@@ -1321,7 +1313,7 @@ func TestPluginListHostsErr(t *testing.T) {
 				Persisted: &pb.HostCatalogPersisted{
 					Secrets: &structpb.Struct{
 						Fields: map[string]*structpb.Value{
-							credential.ConstAccessKeyId:          structpb.NewStringValue("foobar"),
+							credential.ConstAccessKeyId:          structpb.NewStringValue("AKIA_foobar"),
 							credential.ConstSecretAccessKey:      structpb.NewStringValue("bazqux"),
 							credential.ConstCredsLastRotatedTime: structpb.NewStringValue("2006-01-02T15:04:05+07:00"),
 						},
@@ -1346,7 +1338,7 @@ func TestPluginListHostsErr(t *testing.T) {
 				Persisted: &pb.HostCatalogPersisted{
 					Secrets: &structpb.Struct{
 						Fields: map[string]*structpb.Value{
-							credential.ConstAccessKeyId:          structpb.NewStringValue("foobar"),
+							credential.ConstAccessKeyId:          structpb.NewStringValue("AKIA_foobar"),
 							credential.ConstSecretAccessKey:      structpb.NewStringValue("bazqux"),
 							credential.ConstCredsLastRotatedTime: structpb.NewStringValue("2006-01-02T15:04:05+07:00"),
 						},
@@ -1372,7 +1364,7 @@ func TestPluginListHostsErr(t *testing.T) {
 				Persisted: &pb.HostCatalogPersisted{
 					Secrets: &structpb.Struct{
 						Fields: map[string]*structpb.Value{
-							credential.ConstAccessKeyId:          structpb.NewStringValue("foobar"),
+							credential.ConstAccessKeyId:          structpb.NewStringValue("AKIA_foobar"),
 							credential.ConstSecretAccessKey:      structpb.NewStringValue("bazqux"),
 							credential.ConstCredsLastRotatedTime: structpb.NewStringValue("2006-01-02T15:04:05+07:00"),
 						},
@@ -1402,7 +1394,7 @@ func TestPluginListHostsErr(t *testing.T) {
 				Persisted: &pb.HostCatalogPersisted{
 					Secrets: &structpb.Struct{
 						Fields: map[string]*structpb.Value{
-							credential.ConstAccessKeyId:          structpb.NewStringValue("foobar"),
+							credential.ConstAccessKeyId:          structpb.NewStringValue("AKIA_foobar"),
 							credential.ConstSecretAccessKey:      structpb.NewStringValue("bazqux"),
 							credential.ConstCredsLastRotatedTime: structpb.NewStringValue("2006-01-02T15:04:05+07:00"),
 						},
@@ -1440,7 +1432,7 @@ func TestPluginListHostsErr(t *testing.T) {
 				Persisted: &pb.HostCatalogPersisted{
 					Secrets: &structpb.Struct{
 						Fields: map[string]*structpb.Value{
-							credential.ConstAccessKeyId:          structpb.NewStringValue("foobar"),
+							credential.ConstAccessKeyId:          structpb.NewStringValue("AKIA_foobar"),
 							credential.ConstSecretAccessKey:      structpb.NewStringValue("bazqux"),
 							credential.ConstCredsLastRotatedTime: structpb.NewStringValue("2006-01-02T15:04:05+07:00"),
 						},
@@ -1470,7 +1462,7 @@ func TestPluginListHostsErr(t *testing.T) {
 					awsutil.MockOptionErr(errors.New(testOptionErr)),
 				}),
 			},
-			expectedErrContains: fmt.Sprintf("error getting EC2 client: error getting AWS session when fetching EC2 client: error reading options in NewCredentialsConfig: %s", testOptionErr),
+			expectedErrContains: fmt.Sprintf("error loading persisted state: error reading options in NewCredentialsConfig: %s", testOptionErr),
 			expectedErrCode:     codes.InvalidArgument,
 		},
 		{
@@ -1488,7 +1480,7 @@ func TestPluginListHostsErr(t *testing.T) {
 				Persisted: &pb.HostCatalogPersisted{
 					Secrets: &structpb.Struct{
 						Fields: map[string]*structpb.Value{
-							credential.ConstAccessKeyId:          structpb.NewStringValue("foobar"),
+							credential.ConstAccessKeyId:          structpb.NewStringValue("AKIA_foobar"),
 							credential.ConstSecretAccessKey:      structpb.NewStringValue("bazqux"),
 							credential.ConstCredsLastRotatedTime: structpb.NewStringValue("2006-01-02T15:04:05+07:00"),
 						},
@@ -1537,7 +1529,7 @@ func TestPluginListHostsErr(t *testing.T) {
 				Persisted: &pb.HostCatalogPersisted{
 					Secrets: &structpb.Struct{
 						Fields: map[string]*structpb.Value{
-							credential.ConstAccessKeyId:          structpb.NewStringValue("foobar"),
+							credential.ConstAccessKeyId:          structpb.NewStringValue("AKIA_foobar"),
 							credential.ConstSecretAccessKey:      structpb.NewStringValue("bazqux"),
 							credential.ConstCredsLastRotatedTime: structpb.NewStringValue("2006-01-02T15:04:05+07:00"),
 						},

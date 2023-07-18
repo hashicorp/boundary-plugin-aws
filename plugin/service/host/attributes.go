@@ -38,6 +38,14 @@ func getCatalogAttributes(in *structpb.Struct) (*CatalogAttributes, error) {
 			continue
 		case cred.ConstDisableCredentialRotation:
 			continue
+		case cred.ConstRoleArn:
+			continue
+		case cred.ConstRoleExternalId:
+			continue
+		case cred.ConstRoleSessionName:
+			continue
+		case cred.ConstRoleTags:
+			continue
 		default:
 			badFields[fmt.Sprintf("attributes.%s", s)] = "unrecognized field"
 		}
