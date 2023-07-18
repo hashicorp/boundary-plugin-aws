@@ -44,12 +44,12 @@ func TestStoragePlugin(t *testing.T) {
 	err = tf.Deploy()
 	require.NoError(err)
 
-	defer func() {
+	t.Cleanup(func() {
 		t.Log("===== destroying test Terraform workspace =====")
 		if err := tf.Destroy(); err != nil {
 			t.Logf("WARNING: could not run Terraform destroy: %s", err)
 		}
-	}()
+	})
 
 	bucketName, err := tf.GetOutputString("bucket_name")
 	require.NoError(err)
