@@ -3,6 +3,7 @@
 
 resource "aws_iam_role" "valid" {
   name = "${random_id.prefix.dec}-valid"
+  tags = local.tags
 
   assume_role_policy = jsonencode({
     Version = "2012-10-17"
@@ -20,7 +21,9 @@ resource "aws_iam_role" "valid" {
 }
 
 resource "aws_iam_policy" "valid" {
-  name        = "${random_id.prefix.dec}-valid"
+  name = "${random_id.prefix.dec}-valid"
+  tags = local.tags
+
   policy = <<EOT
 {
   "Version": "2012-10-17",
@@ -47,6 +50,7 @@ resource "aws_iam_role_policy_attachment" "valid" {
 
 resource "aws_iam_role" "missing_put_obj" {
   name = "${random_id.prefix.dec}-missing-put-obj"
+  tags = local.tags
 
   assume_role_policy = jsonencode({
     Version = "2012-10-17"
@@ -65,7 +69,9 @@ resource "aws_iam_role" "missing_put_obj" {
 
 
 resource "aws_iam_policy" "missing_put_obj" {
-  name        = "${random_id.prefix.dec}-missing-put-obj"
+  name = "${random_id.prefix.dec}-missing-put-obj"
+  tags = local.tags
+
   policy = <<EOT
 {
   "Version": "2012-10-17",
@@ -91,6 +97,7 @@ resource "aws_iam_role_policy_attachment" "missing_put_obj" {
 
 resource "aws_iam_role" "missing_get_obj" {
   name = "${random_id.prefix.dec}-missing-get-obj"
+  tags = local.tags
 
   assume_role_policy = jsonencode({
     Version = "2012-10-17"
@@ -108,7 +115,9 @@ resource "aws_iam_role" "missing_get_obj" {
 }
 
 resource "aws_iam_policy" "missing_get_obj" {
-  name        = "${random_id.prefix.dec}-missing-get-obj"
+  name = "${random_id.prefix.dec}-missing-get-obj"
+  tags = local.tags
+
   policy = <<EOT
 {
   "Version": "2012-10-17",
@@ -143,6 +152,7 @@ resource "aws_iam_user" "test" {
   count         = var.iam_user_count
   name          = random_id.user_name[count.index].dec
   force_destroy = true
+  tags          = local.tags
 }
 
 resource "aws_iam_access_key" "test" {
@@ -159,6 +169,7 @@ resource "aws_iam_user_policy_attachment" "test_s3" {
 resource "aws_iam_policy" "credentials" {
   count = var.iam_user_count
   name  = aws_iam_user.test[count.index].name
+  tags  = local.tags
 
   policy = <<EOF
 {
@@ -194,6 +205,7 @@ resource "random_id" "missing_get_obj" {
 resource "aws_iam_user" "missing_get_obj" {
   name          = random_id.missing_get_obj.dec
   force_destroy = true
+  tags          = local.tags
 }
 
 resource "aws_iam_access_key" "missing_get_obj" {
@@ -215,6 +227,7 @@ resource "random_id" "missing_put_obj" {
 resource "aws_iam_user" "missing_put_obj" {
   name          = random_id.missing_put_obj.dec
   force_destroy = true
+  tags          = local.tags
 }
 
 resource "aws_iam_access_key" "missing_put_obj" {

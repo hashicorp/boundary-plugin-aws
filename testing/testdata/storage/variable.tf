@@ -11,3 +11,10 @@ resource "random_id" "prefix" {
 variable "iam_user_count" {
   default = 6
 }
+
+locals {
+  tags = {
+    user_id = split(":", data.aws_caller_identity.current.user_id)[1]
+    repo    = "boundary-plugin-aws" 
+  }
+}

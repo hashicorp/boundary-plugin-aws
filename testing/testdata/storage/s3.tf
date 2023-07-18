@@ -5,4 +5,5 @@ resource "aws_s3_bucket" "test" {
   bucket        = random_id.prefix.dec
   force_destroy = true
   acl           = "private"
+  tags          = local.tags
 }
