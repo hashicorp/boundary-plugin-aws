@@ -12,7 +12,7 @@ import (
 	"github.com/aws/aws-sdk-go-v2/aws"
 	"github.com/aws/aws-sdk-go-v2/service/ec2"
 	"github.com/aws/aws-sdk-go-v2/service/ec2/types"
-	awserr "github.com/aws/smithy-go"
+	"github.com/aws/smithy-go"
 	pb "github.com/hashicorp/boundary/sdk/pbs/plugin"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
@@ -351,7 +351,8 @@ func (p *HostPlugin) OnCreateSet(ctx context.Context, req *pb.OnCreateSetRequest
 		return nil, status.Error(codes.FailedPrecondition, "query error: DescribeInstances DryRun should have returned error, but none was found")
 	}
 
-	if awsErr, ok := err.(awserr.APIError); ok && awsErr.ErrorCode() == "DryRunOperation" {
+	var apiErr smithy.APIError
+	if errors.As(err, &apiErr) && apiErr.ErrorCode() == "DryRunOperation" {
 		// Success
 		return &pb.OnCreateSetResponse{}, nil
 	}
@@ -427,7 +428,8 @@ func (p *HostPlugin) OnUpdateSet(ctx context.Context, req *pb.OnUpdateSetRequest
 		return nil, status.Error(codes.FailedPrecondition, "query error: DescribeInstances DryRun should have returned error, but none was found")
 	}
 
-	if awsErr, ok := err.(awserr.APIError); ok && awsErr.ErrorCode() == "DryRunOperation" {
+	var apiErr smithy.APIError
+	if errors.As(err, &apiErr) && apiErr.ErrorCode() == "DryRunOperation" {
 		// Success
 		return &pb.OnUpdateSetResponse{}, nil
 	}
