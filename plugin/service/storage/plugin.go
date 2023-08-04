@@ -234,6 +234,12 @@ func (p *StoragePlugin) OnDeleteStorageBucket(ctx context.Context, req *pb.OnDel
 		return nil, err
 	}
 
+	// NOTE: This check was added to support the Boundary 0.13.2 release as a hotfix for
+	// empty secrets. Future releases of the plugin will correctly handle empty secrets.
+	if req.GetPersisted().GetData() == nil {
+		return &pb.OnDeleteStorageBucketResponse{}, nil
+	}
+
 	// Get the persisted data.
 	// NOTE: We return on error here, blocking the delete. This may or
 	// may not be an overzealous approach to maintaining database/state
