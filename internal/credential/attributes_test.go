@@ -6,7 +6,7 @@ package credential
 import (
 	"testing"
 
-	"github.com/hashicorp/go-secure-stdlib/awsutil"
+	awsutilv2 "github.com/hashicorp/go-secure-stdlib/awsutil"
 	"github.com/stretchr/testify/require"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
@@ -114,31 +114,44 @@ func TestGetCredentialsConfig(t *testing.T) {
 		secrets             *structpb.Struct
 		required            bool
 		attrs               *CredentialAttributes
-		expected            *awsutil.CredentialsConfig
+		expected            *awsutilv2.CredentialsConfig
 		expectedErrContains string
 	}{
 		{
-			name: "no secrets",
+			name: "no credentials",
 			attrs: &CredentialAttributes{
 				Region: "us-west-2",
 			},
-			expected: &awsutil.CredentialsConfig{
+			expected: &awsutilv2.CredentialsConfig{
 				Region: "us-west-2",
 			},
 		},
 		{
-			name: "with static credentials",
+			name: "with invalid static credentials",
 			secrets: &structpb.Struct{
 				Fields: map[string]*structpb.Value{
-					ConstAccessKeyId:     structpb.NewStringValue("foobar"),
+					ConstAccessKeyId:     structpb.NewStringValue("ASIAfoobar"),
 					ConstSecretAccessKey: structpb.NewStringValue("bazqux"),
 				},
 			},
 			attrs: &CredentialAttributes{
 				Region: "us-west-2",
 			},
-			expected: &awsutil.CredentialsConfig{
-				AccessKey: "foobar",
+			expectedErrContains: `secrets.access_key_id: requires long-term access key beginning with "AKIA" prefix`,
+		},
+		{
+			name: "with static credentials",
+			secrets: &structpb.Struct{
+				Fields: map[string]*structpb.Value{
+					ConstAccessKeyId:     structpb.NewStringValue("AKIAfoobar"),
+					ConstSecretAccessKey: structpb.NewStringValue("bazqux"),
+				},
+			},
+			attrs: &CredentialAttributes{
+				Region: "us-west-2",
+			},
+			expected: &awsutilv2.CredentialsConfig{
+				AccessKey: "AKIAfoobar",
 				SecretKey: "bazqux",
 				Region:    "us-west-2",
 			},
@@ -160,7 +173,7 @@ func TestGetCredentialsConfig(t *testing.T) {
 			name: "missing secret key",
 			secrets: &structpb.Struct{
 				Fields: map[string]*structpb.Value{
-					ConstAccessKeyId: structpb.NewStringValue("foobar"),
+					ConstAccessKeyId: structpb.NewStringValue("AKIAfoobar"),
 				},
 			},
 			required: true,
@@ -173,7 +186,7 @@ func TestGetCredentialsConfig(t *testing.T) {
 			name: "unknown fields",
 			secrets: &structpb.Struct{
 				Fields: map[string]*structpb.Value{
-					ConstAccessKeyId:     structpb.NewStringValue("foobar"),
+					ConstAccessKeyId:     structpb.NewStringValue("AKIAfoobar"),
 					ConstSecretAccessKey: structpb.NewStringValue("bazqux"),
 					"foo":                structpb.NewBoolValue(true),
 					"bar":                structpb.NewBoolValue(true),
@@ -188,7 +201,7 @@ func TestGetCredentialsConfig(t *testing.T) {
 			name: "valid ignore creds_last_rotated_time",
 			secrets: &structpb.Struct{
 				Fields: map[string]*structpb.Value{
-					ConstAccessKeyId:          structpb.NewStringValue("foobar"),
+					ConstAccessKeyId:          structpb.NewStringValue("AKIAfoobar"),
 					ConstSecretAccessKey:      structpb.NewStringValue("bazqux"),
 					ConstCredsLastRotatedTime: structpb.NewStringValue("2006-01-02T15:04:05+07:00"),
 				},
@@ -196,8 +209,8 @@ func TestGetCredentialsConfig(t *testing.T) {
 			attrs: &CredentialAttributes{
 				Region: "us-west-2",
 			},
-			expected: &awsutil.CredentialsConfig{
-				AccessKey: "foobar",
+			expected: &awsutilv2.CredentialsConfig{
+				AccessKey: "AKIAfoobar",
 				SecretKey: "bazqux",
 				Region:    "us-west-2",
 			},
@@ -216,7 +229,7 @@ func TestGetCredentialsConfig(t *testing.T) {
 					"foo": "bar",
 				},
 			},
-			expected: &awsutil.CredentialsConfig{
+			expected: &awsutilv2.CredentialsConfig{
 				Region:          "us-west-2",
 				RoleARN:         "arn:aws:iam::123456789012:role/S3Access",
 				RoleExternalId:  "1234567890",
@@ -230,7 +243,7 @@ func TestGetCredentialsConfig(t *testing.T) {
 			name: "with static credential & assume role",
 			secrets: &structpb.Struct{
 				Fields: map[string]*structpb.Value{
-					ConstAccessKeyId:     structpb.NewStringValue("foobar"),
+					ConstAccessKeyId:     structpb.NewStringValue("AKIAfoobar"),
 					ConstSecretAccessKey: structpb.NewStringValue("bazqux"),
 				},
 			},
@@ -243,17 +256,7 @@ func TestGetCredentialsConfig(t *testing.T) {
 					"foo": "bar",
 				},
 			},
-			expected: &awsutil.CredentialsConfig{
-				AccessKey:       "foobar",
-				SecretKey:       "bazqux",
-				Region:          "us-west-2",
-				RoleARN:         "arn:aws:iam::123456789012:role/S3Access",
-				RoleExternalId:  "1234567890",
-				RoleSessionName: "test-session",
-				RoleTags: map[string]string{
-					"foo": "bar",
-				},
-			},
+			expectedErrContains: "secrets.access_key_id: conflicts with role_arn value, secrets.role_arn: conflicts with access_key_id and secret_access_key values, secrets.secret_access_key: conflicts with role_arn value",
 		},
 	}
 

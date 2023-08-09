@@ -17,12 +17,13 @@ import (
 	"time"
 
 	"github.com/aws/aws-sdk-go-v2/aws"
+	"github.com/aws/aws-sdk-go-v2/service/iam"
+	iamTypes "github.com/aws/aws-sdk-go-v2/service/iam/types"
 	"github.com/aws/aws-sdk-go-v2/service/s3"
-	"github.com/aws/aws-sdk-go/service/iam"
 	"github.com/hashicorp/boundary-plugin-aws/internal/credential"
 	"github.com/hashicorp/boundary/sdk/pbs/controller/api/resources/storagebuckets"
 	pb "github.com/hashicorp/boundary/sdk/pbs/plugin"
-	"github.com/hashicorp/go-secure-stdlib/awsutil"
+	awsutilv2 "github.com/hashicorp/go-secure-stdlib/awsutil"
 	"github.com/stretchr/testify/require"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
@@ -129,25 +130,25 @@ func TestStoragePlugin_OnCreateStorageBucket(t *testing.T) {
 				},
 			},
 			credOpts: []credential.AwsCredentialPersistedStateOption{
-				credential.WithStateTestOpts([]awsutil.Option{
-					awsutil.WithIAMAPIFunc(
-						awsutil.NewMockIAM(
-							awsutil.WithGetUserError(errors.New(testGetUserErr)),
+				credential.WithStateTestOpts([]awsutilv2.Option{
+					awsutilv2.WithIAMAPIFunc(
+						awsutilv2.NewMockIAM(
+							awsutilv2.WithGetUserError(errors.New(testGetUserErr)),
 						),
 					),
 				}),
 			},
-			expectedErrContains: fmt.Sprintf("error during credential rotation: error rotating credentials: error calling CreateAccessKey: error calling aws.GetUser: %s", testGetUserErr),
+			expectedErrContains: fmt.Sprintf("error during credential rotation: error rotating credentials: error calling CreateAccessKey: error calling iam.GetUser: %s", testGetUserErr),
 			expectedErrCode:     codes.InvalidArgument,
 		},
 		{
 			name: "validation error",
 			req:  validRequest(),
 			credOpts: []credential.AwsCredentialPersistedStateOption{
-				credential.WithStateTestOpts([]awsutil.Option{
-					awsutil.WithSTSAPIFunc(
-						awsutil.NewMockSTS(
-							awsutil.WithGetCallerIdentityError(errors.New(testGetCallerIdentityErr)),
+				credential.WithStateTestOpts([]awsutilv2.Option{
+					awsutilv2.WithSTSAPIFunc(
+						awsutilv2.NewMockSTS(
+							awsutilv2.WithGetCallerIdentityError(errors.New(testGetCallerIdentityErr)),
 						),
 					),
 				}),
@@ -279,24 +280,24 @@ func TestStoragePlugin_OnCreateStorageBucket(t *testing.T) {
 			},
 			credOpts: []credential.AwsCredentialPersistedStateOption{
 				credential.WithStateTestOpts(
-					[]awsutil.Option{
-						awsutil.WithSTSAPIFunc(
-							awsutil.NewMockSTS(),
+					[]awsutilv2.Option{
+						awsutilv2.WithSTSAPIFunc(
+							awsutilv2.NewMockSTS(),
 						),
-						awsutil.WithIAMAPIFunc(
-							awsutil.NewMockIAM(
-								awsutil.WithGetUserOutput(
+						awsutilv2.WithIAMAPIFunc(
+							awsutilv2.NewMockIAM(
+								awsutilv2.WithGetUserOutput(
 									&iam.GetUserOutput{
-										User: &iam.User{
+										User: &iamTypes.User{
 											Arn:      aws.String("arn:aws:iam::123456789012:user/JohnDoe"),
 											UserId:   aws.String("AIDAJQABLZS4A3QDU576Q"),
 											UserName: aws.String("JohnDoe"),
 										},
 									},
 								),
-								awsutil.WithCreateAccessKeyOutput(
+								awsutilv2.WithCreateAccessKeyOutput(
 									&iam.CreateAccessKeyOutput{
-										AccessKey: &iam.AccessKey{
+										AccessKey: &iamTypes.AccessKey{
 											AccessKeyId:     aws.String("one"),
 											SecretAccessKey: aws.String("two"),
 											UserName:        aws.String("JohnDoe"),
@@ -353,6 +354,10 @@ func TestStoragePlugin_OnCreateStorageBucket(t *testing.T) {
 	}
 }
 
+// TODO: add tests for changing:
+// roleARN values
+// access/secret keys
+// swithcing between static & dynamic credentials
 func TestStoragePlugin_OnUpdateStorageBucket(t *testing.T) {
 	validRequest := func() *pb.OnUpdateStorageBucketRequest {
 		return &pb.OnUpdateStorageBucketRequest{
@@ -362,6 +367,13 @@ func TestStoragePlugin_OnUpdateStorageBucket(t *testing.T) {
 					Fields: map[string]*structpb.Value{
 						credential.ConstRegion:                    structpb.NewStringValue("us-west-2"),
 						credential.ConstDisableCredentialRotation: structpb.NewBoolValue(true),
+					},
+				},
+			},
+			CurrentBucket: &storagebuckets.StorageBucket{
+				Attributes: &structpb.Struct{
+					Fields: map[string]*structpb.Value{
+						credential.ConstRegion: structpb.NewStringValue("us-west-2"),
 					},
 				},
 			},
@@ -393,11 +405,39 @@ func TestStoragePlugin_OnUpdateStorageBucket(t *testing.T) {
 			expectedErrCode:     codes.InvalidArgument,
 		},
 		{
+			name: "nil current bucket",
+			req: &pb.OnUpdateStorageBucketRequest{
+				NewBucket: &storagebuckets.StorageBucket{
+					BucketName: "foo",
+				},
+			},
+			expectedErrContains: "current bucket is required",
+			expectedErrCode:     codes.InvalidArgument,
+		},
+		{
+			name: "nil current bucket attributes",
+			req: &pb.OnUpdateStorageBucketRequest{
+				NewBucket: &storagebuckets.StorageBucket{
+					BucketName: "foo",
+				},
+				CurrentBucket: &storagebuckets.StorageBucket{},
+			},
+			expectedErrContains: "current bucket attributes is required",
+			expectedErrCode:     codes.InvalidArgument,
+		},
+		{
 			name: "nil new bucket attributes",
 			req: &pb.OnUpdateStorageBucketRequest{
 				NewBucket: &storagebuckets.StorageBucket{
 					BucketName: "foo",
 					Secrets:    new(structpb.Struct),
+				},
+				CurrentBucket: &storagebuckets.StorageBucket{
+					Attributes: &structpb.Struct{
+						Fields: map[string]*structpb.Value{
+							credential.ConstRegion: structpb.NewStringValue("us-west-2"),
+						},
+					},
 				},
 			},
 			expectedErrContains: "new bucket attributes is required",
@@ -410,6 +450,13 @@ func TestStoragePlugin_OnUpdateStorageBucket(t *testing.T) {
 					BucketName: "foo",
 					Secrets:    new(structpb.Struct),
 					Attributes: new(structpb.Struct),
+				},
+				CurrentBucket: &storagebuckets.StorageBucket{
+					Attributes: &structpb.Struct{
+						Fields: map[string]*structpb.Value{
+							credential.ConstRegion: structpb.NewStringValue("us-west-2"),
+						},
+					},
 				},
 			},
 			expectedErrContains: "missing required value \"region\"",
@@ -426,6 +473,13 @@ func TestStoragePlugin_OnUpdateStorageBucket(t *testing.T) {
 						},
 					},
 				},
+				CurrentBucket: &storagebuckets.StorageBucket{
+					Attributes: &structpb.Struct{
+						Fields: map[string]*structpb.Value{
+							credential.ConstRegion: structpb.NewStringValue("us-west-2"),
+						},
+					},
+				},
 			},
 			expectedErrContains: "not a valid region: foobar",
 			expectedErrCode:     codes.InvalidArgument,
@@ -435,6 +489,13 @@ func TestStoragePlugin_OnUpdateStorageBucket(t *testing.T) {
 			req: &pb.OnUpdateStorageBucketRequest{
 				NewBucket: &storagebuckets.StorageBucket{
 					BucketName: "foo",
+					Attributes: &structpb.Struct{
+						Fields: map[string]*structpb.Value{
+							credential.ConstRegion: structpb.NewStringValue("us-west-2"),
+						},
+					},
+				},
+				CurrentBucket: &storagebuckets.StorageBucket{
 					Attributes: &structpb.Struct{
 						Fields: map[string]*structpb.Value{
 							credential.ConstRegion: structpb.NewStringValue("us-west-2"),
@@ -471,6 +532,13 @@ func TestStoragePlugin_OnUpdateStorageBucket(t *testing.T) {
 						},
 					},
 				},
+				CurrentBucket: &storagebuckets.StorageBucket{
+					Attributes: &structpb.Struct{
+						Fields: map[string]*structpb.Value{
+							credential.ConstRegion: structpb.NewStringValue("us-west-2"),
+						},
+					},
+				},
 				Persisted: &storagebuckets.StorageBucketPersisted{
 					Data: &structpb.Struct{
 						Fields: map[string]*structpb.Value{
@@ -502,6 +570,13 @@ func TestStoragePlugin_OnUpdateStorageBucket(t *testing.T) {
 						},
 					},
 				},
+				CurrentBucket: &storagebuckets.StorageBucket{
+					Attributes: &structpb.Struct{
+						Fields: map[string]*structpb.Value{
+							credential.ConstRegion: structpb.NewStringValue("us-west-2"),
+						},
+					},
+				},
 				Persisted: &storagebuckets.StorageBucketPersisted{
 					Data: &structpb.Struct{
 						Fields: map[string]*structpb.Value{
@@ -513,10 +588,10 @@ func TestStoragePlugin_OnUpdateStorageBucket(t *testing.T) {
 				},
 			},
 			credOpts: []credential.AwsCredentialPersistedStateOption{
-				credential.WithStateTestOpts([]awsutil.Option{
-					awsutil.WithIAMAPIFunc(
-						awsutil.NewMockIAM(
-							awsutil.WithDeleteAccessKeyError(errors.New(testDeleteAccessKeyErr)),
+				credential.WithStateTestOpts([]awsutilv2.Option{
+					awsutilv2.WithIAMAPIFunc(
+						awsutilv2.NewMockIAM(
+							awsutilv2.WithDeleteAccessKeyError(errors.New(testDeleteAccessKeyErr)),
 						),
 					),
 				}),
@@ -535,6 +610,13 @@ func TestStoragePlugin_OnUpdateStorageBucket(t *testing.T) {
 						},
 					},
 				},
+				CurrentBucket: &storagebuckets.StorageBucket{
+					Attributes: &structpb.Struct{
+						Fields: map[string]*structpb.Value{
+							credential.ConstRegion: structpb.NewStringValue("us-west-2"),
+						},
+					},
+				},
 				Persisted: &storagebuckets.StorageBucketPersisted{
 					Data: &structpb.Struct{
 						Fields: map[string]*structpb.Value{
@@ -545,15 +627,15 @@ func TestStoragePlugin_OnUpdateStorageBucket(t *testing.T) {
 				},
 			},
 			credOpts: []credential.AwsCredentialPersistedStateOption{
-				credential.WithStateTestOpts([]awsutil.Option{
-					awsutil.WithIAMAPIFunc(
-						awsutil.NewMockIAM(
-							awsutil.WithGetUserError(errors.New(testGetUserErr)),
+				credential.WithStateTestOpts([]awsutilv2.Option{
+					awsutilv2.WithIAMAPIFunc(
+						awsutilv2.NewMockIAM(
+							awsutilv2.WithGetUserError(errors.New(testGetUserErr)),
 						),
 					),
 				}),
 			},
-			expectedErrContains: fmt.Sprintf("error during credential rotation: error rotating credentials: error calling CreateAccessKey: error calling aws.GetUser: %s", testGetUserErr),
+			expectedErrContains: fmt.Sprintf("error during credential rotation: error rotating credentials: error calling CreateAccessKey: error calling iam.GetUser: %s", testGetUserErr),
 			expectedErrCode:     codes.InvalidArgument,
 		},
 		{
@@ -659,6 +741,13 @@ func TestStoragePlugin_OnUpdateStorageBucket(t *testing.T) {
 						},
 					},
 				},
+				CurrentBucket: &storagebuckets.StorageBucket{
+					Attributes: &structpb.Struct{
+						Fields: map[string]*structpb.Value{
+							credential.ConstRegion: structpb.NewStringValue("us-west-2"),
+						},
+					},
+				},
 				Persisted: &storagebuckets.StorageBucketPersisted{
 					Data: &structpb.Struct{
 						Fields: map[string]*structpb.Value{
@@ -669,24 +758,24 @@ func TestStoragePlugin_OnUpdateStorageBucket(t *testing.T) {
 				},
 			},
 			credOpts: []credential.AwsCredentialPersistedStateOption{
-				credential.WithStateTestOpts([]awsutil.Option{
-					awsutil.WithSTSAPIFunc(
-						awsutil.NewMockSTS(),
+				credential.WithStateTestOpts([]awsutilv2.Option{
+					awsutilv2.WithSTSAPIFunc(
+						awsutilv2.NewMockSTS(),
 					),
-					awsutil.WithIAMAPIFunc(
-						awsutil.NewMockIAM(
-							awsutil.WithGetUserOutput(
+					awsutilv2.WithIAMAPIFunc(
+						awsutilv2.NewMockIAM(
+							awsutilv2.WithGetUserOutput(
 								&iam.GetUserOutput{
-									User: &iam.User{
+									User: &iamTypes.User{
 										Arn:      aws.String("arn:aws:iam::123456789012:user/JohnDoe"),
 										UserId:   aws.String("AIDAJQABLZS4A3QDU576Q"),
 										UserName: aws.String("JohnDoe"),
 									},
 								},
 							),
-							awsutil.WithCreateAccessKeyOutput(
+							awsutilv2.WithCreateAccessKeyOutput(
 								&iam.CreateAccessKeyOutput{
-									AccessKey: &iam.AccessKey{
+									AccessKey: &iamTypes.AccessKey{
 										AccessKeyId:     aws.String("AKIA_one"),
 										SecretAccessKey: aws.String("two"),
 										UserName:        aws.String("JohnDoe"),
@@ -858,10 +947,10 @@ func TestStoragePlugin_OnDeleteStorageBucket(t *testing.T) {
 				},
 			},
 			credOpts: []credential.AwsCredentialPersistedStateOption{
-				credential.WithStateTestOpts([]awsutil.Option{
-					awsutil.WithIAMAPIFunc(
-						awsutil.NewMockIAM(
-							awsutil.WithDeleteAccessKeyError(errors.New(testDeleteAccessKeyErr)),
+				credential.WithStateTestOpts([]awsutilv2.Option{
+					awsutilv2.WithIAMAPIFunc(
+						awsutilv2.NewMockIAM(
+							awsutilv2.WithDeleteAccessKeyError(errors.New(testDeleteAccessKeyErr)),
 						),
 					),
 				}),
@@ -890,10 +979,10 @@ func TestStoragePlugin_OnDeleteStorageBucket(t *testing.T) {
 				},
 			},
 			credOpts: []credential.AwsCredentialPersistedStateOption{
-				credential.WithStateTestOpts([]awsutil.Option{
-					awsutil.WithIAMAPIFunc(
-						awsutil.NewMockIAM(
-							awsutil.WithDeleteAccessKeyError(nil),
+				credential.WithStateTestOpts([]awsutilv2.Option{
+					awsutilv2.WithIAMAPIFunc(
+						awsutilv2.NewMockIAM(
+							awsutilv2.WithDeleteAccessKeyError(nil),
 						),
 					),
 				}),

@@ -7,43 +7,41 @@ import (
 	"context"
 	"testing"
 
-	"github.com/aws/aws-sdk-go-v2/service/s3"
 	"github.com/hashicorp/boundary-plugin-aws/internal/credential"
-	"github.com/hashicorp/go-secure-stdlib/awsutil"
+	awsutilv2 "github.com/hashicorp/go-secure-stdlib/awsutil"
 	"github.com/stretchr/testify/require"
 )
 
 func TestAwsStoragePersistedStateS3Client(t *testing.T) {
 	cases := []struct {
 		name             string
-		creds            *awsutil.CredentialsConfig
+		creds            *awsutilv2.CredentialsConfig
 		opts             []awsStoragePersistedStateOption
-		awsOpts          []awsutil.Option
+		awsOpts          []awsutilv2.Option
 		s3Opts           []s3Option
 		expectedRegion   string
 		expectedEndpoint string
 	}{
 		{
 			name: "static credentials",
-			creds: func() *awsutil.CredentialsConfig {
-				creds, err := awsutil.NewCredentialsConfig(
-					awsutil.WithRegion("us-west-2"),
-					awsutil.WithAccessKey("foobar"),
-					awsutil.WithSecretKey("barfoo"),
+			creds: func() *awsutilv2.CredentialsConfig {
+				creds, err := awsutilv2.NewCredentialsConfig(
+					awsutilv2.WithRegion("us-west-2"),
+					awsutilv2.WithAccessKey("foobar"),
+					awsutilv2.WithSecretKey("barfoo"),
 				)
 				require.NoError(t, err)
 				return creds
 			}(),
-			awsOpts: []awsutil.Option{
-				awsutil.WithIAMAPIFunc(
-					awsutil.NewMockIAM(),
+			awsOpts: []awsutilv2.Option{
+				awsutilv2.WithIAMAPIFunc(
+					awsutilv2.NewMockIAM(),
 				),
 			},
 			opts: []awsStoragePersistedStateOption{
 				withTestS3APIFunc(newTestMockS3(nil)),
 			},
 			s3Opts: []s3Option{
-				WithRegion("us-west-2"),
 				WithEndpoint("0.0.0.0"),
 			},
 			expectedRegion:   "us-west-2",
@@ -73,14 +71,6 @@ func TestAwsStoragePersistedStateS3Client(t *testing.T) {
 			require.True(ok)
 			require.NotNil(client)
 			require.Equal(tc.expectedRegion, client.Region)
-
-			if tc.expectedEndpoint != "" {
-				endpoint, err := client.Endpoint.ResolveEndpoint(s3.ServiceID, client.Region)
-				require.NoError(err)
-				require.Equal(tc.expectedEndpoint, endpoint.URL)
-				require.Equal(tc.expectedRegion, endpoint.SigningRegion)
-				require.Equal("aws", endpoint.PartitionID)
-			}
 		})
 	}
 }

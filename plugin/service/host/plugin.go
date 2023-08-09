@@ -86,12 +86,12 @@ func (p *HostPlugin) OnCreateCatalog(ctx context.Context, req *pb.OnCreateCatalo
 	// Try to rotate static credentials
 	if cred.HasStaticCredentials(credState.CredentialsConfig.AccessKey) {
 		if !catalogAttributes.DisableCredentialRotation {
-			if err := credState.RotateCreds(); err != nil {
+			if err := credState.RotateCreds(ctx); err != nil {
 				return nil, status.Errorf(codes.InvalidArgument, "error during credential rotation: %s", err)
 			}
 		} else {
 			// Simply validate if we aren't rotating.
-			if err := credState.ValidateCreds(); err != nil {
+			if err := credState.ValidateCreds(ctx); err != nil {
 				return nil, status.Errorf(codes.InvalidArgument, "error during credential validation: %s", err)
 			}
 		}
@@ -179,7 +179,7 @@ func (p *HostPlugin) OnUpdateCatalog(ctx context.Context, req *pb.OnUpdateCatalo
 			// Replace the credentials. This checks the timestamp on the last
 			// rotation time as well and deletes the credentials if we are
 			// managing them (ie: if we've rotated them before).
-			if err := credState.ReplaceCreds(catalogSecrets); err != nil {
+			if err := credState.ReplaceCreds(ctx, catalogSecrets); err != nil {
 				return nil, status.Errorf(codes.InvalidArgument, "error attempting to replace credentials: %s", err)
 			}
 		}
@@ -187,7 +187,7 @@ func (p *HostPlugin) OnUpdateCatalog(ctx context.Context, req *pb.OnUpdateCatalo
 		if !catalogAttributes.DisableCredentialRotation && credState.CredsLastRotatedTime.IsZero() {
 			// If we're enabling rotation now but didn't before, or have
 			// freshly replaced credentials, we can rotate here.
-			if err := credState.RotateCreds(); err != nil {
+			if err := credState.RotateCreds(ctx); err != nil {
 				return nil, status.Errorf(codes.InvalidArgument, "error during credential rotation: %s", err)
 			}
 		}
@@ -249,7 +249,7 @@ func (p *HostPlugin) OnDeleteCatalog(ctx context.Context, req *pb.OnDeleteCatalo
 			// Delete old/existing credentials. This is done with the same
 			// credentials to ensure that it has the proper permissions to do
 			// it.
-			if err := credState.DeleteCreds(); err != nil {
+			if err := credState.DeleteCreds(ctx); err != nil {
 				return nil, status.Errorf(codes.Aborted, "error removing rotated credentials during catalog deletion: %s", err)
 			}
 		}
@@ -332,11 +332,7 @@ func (p *HostPlugin) OnCreateSet(ctx context.Context, req *pb.OnCreateSetRequest
 		return nil, err
 	}
 
-	opts := []ec2Option{}
-	if catalogAttributes.Region != "" {
-		opts = append(opts, WithRegion(catalogAttributes.Region))
-	}
-	ec2Client, err := catalogState.EC2Client(ctx, opts...)
+	ec2Client, err := catalogState.EC2Client(ctx)
 	if err != nil {
 		return nil, status.Errorf(codes.InvalidArgument, "error getting EC2 client: %s", err)
 	}
@@ -409,11 +405,7 @@ func (p *HostPlugin) OnUpdateSet(ctx context.Context, req *pb.OnUpdateSetRequest
 		return nil, err
 	}
 
-	opts := []ec2Option{}
-	if catalogAttributes.Region != "" {
-		opts = append(opts, WithRegion(catalogAttributes.Region))
-	}
-	ec2Client, err := catalogState.EC2Client(ctx, opts...)
+	ec2Client, err := catalogState.EC2Client(ctx)
 	if err != nil {
 		return nil, status.Errorf(codes.InvalidArgument, "error getting EC2 client: %s", err)
 	}
@@ -516,11 +508,7 @@ func (p *HostPlugin) ListHosts(ctx context.Context, req *pb.ListHostsRequest) (*
 		}
 	}
 
-	opts := []ec2Option{}
-	if catalogAttributes.Region != "" {
-		opts = append(opts, WithRegion(catalogAttributes.Region))
-	}
-	ec2Client, err := catalogState.EC2Client(ctx, opts...)
+	ec2Client, err := catalogState.EC2Client(ctx)
 	if err != nil {
 		return nil, status.Errorf(codes.InvalidArgument, "error getting EC2 client: %s", err)
 	}

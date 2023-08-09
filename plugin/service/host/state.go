@@ -12,8 +12,6 @@ import (
 	"time"
 
 	"github.com/aws/aws-sdk-go-v2/aws"
-	"github.com/aws/aws-sdk-go-v2/config"
-	"github.com/aws/aws-sdk-go-v2/credentials"
 	"github.com/aws/aws-sdk-go-v2/service/ec2"
 	"github.com/hashicorp/boundary-plugin-aws/internal/credential"
 	pb "github.com/hashicorp/boundary/sdk/pbs/plugin"
@@ -88,75 +86,16 @@ func (s *awsCatalogPersistedState) toProto() (*pb.HostCatalogPersisted, error) {
 
 // EC2Client returns a configured EC2 client based on the session
 // information stored in the state.
-func (s *awsCatalogPersistedState) EC2Client(ctx context.Context, opt ...ec2Option) (EC2API, error) {
-	opts, err := getOpts(opt...)
+func (s *awsCatalogPersistedState) EC2Client(ctx context.Context) (EC2API, error) {
+	awsCfg, err := s.GenerateCredentialChain(ctx)
 	if err != nil {
-		return nil, fmt.Errorf("error parsing options when fetching EC2 client: %w", err)
+		return nil, fmt.Errorf("error getting AWS configuration when fetching EC2 client: %w", err)
 	}
-
-	awsConfigOpts := []func(*config.LoadOptions) error{}
-	sess, err := s.GetSession()
-	if err != nil {
-		return nil, fmt.Errorf("error getting AWS session when fetching EC2 client: %w", err)
+	if awsCfg == nil {
+		return nil, fmt.Errorf("nil aws configuration")
 	}
-	creds, err := sess.Config.Credentials.Get()
-	if err != nil {
-		return nil, fmt.Errorf("error getting AWS session when fetching EC2 client: %w", err)
-	}
-	customCredentials := config.WithCredentialsProvider(
-		credentials.NewStaticCredentialsProvider(creds.AccessKeyID, creds.SecretAccessKey, creds.SessionToken),
-	)
-	awsConfigOpts = append(awsConfigOpts, customCredentials)
-	if sess.Config.Region != nil {
-		awsConfigOpts = append(awsConfigOpts, config.WithRegion(*sess.Config.Region))
-	}
-	if opts.withRegion != "" {
-		awsConfigOpts = append(awsConfigOpts, config.WithRegion(opts.withRegion))
-	}
-	cfg, err := config.LoadDefaultConfig(ctx, awsConfigOpts...)
-	if err != nil {
-		return nil, fmt.Errorf("error loading aws configuration when fetching EC2 client: %w", err)
-	}
-
 	if s.testEC2APIFunc != nil {
-		return s.testEC2APIFunc(cfg)
+		return s.testEC2APIFunc(*awsCfg)
 	}
-
-	cfg.HTTPClient = customClient
-
-	return ec2.NewFromConfig(cfg), nil
-}
-
-// getOpts iterates the inbound ec2Options and returns a struct
-func getOpts(opt ...ec2Option) (ec2Options, error) {
-	opts := getDefaultEC2Options()
-	for _, o := range opt {
-		if o == nil {
-			continue
-		}
-		if err := o(&opts); err != nil {
-			return ec2Options{}, err
-		}
-	}
-	return opts, nil
-}
-
-// ec2Option - how ec2Options are passed as arguments
-type ec2Option func(*ec2Options) error
-
-// options = how options are represented
-type ec2Options struct {
-	withRegion string
-}
-
-func getDefaultEC2Options() ec2Options {
-	return ec2Options{}
-}
-
-// WithRegion contains the region to use
-func WithRegion(with string) ec2Option {
-	return func(o *ec2Options) error {
-		o.withRegion = with
-		return nil
-	}
+	return ec2.NewFromConfig(*awsCfg), nil
 }

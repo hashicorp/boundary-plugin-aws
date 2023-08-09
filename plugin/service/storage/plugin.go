@@ -79,12 +79,12 @@ func (p *StoragePlugin) OnCreateStorageBucket(ctx context.Context, req *pb.OnCre
 	// Try to rotate static credentials
 	if cred.HasStaticCredentials(credState.CredentialsConfig.AccessKey) {
 		if !storageAttributes.DisableCredentialRotation {
-			if err := credState.RotateCreds(); err != nil {
+			if err := credState.RotateCreds(ctx); err != nil {
 				return nil, status.Errorf(codes.InvalidArgument, "error during credential rotation: %s", err)
 			}
 		} else {
 			// Simply validate if we aren't rotating.
-			if err := credState.ValidateCreds(); err != nil {
+			if err := credState.ValidateCreds(ctx); err != nil {
 				return nil, status.Errorf(codes.InvalidArgument, "error during credential validation: %s", err)
 			}
 		}
@@ -119,81 +119,90 @@ func (p *StoragePlugin) OnUpdateStorageBucket(ctx context.Context, req *pb.OnUpd
 	// For storage buckets we only need to really validate what is
 	// currently in the new copy of the storage bucket data, so skip
 	// fetching the new copy to keep things a little less messy.
-	bucket := req.GetNewBucket()
-	if bucket == nil {
+	newBucket := req.GetNewBucket()
+	if newBucket == nil {
 		return nil, status.Error(codes.InvalidArgument, "new bucket is required")
 	}
-	if bucket.BucketName == "" {
+	if newBucket.BucketName == "" {
 		return nil, status.Error(codes.InvalidArgument, "new bucketName is required")
 	}
-
-	var updateSecrets bool
-	secrets := bucket.GetSecrets()
-	if secrets != nil {
-		// We will be updating secrets this run, but what exactly that
-		// means will be determined later.
-		updateSecrets = true
+	currentBucket := req.GetCurrentBucket()
+	if currentBucket == nil {
+		return nil, status.Error(codes.InvalidArgument, "current bucket is required")
 	}
 
-	attrs := bucket.GetAttributes()
-	if attrs == nil {
+	oldAttrs := currentBucket.GetAttributes()
+	if oldAttrs == nil {
+		return nil, status.Error(codes.InvalidArgument, "current bucket attributes is required")
+	}
+	oldStorageAttributes, err := getStorageAttributes(oldAttrs)
+	if err != nil {
+		return nil, err
+	}
+	newAttrs := newBucket.GetAttributes()
+	if newAttrs == nil {
 		return nil, status.Error(codes.InvalidArgument, "new bucket attributes is required")
 	}
-
-	storageAttributes, err := getStorageAttributes(attrs)
+	newStorageAttributes, err := getStorageAttributes(newAttrs)
 	if err != nil {
 		return nil, err
 	}
 
-	// Get the persisted data.
-	// NOTE: We might need to change this at a later time. I'm not too
-	// sure *exactly* what scenarios we might encounter that would
-	// ultimately mean that we would have to handle an empty or missing
-	// state in update, but what we are ultimately assuming here
-	// (implicitly through awsStoragePersistedStateFromProto) is that
-	// the state will exist and be populated. Personally I think this
-	// is fine and important, but this may change in the future.
 	credState, err := cred.AwsCredentialPersistedStateFromProto(
 		req.GetPersisted().GetData(),
-		storageAttributes.CredentialAttributes,
+		oldStorageAttributes.CredentialAttributes,
 		p.testCredStateOpts...)
 	if err != nil {
 		return nil, status.Errorf(codes.InvalidArgument, "error loading persisted state: %s", err)
 	}
 
-	if cred.HasStaticCredentials(credState.CredentialsConfig.AccessKey) {
-		if storageAttributes.DisableCredentialRotation && !updateSecrets {
-			// This is a validate check to make sure that we aren't disabling
-			// rotation for credentials currently being managed by rotation.
-			// This is not allowed.
+	// We will be updating credentials when one of two changes occur:
+	// 1. the new bucket has secrets for static credentials, in which case we need to delete the old static credentials
+	// 2. the new bucket has a different roleARN value for dynamic credentials
+	if newBucket.GetSecrets() != nil || newStorageAttributes.RoleArn != oldStorageAttributes.RoleArn {
+		updatedCredentials, err := cred.GetCredentialsConfig(newBucket.GetSecrets(), newStorageAttributes.CredentialAttributes, false)
+		if err != nil {
+			return nil, err
+		}
+
+		// Replace the existing credential state.
+		// This checks the timestamp on the last rotation time as well
+		// and deletes the credentials if we are managing them
+		// (ie: if we've rotated them before).
+		if err := credState.ReplaceCreds(ctx, updatedCredentials); err != nil {
+			return nil, status.Errorf(codes.InvalidArgument, "error attempting to replace credentials: %s", err)
+		}
+	}
+
+	credentialType := cred.GetCredentialType(credState.CredentialsConfig.AccessKey)
+	switch credentialType {
+	case cred.Static:
+		// This is a validate check to make sure that we aren't disabling
+		// rotation for credentials currently being managed by rotation.
+		// This is not allowed.
+		if newStorageAttributes.DisableCredentialRotation && newBucket.GetSecrets() == nil {
 			if !credState.CredsLastRotatedTime.IsZero() {
 				return nil, status.Error(codes.FailedPrecondition, "cannot disable rotation for already-rotated credentials")
 			}
 		}
 
-		if updateSecrets {
-			storageSecrets, err := cred.GetCredentialsConfig(secrets, storageAttributes.CredentialAttributes, false)
-			if err != nil {
-				return nil, err
-			}
-
-			// Replace the credentials. This checks the timestamp on the last
-			// rotation time as well and deletes the credentials if we are
-			// managing them (ie: if we've rotated them before).
-			if err := credState.ReplaceCreds(storageSecrets); err != nil {
-				return nil, status.Errorf(codes.InvalidArgument, "error attempting to replace credentials: %s", err)
-			}
-		}
-
-		if !storageAttributes.DisableCredentialRotation && credState.CredsLastRotatedTime.IsZero() {
-			// If we're enabling rotation now but didn't before, or have
-			// freshly replaced credentials, we can rotate here.
-			if err := credState.RotateCreds(); err != nil {
+		// If we're enabling rotation now but didn't before, or have
+		// freshly replaced credentials, we can rotate here.
+		if !newStorageAttributes.DisableCredentialRotation && credState.CredsLastRotatedTime.IsZero() {
+			if err := credState.RotateCreds(ctx); err != nil {
 				return nil, status.Errorf(codes.InvalidArgument, "error during credential rotation: %s", err)
 			}
 		}
+	case cred.Dynamic:
+		// We cannot allow credential rotation for dynamic credentials
+		if !newStorageAttributes.DisableCredentialRotation {
+			return nil, status.Errorf(codes.InvalidArgument, "cannot enable credential rotation for dynamic credential type")
+		}
+	case cred.Unknown:
+		fallthrough
+	default:
+		return nil, status.Errorf(codes.InvalidArgument, "unknown credential type")
 	}
-
 	storageState, err := newAwsStoragePersistedState(
 		append([]awsStoragePersistedStateOption{
 			withCredentials(credState),
@@ -204,7 +213,7 @@ func (p *StoragePlugin) OnUpdateStorageBucket(ctx context.Context, req *pb.OnUpd
 	}
 
 	// perform dry run to ensure we can interact with the bucket as expected.
-	if err := dryRunValidation(ctx, storageState, storageAttributes, bucket); err != nil {
+	if err := dryRunValidation(ctx, storageState, newStorageAttributes, newBucket); err != nil {
 		return nil, err
 	}
 
@@ -264,7 +273,7 @@ func (p *StoragePlugin) OnDeleteStorageBucket(ctx context.Context, req *pb.OnDel
 			// Delete old/existing credentials. This is done with the same
 			// credentials to ensure that it has the proper permissions to do
 			// it.
-			if err := credState.DeleteCreds(); err != nil {
+			if err := credState.DeleteCreds(ctx); err != nil {
 				return nil, status.Errorf(codes.Aborted, "error removing rotated credentials during storage bucket deletion: %s", err)
 			}
 		}
@@ -323,9 +332,6 @@ func (p *StoragePlugin) HeadObject(ctx context.Context, req *pb.HeadObjectReques
 	}
 
 	opts := []s3Option{}
-	if storageAttributes.Region != "" {
-		opts = append(opts, WithRegion(storageAttributes.Region))
-	}
 	if storageAttributes.EndpointUrl != "" {
 		opts = append(opts, WithEndpoint(storageAttributes.EndpointUrl))
 	}
@@ -452,9 +458,6 @@ func (p *StoragePlugin) GetObject(req *pb.GetObjectRequest, stream pb.StoragePlu
 	}
 
 	opts := []s3Option{}
-	if storageAttributes.Region != "" {
-		opts = append(opts, WithRegion(storageAttributes.Region))
-	}
 	if storageAttributes.EndpointUrl != "" {
 		opts = append(opts, WithEndpoint(storageAttributes.EndpointUrl))
 	}
@@ -566,9 +569,6 @@ func (p *StoragePlugin) PutObject(ctx context.Context, req *pb.PutObjectRequest)
 	}
 
 	opts := []s3Option{}
-	if storageAttributes.Region != "" {
-		opts = append(opts, WithRegion(storageAttributes.Region))
-	}
 	if storageAttributes.EndpointUrl != "" {
 		opts = append(opts, WithEndpoint(storageAttributes.EndpointUrl))
 	}
@@ -632,9 +632,6 @@ func dryRunValidation(ctx context.Context, state *awsStoragePersistedState, attr
 	}
 
 	opts := []s3Option{}
-	if attrs.Region != "" {
-		opts = append(opts, WithRegion(attrs.Region))
-	}
 	if attrs.EndpointUrl != "" {
 		opts = append(opts, WithEndpoint(attrs.EndpointUrl))
 	}
