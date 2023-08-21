@@ -21,6 +21,7 @@ import (
 	cred "github.com/hashicorp/boundary-plugin-aws/internal/credential"
 	"github.com/hashicorp/boundary/sdk/pbs/controller/api/resources/storagebuckets"
 	pb "github.com/hashicorp/boundary/sdk/pbs/plugin"
+	awsutilv2 "github.com/hashicorp/go-secure-stdlib/awsutil"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 	"google.golang.org/protobuf/types/known/timestamppb"
@@ -39,6 +40,10 @@ type StoragePlugin struct {
 
 	// testStorageStateOpts are passed in to the stored state to control test behavior
 	testStorageStateOpts []awsStoragePersistedStateOption
+
+	// testAwsUtilV2Opts are passed to awsutilv2 directly (currently used for
+	// GenerateCredentialChain).
+	testAwsUtilV2Opts []awsutilv2.Option
 }
 
 // OnCreateStorageBucket is called when a storage bucket is created.
@@ -174,7 +179,17 @@ func (p *StoragePlugin) OnUpdateStorageBucket(ctx context.Context, req *pb.OnUpd
 		}
 	}
 
-	credentialType := cred.GetCredentialType(credState.CredentialsConfig.AccessKey)
+	awsCfg, err := credState.CredentialsConfig.GenerateCredentialChain(ctx, p.testAwsUtilV2Opts...)
+	if err != nil {
+		return nil, status.Errorf(codes.Internal, "failed to generate aws credential chain: %s", err)
+	}
+
+	awsCredentials, err := awsCfg.Credentials.Retrieve(ctx)
+	if err != nil {
+		return nil, status.Errorf(codes.Internal, "failed to retrieve aws credentials: %s", err)
+	}
+
+	credentialType := cred.GetCredentialType(awsCredentials.AccessKeyID)
 	switch credentialType {
 	case cred.Static:
 		// This is a validate check to make sure that we aren't disabling

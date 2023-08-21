@@ -849,6 +849,83 @@ func TestStoragePlugin_OnUpdateStorageBucket(t *testing.T) {
 	}
 }
 
+func TestStoragePlugin_OnUpdateStorageBucket_DynamicCredentials(t *testing.T) {
+	cases := []struct {
+		name                string
+		req                 *pb.OnUpdateStorageBucketRequest
+		credOpts            []credential.AwsCredentialPersistedStateOption
+		storageOpts         []awsStoragePersistedStateOption
+		awsutilV2Opts       []awsutilv2.Option
+		expectedErrContains string
+		expectedErrCode     codes.Code
+	}{
+		{
+			name: "attempt to enable credential rotation",
+			req: &pb.OnUpdateStorageBucketRequest{
+				CurrentBucket: &storagebuckets.StorageBucket{
+					Attributes: &structpb.Struct{
+						Fields: map[string]*structpb.Value{
+							credential.ConstRegion:                    structpb.NewStringValue("us-west-2"),
+							credential.ConstDisableCredentialRotation: structpb.NewBoolValue(true),
+						},
+					},
+				},
+				NewBucket: &storagebuckets.StorageBucket{
+					BucketName: "foo",
+					Attributes: &structpb.Struct{
+						Fields: map[string]*structpb.Value{
+							credential.ConstRegion:                    structpb.NewStringValue("us-west-2"),
+							credential.ConstDisableCredentialRotation: structpb.NewBoolValue(false),
+						},
+					},
+				},
+				Persisted: &storagebuckets.StorageBucketPersisted{
+					Data: credential.MockAssumeRoleAttributes("us-west-2", true),
+				},
+			},
+			awsutilV2Opts: []awsutilv2.Option{
+				awsutilv2.WithCredentialsProvider(
+					awsutilv2.NewMockCredentialsProvider(
+						awsutilv2.WithCredentials(
+							aws.Credentials{
+								AccessKeyID:     "ASIA_one",
+								SecretAccessKey: "secret_key_123",
+								SessionToken:    "session_token_123",
+								CanExpire:       true,
+								Expires:         time.Now().Add(time.Hour * 2),
+							},
+						),
+					),
+				),
+			},
+			expectedErrContains: "cannot enable credential rotation for dynamic credential type",
+			expectedErrCode:     codes.InvalidArgument,
+		},
+	}
+
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			require := require.New(t)
+			p := &StoragePlugin{
+				testCredStateOpts:    tc.credOpts,
+				testStorageStateOpts: tc.storageOpts,
+				testAwsUtilV2Opts:    tc.awsutilV2Opts,
+			}
+
+			resp, err := p.OnUpdateStorageBucket(context.Background(), tc.req)
+			if tc.expectedErrContains != "" {
+				require.Contains(err.Error(), tc.expectedErrContains)
+				require.Equal(status.Code(err).String(), tc.expectedErrCode.String())
+				return
+			}
+			require.NoError(err)
+			require.NotNil(resp)
+			require.NotNil(resp.GetPersisted())
+			require.NotNil(resp.GetPersisted().GetData())
+		})
+	}
+}
+
 func TestStoragePlugin_OnDeleteStorageBucket(t *testing.T) {
 	cases := []struct {
 		name                string
