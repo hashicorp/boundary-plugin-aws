@@ -17,7 +17,7 @@ and then the given credential will be revoked. In this way, after rotation,
 only Boundary knows the client secret in use by this plugin. More information
 about AWS static credentials can be found [here](https://docs.aws.amazon.com/sdkref/latest/guide/feature-static-credentials.html).
 
-Credential rotation can be turned off by setting the 
+Credential rotation can be turned off by setting the
 `disable_credential_rotation` attribute to `true`.
 
 ### Assume Role Credentials
@@ -48,7 +48,7 @@ The plugin fetches hosts through the
 [DescribeInstances](https://docs.aws.amazon.com/AWSEC2/latest/APIReference/API_DescribeInstances.html)
 call.
 
-[Getting Started](https://github.com/hashicorp/boundary-plugin-aws/plugin/service/host/README.md)
+[Getting Started](plugin/service/host/README.md)
 
 ## Storage Bucket
 
@@ -60,7 +60,7 @@ these storage bucket resources can in turn be associated to targets within
 Boundary.
 
 At creation, update or deletion of a storage bucket of this type, configuration of the
-plugin is performed via the attribute/secret values passed to the create, update, or 
+plugin is performed via the attribute/secret values passed to the create, update, or
 delete calls actions. The values passed in to the plugin here are the attributes set
 on on a storage bucket in boundary.
 
@@ -76,4 +76,4 @@ The plugin fetches metadata about the files through the
 [HeadObject](https://docs.aws.amazon.com/AmazonS3/latest/API/API_HeadObject.html)
 call.
 
-[Getting Started](https://github.com/hashicorp/boundary-plugin-aws/plugin/service/storage/README.md)
+[Getting Started](plugin/service/storage/README.md)
