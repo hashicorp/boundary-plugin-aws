@@ -83,8 +83,7 @@ func (p *HostPlugin) OnCreateCatalog(ctx context.Context, req *pb.OnCreateCatalo
 		return nil, status.Errorf(codes.InvalidArgument, "error setting up persisted state: %s", err)
 	}
 
-	// Try to rotate static credentials
-	if cred.HasStaticCredentials(credState.CredentialsConfig.AccessKey) {
+	if cred.GetCredentialType(credState.CredentialsConfig) == cred.StaticAWS {
 		if !catalogAttributes.DisableCredentialRotation {
 			if err := credState.RotateCreds(ctx); err != nil {
 				return nil, status.Errorf(codes.InvalidArgument, "error during credential rotation: %s", err)
@@ -160,7 +159,7 @@ func (p *HostPlugin) OnUpdateCatalog(ctx context.Context, req *pb.OnUpdateCatalo
 		return nil, status.Errorf(codes.InvalidArgument, "error loading persisted state: %s", err)
 	}
 
-	if cred.HasStaticCredentials(credState.CredentialsConfig.AccessKey) {
+	if cred.GetCredentialType(credState.CredentialsConfig) == cred.StaticAWS {
 		if catalogAttributes.DisableCredentialRotation && !updateSecrets {
 			// This is a validate check to make sure that we aren't disabling
 			// rotation for credentials currently being managed by rotation.
@@ -244,7 +243,7 @@ func (p *HostPlugin) OnDeleteCatalog(ctx context.Context, req *pb.OnDeleteCatalo
 	}
 
 	// try to delete static credentials
-	if cred.HasStaticCredentials(credState.CredentialsConfig.AccessKey) {
+	if cred.GetCredentialType(credState.CredentialsConfig) == cred.StaticAWS {
 		if !credState.CredsLastRotatedTime.IsZero() {
 			// Delete old/existing credentials. This is done with the same
 			// credentials to ensure that it has the proper permissions to do

@@ -6,7 +6,7 @@ package credential
 import (
 	"testing"
 
-	awsutilv2 "github.com/hashicorp/go-secure-stdlib/awsutil"
+	awsutilv2 "github.com/hashicorp/go-secure-stdlib/awsutil/v2"
 	"github.com/stretchr/testify/require"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
@@ -127,19 +127,6 @@ func TestGetCredentialsConfig(t *testing.T) {
 			},
 		},
 		{
-			name: "with invalid static credentials",
-			secrets: &structpb.Struct{
-				Fields: map[string]*structpb.Value{
-					ConstAccessKeyId:     structpb.NewStringValue("ASIAfoobar"),
-					ConstSecretAccessKey: structpb.NewStringValue("bazqux"),
-				},
-			},
-			attrs: &CredentialAttributes{
-				Region: "us-west-2",
-			},
-			expectedErrContains: `secrets.access_key_id: requires long-term access key beginning with "AKIA" prefix`,
-		},
-		{
 			name: "with static credentials",
 			secrets: &structpb.Struct{
 				Fields: map[string]*structpb.Value{
@@ -228,6 +215,7 @@ func TestGetCredentialsConfig(t *testing.T) {
 				RoleTags: map[string]string{
 					"foo": "bar",
 				},
+				DisableCredentialRotation: true,
 			},
 			expected: &awsutilv2.CredentialsConfig{
 				Region:          "us-west-2",
@@ -257,6 +245,20 @@ func TestGetCredentialsConfig(t *testing.T) {
 				},
 			},
 			expectedErrContains: "secrets.access_key_id: conflicts with role_arn value, secrets.role_arn: conflicts with access_key_id and secret_access_key values, secrets.secret_access_key: conflicts with role_arn value",
+		},
+		{
+			name:    "with dynamic credentials and no disable credential rotation",
+			secrets: &structpb.Struct{Fields: map[string]*structpb.Value{}},
+			attrs: &CredentialAttributes{
+				Region:          "us-west-2",
+				RoleArn:         "arn:aws:iam::123456789012:role/S3Access",
+				RoleExternalId:  "1234567890",
+				RoleSessionName: "test-session",
+				RoleTags: map[string]string{
+					"foo": "bar",
+				},
+			},
+			expectedErrContains: "attributes.disable_credential_rotation: disable_credential_rotation attribute is required when providing a role_arn",
 		},
 	}
 

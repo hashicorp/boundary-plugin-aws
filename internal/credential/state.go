@@ -13,16 +13,30 @@ import (
 	"github.com/aws/aws-sdk-go-v2/aws"
 	iamTypes "github.com/aws/aws-sdk-go-v2/service/iam/types"
 	"github.com/hashicorp/boundary-plugin-aws/internal/values"
-	awsutilv2 "github.com/hashicorp/go-secure-stdlib/awsutil"
+	awsutilv2 "github.com/hashicorp/go-secure-stdlib/awsutil/v2"
 	"google.golang.org/protobuf/types/known/structpb"
 )
 
 type CredentialType int
 
 const (
-	Unknown CredentialType = iota
-	Static
-	Dynamic
+	// StaticAWS denotes an Access Key Id that begins with "AKIA". These are
+	// long-term access keys, provided by AWS, for an IAM user or an AWS account
+	// root user.
+	// https://docs.aws.amazon.com/IAM/latest/UserGuide/security-creds.html#sec-access-keys-and-secret-access-keys
+	StaticAWS CredentialType = iota
+
+	// DynamicAWS denotes the presence of a RoleARN, or an Access Key Id that
+	// begins with "ASIA". The latter are temporary credentials access keys that
+	// are created using AWS STS operations.
+	DynamicAWS
+
+	// StaticOther denotes the presence of an Access Key Id that does not follow
+	// the AKIA/ASIA convention outlined by AWS.
+	StaticOther
+
+	// Unknown is a catch-all for everything else.
+	Unknown
 )
 
 // rotationWaitTimeout controls the time we wait for credential rotation to
@@ -112,7 +126,7 @@ func (s *AwsCredentialPersistedState) RotateCreds(ctx context.Context) error {
 	if s.CredentialsConfig == nil {
 		return errors.New("missing credentials config")
 	}
-	if GetCredentialType(s.CredentialsConfig.AccessKey) != Static {
+	if GetCredentialType(s.CredentialsConfig) != StaticAWS {
 		return errors.New("invalid credential type")
 	}
 	if err := s.CredentialsConfig.RotateKeys(ctx, append([]awsutilv2.Option{
@@ -134,13 +148,11 @@ func (s *AwsCredentialPersistedState) ReplaceCreds(ctx context.Context, credenti
 	if s.CredentialsConfig == nil {
 		return errors.New("missing credentials config")
 	}
-	if GetCredentialType(s.CredentialsConfig.AccessKey) != Static {
-		return errors.New("invalid credential type")
-	}
 
 	// Delete old/existing credentials. This action is only possible for static credential types.
 	// This is done with the same credentials to ensure that it has the proper permissions to do it.
-	if !s.CredsLastRotatedTime.IsZero() {
+	ct := GetCredentialType(s.CredentialsConfig)
+	if !s.CredsLastRotatedTime.IsZero() && ct == StaticAWS {
 		if err := s.DeleteCreds(ctx); err != nil {
 			return err
 		}
@@ -159,7 +171,7 @@ func (s *AwsCredentialPersistedState) DeleteCreds(ctx context.Context) error {
 	if s.CredentialsConfig == nil {
 		return errors.New("missing credentials config")
 	}
-	if GetCredentialType(s.CredentialsConfig.AccessKey) != Static {
+	if GetCredentialType(s.CredentialsConfig) != StaticAWS {
 		return errors.New("invalid credential type")
 	}
 
@@ -192,7 +204,8 @@ func (s *AwsCredentialPersistedState) GenerateCredentialChain(ctx context.Contex
 // return a map for long-term credentials with following keys:
 // access_key_id, secret_access_key & creds_last_rotated_time
 func (s *AwsCredentialPersistedState) ToMap() map[string]any {
-	if HasDynamicCredentials(s.CredentialsConfig.AccessKey) {
+	ct := GetCredentialType(s.CredentialsConfig)
+	if ct == DynamicAWS || ct == Unknown {
 		return map[string]any{}
 	}
 	return map[string]any{
@@ -269,29 +282,22 @@ func AwsCredentialPersistedStateFromProto(secrets *structpb.Struct, attrs *Crede
 	return s, nil
 }
 
-// GetCredentialType returns the credential type based on the given AWS AccessKey.
-//
-// https://docs.aws.amazon.com/IAM/latest/UserGuide/security-creds.html#sec-access-keys-and-secret-access-keys
-// Access key IDs beginning with ASIA are temporary credentials access keys that you create using AWS STS operations.
-//
-// https://docs.aws.amazon.com/IAM/latest/UserGuide/security-creds.html#sec-access-keys-and-secret-access-keys
-// Access key IDs beginning with AKIA are long-term access keys for an IAM user or an AWS account root user.
-func GetCredentialType(accessKey string) CredentialType {
-	if strings.HasPrefix(accessKey, "ASIA") {
-		return Dynamic
+// GetCredentialType returns the credential type based on the given
+// AccessKey/RoleARN. See CredentialType definition for more information.
+func GetCredentialType(cc *awsutilv2.CredentialsConfig) CredentialType {
+	if cc == nil {
+		return Unknown
 	}
-	if strings.HasPrefix(accessKey, "AKIA") {
-		return Static
+
+	if len(cc.RoleARN) > 0 || strings.HasPrefix(cc.AccessKey, "ASIA") {
+		return DynamicAWS
 	}
+	if strings.HasPrefix(cc.AccessKey, "AKIA") {
+		return StaticAWS
+	}
+	if len(cc.AccessKey) > 0 {
+		return StaticOther
+	}
+
 	return Unknown
-}
-
-// HasDynamicCredentials returns true if the access key is a dynamic credential type.
-func HasDynamicCredentials(accessKey string) bool {
-	return strings.HasPrefix(accessKey, "ASIA")
-}
-
-// HasStaticCredentials returns true if the access key is a static credential type.
-func HasStaticCredentials(accessKey string) bool {
-	return strings.HasPrefix(accessKey, "AKIA")
 }

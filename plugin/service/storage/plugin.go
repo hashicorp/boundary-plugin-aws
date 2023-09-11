@@ -76,17 +76,10 @@ func (p *StoragePlugin) OnCreateStorageBucket(ctx context.Context, req *pb.OnCre
 		return nil, status.Errorf(codes.InvalidArgument, "error setting up persisted state: %s", err)
 	}
 
-	// Try to rotate static credentials
-	if cred.HasStaticCredentials(credState.CredentialsConfig.AccessKey) {
-		if !storageAttributes.DisableCredentialRotation {
-			if err := credState.RotateCreds(ctx); err != nil {
-				return nil, status.Errorf(codes.InvalidArgument, "error during credential rotation: %s", err)
-			}
-		} else {
-			// Simply validate if we aren't rotating.
-			if err := credState.ValidateCreds(ctx); err != nil {
-				return nil, status.Errorf(codes.InvalidArgument, "error during credential validation: %s", err)
-			}
+	// Try to rotate AWS static credentials
+	if cred.GetCredentialType(credConfig) == cred.StaticAWS && !storageAttributes.DisableCredentialRotation {
+		if err := credState.RotateCreds(ctx); err != nil {
+			return nil, status.Errorf(codes.InvalidArgument, "error during credential rotation: %s", err)
 		}
 	}
 
@@ -156,15 +149,18 @@ func (p *StoragePlugin) OnUpdateStorageBucket(ctx context.Context, req *pb.OnUpd
 		return nil, status.Errorf(codes.InvalidArgument, "error loading persisted state: %s", err)
 	}
 
+	// Verify the incoming credentials are valid and return any errors to the
+	// user if they're not. Note this doesn't validate the credentials against
+	// AWS - it only does logical validation on the fields.
+	updatedCredentials, err := cred.GetCredentialsConfig(newBucket.GetSecrets(), newStorageAttributes.CredentialAttributes, false)
+	if err != nil {
+		return nil, err
+	}
+
 	// We will be updating credentials when one of two changes occur:
 	// 1. the new bucket has secrets for static credentials, in which case we need to delete the old static credentials
 	// 2. the new bucket has a different roleARN value for dynamic credentials
 	if newBucket.GetSecrets() != nil || newStorageAttributes.RoleArn != oldStorageAttributes.RoleArn {
-		updatedCredentials, err := cred.GetCredentialsConfig(newBucket.GetSecrets(), newStorageAttributes.CredentialAttributes, false)
-		if err != nil {
-			return nil, err
-		}
-
 		// Replace the existing credential state.
 		// This checks the timestamp on the last rotation time as well
 		// and deletes the credentials if we are managing them
@@ -174,9 +170,7 @@ func (p *StoragePlugin) OnUpdateStorageBucket(ctx context.Context, req *pb.OnUpd
 		}
 	}
 
-	credentialType := cred.GetCredentialType(credState.CredentialsConfig.AccessKey)
-	switch credentialType {
-	case cred.Static:
+	if cred.GetCredentialType(credState.CredentialsConfig) == cred.StaticAWS {
 		// This is a validate check to make sure that we aren't disabling
 		// rotation for credentials currently being managed by rotation.
 		// This is not allowed.
@@ -193,16 +187,8 @@ func (p *StoragePlugin) OnUpdateStorageBucket(ctx context.Context, req *pb.OnUpd
 				return nil, status.Errorf(codes.InvalidArgument, "error during credential rotation: %s", err)
 			}
 		}
-	case cred.Dynamic:
-		// We cannot allow credential rotation for dynamic credentials
-		if !newStorageAttributes.DisableCredentialRotation {
-			return nil, status.Errorf(codes.InvalidArgument, "cannot enable credential rotation for dynamic credential type")
-		}
-	case cred.Unknown:
-		fallthrough
-	default:
-		return nil, status.Errorf(codes.InvalidArgument, "unknown credential type")
 	}
+
 	storageState, err := newAwsStoragePersistedState(
 		append([]awsStoragePersistedStateOption{
 			withCredentials(credState),
@@ -268,7 +254,7 @@ func (p *StoragePlugin) OnDeleteStorageBucket(ctx context.Context, req *pb.OnDel
 	}
 
 	// try to delete static credentials
-	if cred.HasStaticCredentials(credState.CredentialsConfig.AccessKey) {
+	if cred.GetCredentialType(credState.CredentialsConfig) == cred.StaticAWS {
 		if !credState.CredsLastRotatedTime.IsZero() {
 			// Delete old/existing credentials. This is done with the same
 			// credentials to ensure that it has the proper permissions to do
