@@ -13,7 +13,7 @@ import (
 	"github.com/aws/aws-sdk-go-v2/aws"
 	"github.com/aws/aws-sdk-go-v2/service/iam"
 	iamTypes "github.com/aws/aws-sdk-go-v2/service/iam/types"
-	awsutilv2 "github.com/hashicorp/go-secure-stdlib/awsutil"
+	awsutilv2 "github.com/hashicorp/go-secure-stdlib/awsutil/v2"
 	"github.com/stretchr/testify/require"
 	"google.golang.org/protobuf/types/known/structpb"
 )
@@ -534,30 +534,6 @@ func TestAwsCatalogPersistedState_ReplaceCreds(t *testing.T) {
 			expectedErr:      "missing credentials config",
 		},
 		{
-			name: "cannot delete dynamic credential type",
-			in: &AwsCredentialPersistedState{
-				CredentialsConfig: &awsutilv2.CredentialsConfig{
-					AccessKey: "ASIAfoobar",
-					SecretKey: "bazqux",
-				},
-				CredsLastRotatedTime: time.Now(),
-			},
-			credentialConfig: &awsutilv2.CredentialsConfig{},
-			expectedErr:      "invalid credential type",
-		},
-		{
-			name: "cannot delete unknown credential type",
-			in: &AwsCredentialPersistedState{
-				CredentialsConfig: &awsutilv2.CredentialsConfig{
-					AccessKey: "DNEfoobar",
-					SecretKey: "bazqux",
-				},
-				CredsLastRotatedTime: time.Now(),
-			},
-			credentialConfig: &awsutilv2.CredentialsConfig{},
-			expectedErr:      "invalid credential type",
-		},
-		{
 			name: "deletion error",
 			in: &AwsCredentialPersistedState{
 				CredentialsConfig: &awsutilv2.CredentialsConfig{
@@ -815,74 +791,53 @@ func TestAwsCatalogPersistedState_GenerateCredentialChain(t *testing.T) {
 	}
 }
 
-func TestHasStaticCredentials(t *testing.T) {
-	require := require.New(t)
-	cases := []struct {
-		name      string
-		accessKey string
-		expected  bool
+func TestGetCredentialType(t *testing.T) {
+	tests := []struct {
+		name             string
+		credConfig       *awsutilv2.CredentialsConfig
+		expectedCredType CredentialType
 	}{
 		{
-			name:      "dynamic credential",
-			accessKey: "ASIAEXAMPLE",
-			expected:  false,
+			name:             "nil credential config",
+			credConfig:       nil,
+			expectedCredType: Unknown,
 		},
 		{
-			name:      "static credential",
-			accessKey: "AKIAEXAMPLE",
-			expected:  true,
+			name:             "empty credential config",
+			credConfig:       &awsutilv2.CredentialsConfig{},
+			expectedCredType: Unknown,
 		},
 		{
-			name:      "other credential",
-			accessKey: "EXAMPLE",
-			expected:  false,
+			name:             "static aws",
+			credConfig:       &awsutilv2.CredentialsConfig{AccessKey: "AKIAfoobar"},
+			expectedCredType: StaticAWS,
 		},
 		{
-			name:      "empty",
-			accessKey: "",
-			expected:  false,
+			name:             "static other",
+			credConfig:       &awsutilv2.CredentialsConfig{AccessKey: "cK3kNFa24foobar"},
+			expectedCredType: StaticOther,
+		},
+		{
+			name:             "dynamic aws - role arn",
+			credConfig:       &awsutilv2.CredentialsConfig{RoleARN: "arn:aws:iam::123456789012:role/S3Access"},
+			expectedCredType: DynamicAWS,
+		},
+		{
+			name:             "dynamic aws - access key",
+			credConfig:       &awsutilv2.CredentialsConfig{AccessKey: "ASIAfoobar"},
+			expectedCredType: DynamicAWS,
+		},
+		{
+			name:             "dynamic aws - role arn and access key",
+			credConfig:       &awsutilv2.CredentialsConfig{AccessKey: "ASIAfoobar", RoleARN: "arn:aws:iam::123456789012:role/S3Access"},
+			expectedCredType: DynamicAWS,
 		},
 	}
-	for _, tc := range cases {
-		tc := tc
-		t.Run(tc.name, func(t *testing.T) {
-			require.Equal(tc.expected, HasStaticCredentials(tc.accessKey))
-		})
-	}
-}
 
-func TestHasDynamicCredentials(t *testing.T) {
-	require := require.New(t)
-	cases := []struct {
-		name      string
-		accessKey string
-		expected  bool
-	}{
-		{
-			name:      "dynamic credential",
-			accessKey: "ASIAEXAMPLE",
-			expected:  true,
-		},
-		{
-			name:      "static credential",
-			accessKey: "AKIAEXAMPLE",
-			expected:  false,
-		},
-		{
-			name:      "other credential",
-			accessKey: "EXAMPLE",
-			expected:  false,
-		},
-		{
-			name:      "empty",
-			accessKey: "",
-			expected:  false,
-		},
-	}
-	for _, tc := range cases {
-		tc := tc
+	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
-			require.Equal(tc.expected, HasDynamicCredentials(tc.accessKey))
+			ct := GetCredentialType(tc.credConfig)
+			require.Equal(t, tc.expectedCredType, ct)
 		})
 	}
 }

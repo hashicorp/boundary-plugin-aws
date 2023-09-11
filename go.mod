@@ -13,15 +13,13 @@ require (
 	github.com/google/go-cmp v0.5.9
 	github.com/google/uuid v1.3.0
 	github.com/hashicorp/boundary/sdk v0.0.33
-	github.com/hashicorp/go-secure-stdlib/awsutil v0.2.2
+	github.com/hashicorp/go-secure-stdlib/awsutil/v2 v2.0.0
 	github.com/hashicorp/terraform-json v0.14.0
 	github.com/mitchellh/mapstructure v1.5.0
 	github.com/stretchr/testify v1.8.4
 	google.golang.org/grpc v1.53.0
 	google.golang.org/protobuf v1.28.1
 )
-
-replace github.com/hashicorp/go-secure-stdlib/awsutil v0.2.2 => github.com/hashicorp/go-secure-stdlib/awsutilv2 v0.0.0-20230809054404-9029211590fd
 
 require (
 	github.com/aws/aws-sdk-go-v2/aws/protocol/eventstream v1.4.12 // indirect

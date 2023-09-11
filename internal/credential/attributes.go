@@ -9,7 +9,7 @@ import (
 	"github.com/aws/aws-sdk-go/aws/endpoints"
 	"github.com/hashicorp/boundary-plugin-aws/internal/errors"
 	"github.com/hashicorp/boundary-plugin-aws/internal/values"
-	awsutilv2 "github.com/hashicorp/go-secure-stdlib/awsutil"
+	awsutilv2 "github.com/hashicorp/go-secure-stdlib/awsutil/v2"
 	"google.golang.org/protobuf/types/known/structpb"
 )
 
@@ -55,10 +55,6 @@ func GetCredentialsConfig(secrets *structpb.Struct, attrs *CredentialAttributes,
 	}
 	delete(unknownFields, ConstAccessKeyId)
 
-	if accessKey != "" && GetCredentialType(accessKey) != Static {
-		badFields[fmt.Sprintf("secrets.%s", ConstAccessKeyId)] = "requires long-term access key beginning with \"AKIA\" prefix"
-	}
-
 	secretKey, err := values.GetStringValue(secrets, ConstSecretAccessKey, required)
 	if err != nil {
 		badFields[fmt.Sprintf("secrets.%s", ConstSecretAccessKey)] = err.Error()
@@ -90,6 +86,9 @@ func GetCredentialsConfig(secrets *structpb.Struct, attrs *CredentialAttributes,
 	// static credential is missing it's access_key_id
 	case accessKey == "" && secretKey != "":
 		badFields[fmt.Sprintf("secrets.%s", ConstAccessKeyId)] = "missing required value"
+	// dynamic credentials and credential rotation is not supported
+	case len(attrs.RoleArn) > 0 && !attrs.DisableCredentialRotation:
+		badFields[fmt.Sprintf("attributes.%s", ConstDisableCredentialRotation)] = "disable_credential_rotation attribute is required when providing a role_arn"
 	// add static credentials
 	case accessKey != "" && secretKey != "":
 		opts = append(opts,

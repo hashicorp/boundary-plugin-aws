@@ -8,7 +8,7 @@ import (
 	"testing"
 
 	"github.com/hashicorp/boundary-plugin-aws/internal/credential"
-	awsutilv2 "github.com/hashicorp/go-secure-stdlib/awsutil"
+	awsutilv2 "github.com/hashicorp/go-secure-stdlib/awsutil/v2"
 	"github.com/stretchr/testify/require"
 )
 
