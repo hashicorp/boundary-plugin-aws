@@ -79,7 +79,7 @@ func GetCredentialsConfig(secrets *structpb.Struct, attrs *CredentialAttributes,
 	case accessKey != "" && secretKey != "" && attrs.RoleArn != "":
 		badFields[fmt.Sprintf("secrets.%s", ConstAccessKeyId)] = "conflicts with role_arn value"
 		badFields[fmt.Sprintf("secrets.%s", ConstSecretAccessKey)] = "conflicts with role_arn value"
-		badFields[fmt.Sprintf("secrets.%s", ConstRoleArn)] = "conflicts with access_key_id and secret_access_key values"
+		badFields[fmt.Sprintf("attributes.%s", ConstRoleArn)] = "conflicts with access_key_id and secret_access_key values"
 	// static credential is missing it's secret_access_key
 	case accessKey != "" && secretKey == "":
 		badFields[fmt.Sprintf("secrets.%s", ConstSecretAccessKey)] = "missing required value"

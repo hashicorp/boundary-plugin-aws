@@ -244,7 +244,7 @@ func TestGetCredentialsConfig(t *testing.T) {
 					"foo": "bar",
 				},
 			},
-			expectedErrContains: "secrets.access_key_id: conflicts with role_arn value, secrets.role_arn: conflicts with access_key_id and secret_access_key values, secrets.secret_access_key: conflicts with role_arn value",
+			expectedErrContains: "attributes.role_arn: conflicts with access_key_id and secret_access_key values, secrets.access_key_id: conflicts with role_arn value, secrets.secret_access_key: conflicts with role_arn value",
 		},
 		{
 			name:    "with dynamic credentials and no disable credential rotation",
