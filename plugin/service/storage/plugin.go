@@ -161,6 +161,28 @@ func (p *StoragePlugin) OnUpdateStorageBucket(ctx context.Context, req *pb.OnUpd
 	// 1. the new bucket has secrets for static credentials, in which case we need to delete the old static credentials
 	// 2. the new bucket has a different roleARN value for dynamic credentials
 	if newBucket.GetSecrets() != nil || newStorageAttributes.RoleArn != oldStorageAttributes.RoleArn {
+		// Ensure the incoming credentials are valid for interaction with the S3
+		// Bucket before replacing them.
+		newCredState, err := cred.NewAwsCredentialPersistedState(
+			append([]cred.AwsCredentialPersistedStateOption{
+				cred.WithCredentialsConfig(updatedCredentials),
+			}, p.testCredStateOpts...)...,
+		)
+		if err != nil {
+			return nil, status.Errorf(codes.InvalidArgument, "error setting up new credential persisted state: %s", err)
+		}
+		newStorageState, err := newAwsStoragePersistedState(
+			append([]awsStoragePersistedStateOption{
+				withCredentials(newCredState),
+			}, p.testStorageStateOpts...)...,
+		)
+		if err != nil {
+			return nil, status.Errorf(codes.InvalidArgument, "error loading persisted state: %s", err)
+		}
+		if err := dryRunValidation(ctx, newStorageState, newStorageAttributes, newBucket); err != nil {
+			return nil, status.Errorf(codes.InvalidArgument, "failed to validate incoming credentials: %s", err)
+		}
+
 		// Replace the existing credential state.
 		// This checks the timestamp on the last rotation time as well
 		// and deletes the credentials if we are managing them

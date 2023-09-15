@@ -663,6 +663,16 @@ func TestStoragePlugin_OnUpdateStorageBucket(t *testing.T) {
 					},
 				},
 			},
+			storageOpts: []awsStoragePersistedStateOption{
+				withTestS3APIFunc(
+					newTestMockS3(
+						nil,
+						testMockS3WithPutObjectOutput(&s3.PutObjectOutput{}),
+						testMockS3WithGetObjectOutput(&s3.GetObjectOutput{}),
+						testMockS3WithHeadObjectOutput(&s3.HeadObjectOutput{}),
+					),
+				),
+			},
 			credOpts: []credential.AwsCredentialPersistedStateOption{
 				credential.WithStateTestOpts([]awsutilv2.Option{
 					awsutilv2.WithIAMAPIFunc(
@@ -933,7 +943,7 @@ func TestStoragePlugin_OnUpdateStorageBucket(t *testing.T) {
 				),
 			},
 			expectedErrContains: "head object failed oops",
-			expectedErrCode:     codes.Internal,
+			expectedErrCode:     codes.InvalidArgument,
 		},
 		{
 			name: "dynamic to dynamic credentials success",
@@ -1014,7 +1024,7 @@ func TestStoragePlugin_OnUpdateStorageBucket(t *testing.T) {
 				),
 			},
 			expectedErrContains: "put object failed oops",
-			expectedErrCode:     codes.Internal,
+			expectedErrCode:     codes.InvalidArgument,
 		},
 		{
 			name: "success static non rotated to dynamic credentials",
@@ -1089,6 +1099,16 @@ func TestStoragePlugin_OnUpdateStorageBucket(t *testing.T) {
 						},
 					},
 				},
+			},
+			storageOpts: []awsStoragePersistedStateOption{
+				withTestS3APIFunc(
+					newTestMockS3(
+						nil,
+						testMockS3WithPutObjectOutput(&s3.PutObjectOutput{}),
+						testMockS3WithGetObjectOutput(&s3.GetObjectOutput{}),
+						testMockS3WithHeadObjectOutput(&s3.HeadObjectOutput{}),
+					),
+				),
 			},
 			credOpts: []credential.AwsCredentialPersistedStateOption{
 				credential.WithStateTestOpts([]awsutilv2.Option{
@@ -1195,7 +1215,7 @@ func TestStoragePlugin_OnUpdateStorageBucket(t *testing.T) {
 				),
 			},
 			expectedErrContains: "put object fail oops",
-			expectedErrCode:     codes.Internal,
+			expectedErrCode:     codes.InvalidArgument,
 		},
 		{
 			name: "success dynamic to static non-rotated credentials",
@@ -1274,6 +1294,16 @@ func TestStoragePlugin_OnUpdateStorageBucket(t *testing.T) {
 				Persisted: &storagebuckets.StorageBucketPersisted{
 					Data: &structpb.Struct{Fields: map[string]*structpb.Value{}},
 				},
+			},
+			storageOpts: []awsStoragePersistedStateOption{
+				withTestS3APIFunc(
+					newTestMockS3(
+						nil,
+						testMockS3WithPutObjectOutput(&s3.PutObjectOutput{}),
+						testMockS3WithGetObjectOutput(&s3.GetObjectOutput{}),
+						testMockS3WithHeadObjectOutput(&s3.HeadObjectOutput{}),
+					),
+				),
 			},
 			credOpts: []credential.AwsCredentialPersistedStateOption{
 				credential.WithStateTestOpts([]awsutilv2.Option{
