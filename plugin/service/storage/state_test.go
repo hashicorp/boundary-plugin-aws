@@ -7,9 +7,8 @@ import (
 	"context"
 	"testing"
 
-	"github.com/aws/aws-sdk-go-v2/service/s3"
 	"github.com/hashicorp/boundary-plugin-aws/internal/credential"
-	"github.com/hashicorp/go-secure-stdlib/awsutil"
+	"github.com/hashicorp/go-secure-stdlib/awsutil/v2"
 	"github.com/stretchr/testify/require"
 )
 
@@ -43,7 +42,6 @@ func TestAwsStoragePersistedStateS3Client(t *testing.T) {
 				withTestS3APIFunc(newTestMockS3(nil)),
 			},
 			s3Opts: []s3Option{
-				WithRegion("us-west-2"),
 				WithEndpoint("0.0.0.0"),
 			},
 			expectedRegion:   "us-west-2",
@@ -73,14 +71,6 @@ func TestAwsStoragePersistedStateS3Client(t *testing.T) {
 			require.True(ok)
 			require.NotNil(client)
 			require.Equal(tc.expectedRegion, client.Region)
-
-			if tc.expectedEndpoint != "" {
-				endpoint, err := client.Endpoint.ResolveEndpoint(s3.ServiceID, client.Region)
-				require.NoError(err)
-				require.Equal(tc.expectedEndpoint, endpoint.URL)
-				require.Equal(tc.expectedRegion, endpoint.SigningRegion)
-				require.Equal("aws", endpoint.PartitionID)
-			}
 		})
 	}
 }

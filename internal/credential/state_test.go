@@ -4,15 +4,16 @@
 package credential
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"testing"
 	"time"
 
-	"github.com/aws/aws-sdk-go/aws"
-	"github.com/aws/aws-sdk-go/aws/awserr"
-	"github.com/aws/aws-sdk-go/service/iam"
-	"github.com/hashicorp/go-secure-stdlib/awsutil"
+	"github.com/aws/aws-sdk-go-v2/aws"
+	"github.com/aws/aws-sdk-go-v2/service/iam"
+	iamTypes "github.com/aws/aws-sdk-go-v2/service/iam/types"
+	"github.com/hashicorp/go-secure-stdlib/awsutil/v2"
 	"github.com/stretchr/testify/require"
 	"google.golang.org/protobuf/types/known/structpb"
 )
@@ -383,7 +384,7 @@ func TestAwsCatalogPersistedState_ValidateCreds(t *testing.T) {
 		tc := tc
 		t.Run(tc.name, func(t *testing.T) {
 			require := require.New(t)
-			err := tc.in.ValidateCreds()
+			err := tc.in.ValidateCreds(context.Background())
 			if tc.expectedErr != "" {
 				require.EqualError(err, tc.expectedErr)
 				return
@@ -408,10 +409,32 @@ func TestAwsCatalogPersistedState_RotateCreds(t *testing.T) {
 			expectedErr: "missing credentials config",
 		},
 		{
+			name: "cannot delete dynamic credential type",
+			in: &AwsCredentialPersistedState{
+				CredentialsConfig: &awsutil.CredentialsConfig{
+					AccessKey: "ASIAfoobar",
+					SecretKey: "bazqux",
+				},
+				CredsLastRotatedTime: time.Now(),
+			},
+			expectedErr: "invalid credential type",
+		},
+		{
+			name: "cannot delete unknown credential type",
+			in: &AwsCredentialPersistedState{
+				CredentialsConfig: &awsutil.CredentialsConfig{
+					AccessKey: "DNEfoobar",
+					SecretKey: "bazqux",
+				},
+				CredsLastRotatedTime: time.Now(),
+			},
+			expectedErr: "invalid credential type",
+		},
+		{
 			name: "rotation error",
 			in: &AwsCredentialPersistedState{
 				CredentialsConfig: &awsutil.CredentialsConfig{
-					AccessKey: "foobar",
+					AccessKey: "AKIAfoobar",
 					SecretKey: "bazqux",
 					Region:    "us-west-2",
 				},
@@ -423,13 +446,13 @@ func TestAwsCatalogPersistedState_RotateCreds(t *testing.T) {
 					),
 				},
 			},
-			expectedErr: fmt.Sprintf("error rotating credentials: error calling CreateAccessKey: error calling aws.GetUser: %s", testGetUserErr),
+			expectedErr: fmt.Sprintf("error rotating credentials: error calling CreateAccessKey: error calling iam.GetUser: %s", testGetUserErr),
 		},
 		{
 			name: "good",
 			in: &AwsCredentialPersistedState{
 				CredentialsConfig: &awsutil.CredentialsConfig{
-					AccessKey: "foobar",
+					AccessKey: "AKIAfoobar",
 					SecretKey: "bazqux",
 					Region:    "us-west-2",
 				},
@@ -441,7 +464,7 @@ func TestAwsCatalogPersistedState_RotateCreds(t *testing.T) {
 						awsutil.NewMockIAM(
 							awsutil.WithGetUserOutput(
 								&iam.GetUserOutput{
-									User: &iam.User{
+									User: &iamTypes.User{
 										Arn:      aws.String("arn:aws:iam::123456789012:user/JohnDoe"),
 										UserId:   aws.String("AIDAJQABLZS4A3QDU576Q"),
 										UserName: aws.String("JohnDoe"),
@@ -450,7 +473,7 @@ func TestAwsCatalogPersistedState_RotateCreds(t *testing.T) {
 							),
 							awsutil.WithCreateAccessKeyOutput(
 								&iam.CreateAccessKeyOutput{
-									AccessKey: &iam.AccessKey{
+									AccessKey: &iamTypes.AccessKey{
 										AccessKeyId:     aws.String("one"),
 										SecretAccessKey: aws.String("two"),
 										UserName:        aws.String("JohnDoe"),
@@ -474,7 +497,7 @@ func TestAwsCatalogPersistedState_RotateCreds(t *testing.T) {
 		tc := tc
 		t.Run(tc.name, func(t *testing.T) {
 			require := require.New(t)
-			err := tc.in.RotateCreds()
+			err := tc.in.RotateCreds(context.Background())
 			if tc.expectedErr != "" {
 				require.EqualError(err, tc.expectedErr)
 				return
@@ -514,7 +537,7 @@ func TestAwsCatalogPersistedState_ReplaceCreds(t *testing.T) {
 			name: "deletion error",
 			in: &AwsCredentialPersistedState{
 				CredentialsConfig: &awsutil.CredentialsConfig{
-					AccessKey: "foobar",
+					AccessKey: "AKIAfoobar",
 					SecretKey: "bazqux",
 				},
 				CredsLastRotatedTime: time.Now(),
@@ -533,7 +556,7 @@ func TestAwsCatalogPersistedState_ReplaceCreds(t *testing.T) {
 			name: "good with delete of old rotated",
 			in: &AwsCredentialPersistedState{
 				CredentialsConfig: &awsutil.CredentialsConfig{
-					AccessKey: "foobar",
+					AccessKey: "AKIAfoobar",
 					SecretKey: "bazqux",
 				},
 				CredsLastRotatedTime: time.Now(),
@@ -557,7 +580,7 @@ func TestAwsCatalogPersistedState_ReplaceCreds(t *testing.T) {
 			name: "good without delete of old rotated",
 			in: &AwsCredentialPersistedState{
 				CredentialsConfig: &awsutil.CredentialsConfig{
-					AccessKey: "foobar",
+					AccessKey: "AKIAfoobar",
 					SecretKey: "bazqux",
 				},
 				testOpts: []awsutil.Option{
@@ -583,7 +606,7 @@ func TestAwsCatalogPersistedState_ReplaceCreds(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			require := require.New(t)
 			state.Reset()
-			err := tc.in.ReplaceCreds(tc.credentialConfig)
+			err := tc.in.ReplaceCreds(context.Background(), tc.credentialConfig)
 			if tc.expectedErr != "" {
 				require.EqualError(err, tc.expectedErr)
 				return
@@ -610,10 +633,32 @@ func TestAwsCatalogPersistedState_DeleteCreds(t *testing.T) {
 			expectedErr: "missing credentials config",
 		},
 		{
+			name: "cannot delete dynamic credential type",
+			in: &AwsCredentialPersistedState{
+				CredentialsConfig: &awsutil.CredentialsConfig{
+					AccessKey: "ASIAfoobar",
+					SecretKey: "bazqux",
+				},
+				CredsLastRotatedTime: time.Now(),
+			},
+			expectedErr: "invalid credential type",
+		},
+		{
+			name: "cannot delete unknown credential type",
+			in: &AwsCredentialPersistedState{
+				CredentialsConfig: &awsutil.CredentialsConfig{
+					AccessKey: "DNEfoobar",
+					SecretKey: "bazqux",
+				},
+				CredsLastRotatedTime: time.Now(),
+			},
+			expectedErr: "invalid credential type",
+		},
+		{
 			name: "deletion error",
 			in: &AwsCredentialPersistedState{
 				CredentialsConfig: &awsutil.CredentialsConfig{
-					AccessKey: "foobar",
+					AccessKey: "AKIAfoobar",
 					SecretKey: "bazqux",
 				},
 				testOpts: []awsutil.Option{
@@ -630,14 +675,14 @@ func TestAwsCatalogPersistedState_DeleteCreds(t *testing.T) {
 			name: "deletion error, but OK because key was just gone",
 			in: &AwsCredentialPersistedState{
 				CredentialsConfig: &awsutil.CredentialsConfig{
-					AccessKey: "foobar",
+					AccessKey: "AKIAfoobar",
 					SecretKey: "bazqux",
 				},
 				testOpts: []awsutil.Option{
 					awsutil.WithIAMAPIFunc(
 						awsutil.NewMockIAM(
 							awsutil.WithDeleteAccessKeyError(
-								awserr.New(iam.ErrCodeNoSuchEntityException, "", nil),
+								&iamTypes.NoSuchEntityException{},
 							),
 						),
 					),
@@ -648,7 +693,7 @@ func TestAwsCatalogPersistedState_DeleteCreds(t *testing.T) {
 			name: "good",
 			in: &AwsCredentialPersistedState{
 				CredentialsConfig: &awsutil.CredentialsConfig{
-					AccessKey: "foobar",
+					AccessKey: "AKIAfoobar",
 					SecretKey: "bazqux",
 				},
 				testOpts: []awsutil.Option{
@@ -664,7 +709,7 @@ func TestAwsCatalogPersistedState_DeleteCreds(t *testing.T) {
 		tc := tc
 		t.Run(tc.name, func(t *testing.T) {
 			require := require.New(t)
-			err := tc.in.DeleteCreds()
+			err := tc.in.DeleteCreds(context.Background())
 			if tc.expectedErr != "" {
 				require.EqualError(err, tc.expectedErr)
 				return
@@ -677,7 +722,7 @@ func TestAwsCatalogPersistedState_DeleteCreds(t *testing.T) {
 	}
 }
 
-func TestAwsCatalogPersistedState_GetSession(t *testing.T) {
+func TestAwsCatalogPersistedState_GenerateCredentialChain(t *testing.T) {
 	require := require.New(t)
 	cases := []struct {
 		name        string
@@ -693,7 +738,7 @@ func TestAwsCatalogPersistedState_GetSession(t *testing.T) {
 				},
 				testOpts: []awsutil.Option{awsutil.MockOptionErr(errors.New(testOptionErr))},
 			},
-			expectedErr: fmt.Sprintf("error reading options in GetSession: %s", testOptionErr),
+			expectedErr: fmt.Sprintf("error reading options in GenerateCredentialChain: %s", testOptionErr),
 		},
 		{
 			name: "static credentials",
@@ -736,7 +781,7 @@ func TestAwsCatalogPersistedState_GetSession(t *testing.T) {
 	for _, tc := range cases {
 		tc := tc
 		t.Run(tc.name, func(t *testing.T) {
-			_, err := tc.in.GetSession()
+			_, err := tc.in.GenerateCredentialChain(context.Background())
 			if tc.expectedErr != "" {
 				require.EqualError(err, tc.expectedErr)
 				return
@@ -746,74 +791,53 @@ func TestAwsCatalogPersistedState_GetSession(t *testing.T) {
 	}
 }
 
-func TestHasStaticCredentials(t *testing.T) {
-	require := require.New(t)
-	cases := []struct {
-		name      string
-		accessKey string
-		expected  bool
+func TestGetCredentialType(t *testing.T) {
+	tests := []struct {
+		name             string
+		credConfig       *awsutil.CredentialsConfig
+		expectedCredType CredentialType
 	}{
 		{
-			name:      "dynamic credential",
-			accessKey: "ASIAEXAMPLE",
-			expected:  false,
+			name:             "nil credential config",
+			credConfig:       nil,
+			expectedCredType: Unknown,
 		},
 		{
-			name:      "static credential",
-			accessKey: "AKIAEXAMPLE",
-			expected:  true,
+			name:             "empty credential config",
+			credConfig:       &awsutil.CredentialsConfig{},
+			expectedCredType: Unknown,
 		},
 		{
-			name:      "other credential",
-			accessKey: "EXAMPLE",
-			expected:  false,
+			name:             "static aws",
+			credConfig:       &awsutil.CredentialsConfig{AccessKey: "AKIAfoobar"},
+			expectedCredType: StaticAWS,
 		},
 		{
-			name:      "empty",
-			accessKey: "",
-			expected:  false,
+			name:             "static other",
+			credConfig:       &awsutil.CredentialsConfig{AccessKey: "cK3kNFa24foobar"},
+			expectedCredType: StaticOther,
+		},
+		{
+			name:             "dynamic aws - role arn",
+			credConfig:       &awsutil.CredentialsConfig{RoleARN: "arn:aws:iam::123456789012:role/S3Access"},
+			expectedCredType: DynamicAWS,
+		},
+		{
+			name:             "dynamic aws - access key",
+			credConfig:       &awsutil.CredentialsConfig{AccessKey: "ASIAfoobar"},
+			expectedCredType: DynamicAWS,
+		},
+		{
+			name:             "dynamic aws - role arn and access key",
+			credConfig:       &awsutil.CredentialsConfig{AccessKey: "ASIAfoobar", RoleARN: "arn:aws:iam::123456789012:role/S3Access"},
+			expectedCredType: DynamicAWS,
 		},
 	}
-	for _, tc := range cases {
-		tc := tc
-		t.Run(tc.name, func(t *testing.T) {
-			require.Equal(tc.expected, HasStaticCredentials(tc.accessKey))
-		})
-	}
-}
 
-func TestHasDynamicCredentials(t *testing.T) {
-	require := require.New(t)
-	cases := []struct {
-		name      string
-		accessKey string
-		expected  bool
-	}{
-		{
-			name:      "dynamic credential",
-			accessKey: "ASIAEXAMPLE",
-			expected:  true,
-		},
-		{
-			name:      "static credential",
-			accessKey: "AKIAEXAMPLE",
-			expected:  false,
-		},
-		{
-			name:      "other credential",
-			accessKey: "EXAMPLE",
-			expected:  false,
-		},
-		{
-			name:      "empty",
-			accessKey: "",
-			expected:  false,
-		},
-	}
-	for _, tc := range cases {
-		tc := tc
+	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
-			require.Equal(tc.expected, HasDynamicCredentials(tc.accessKey))
+			ct := GetCredentialType(tc.credConfig)
+			require.Equal(t, tc.expectedCredType, ct)
 		})
 	}
 }

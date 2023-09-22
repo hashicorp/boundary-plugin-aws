@@ -8,7 +8,7 @@ import (
 	"testing"
 
 	"github.com/hashicorp/boundary-plugin-aws/internal/credential"
-	"github.com/hashicorp/go-secure-stdlib/awsutil"
+	"github.com/hashicorp/go-secure-stdlib/awsutil/v2"
 	"github.com/stretchr/testify/require"
 )
 
@@ -29,7 +29,7 @@ func TestAwsCatalogPersistedStateEC2Client(t *testing.T) {
 	)
 	require.NoError(err)
 
-	clientRaw, err := state.EC2Client(context.Background(), WithRegion("us-west-2"))
+	clientRaw, err := state.EC2Client(context.Background())
 	require.NoError(err)
 	require.NotNil(clientRaw)
 	client, ok := clientRaw.(*testMockEC2)

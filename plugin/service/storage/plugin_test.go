@@ -17,12 +17,15 @@ import (
 	"time"
 
 	"github.com/aws/aws-sdk-go-v2/aws"
+	"github.com/aws/aws-sdk-go-v2/service/iam"
+	iamTypes "github.com/aws/aws-sdk-go-v2/service/iam/types"
 	"github.com/aws/aws-sdk-go-v2/service/s3"
-	"github.com/aws/aws-sdk-go/service/iam"
+	"github.com/aws/aws-sdk-go-v2/service/sts"
+	"github.com/aws/aws-sdk-go-v2/service/sts/types"
 	"github.com/hashicorp/boundary-plugin-aws/internal/credential"
 	"github.com/hashicorp/boundary/sdk/pbs/controller/api/resources/storagebuckets"
 	pb "github.com/hashicorp/boundary/sdk/pbs/plugin"
-	"github.com/hashicorp/go-secure-stdlib/awsutil"
+	"github.com/hashicorp/go-secure-stdlib/awsutil/v2"
 	"github.com/stretchr/testify/require"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
@@ -104,6 +107,23 @@ func TestStoragePlugin_OnCreateStorageBucket(t *testing.T) {
 			expectedErrCode:     codes.InvalidArgument,
 		},
 		{
+			name: "dynamic credentials without disable credential rotation",
+			req: &pb.OnCreateStorageBucketRequest{
+				Bucket: &storagebuckets.StorageBucket{
+					BucketName: "foo",
+					Secrets:    &structpb.Struct{Fields: map[string]*structpb.Value{}},
+					Attributes: &structpb.Struct{
+						Fields: map[string]*structpb.Value{
+							credential.ConstRegion:  structpb.NewStringValue("us-west-2"),
+							credential.ConstRoleArn: structpb.NewStringValue("arn:aws:iam::123456789012:role/S3Access"),
+						},
+					},
+				},
+			},
+			expectedErrContains: "disable_credential_rotation attribute is required when providing a role_arn",
+			expectedErrCode:     codes.InvalidArgument,
+		},
+		{
 			name:     "persisted state setup error",
 			req:      validRequest(),
 			credOpts: validSTSMock(),
@@ -137,22 +157,7 @@ func TestStoragePlugin_OnCreateStorageBucket(t *testing.T) {
 					),
 				}),
 			},
-			expectedErrContains: fmt.Sprintf("error during credential rotation: error rotating credentials: error calling CreateAccessKey: error calling aws.GetUser: %s", testGetUserErr),
-			expectedErrCode:     codes.InvalidArgument,
-		},
-		{
-			name: "validation error",
-			req:  validRequest(),
-			credOpts: []credential.AwsCredentialPersistedStateOption{
-				credential.WithStateTestOpts([]awsutil.Option{
-					awsutil.WithSTSAPIFunc(
-						awsutil.NewMockSTS(
-							awsutil.WithGetCallerIdentityError(errors.New(testGetCallerIdentityErr)),
-						),
-					),
-				}),
-			},
-			expectedErrContains: fmt.Sprintf("error during credential validation: error validating credentials: %s", testGetCallerIdentityErr),
+			expectedErrContains: fmt.Sprintf("error during credential rotation: error rotating credentials: error calling CreateAccessKey: error calling iam.GetUser: %s", testGetUserErr),
 			expectedErrCode:     codes.InvalidArgument,
 		},
 		{
@@ -287,7 +292,7 @@ func TestStoragePlugin_OnCreateStorageBucket(t *testing.T) {
 							awsutil.NewMockIAM(
 								awsutil.WithGetUserOutput(
 									&iam.GetUserOutput{
-										User: &iam.User{
+										User: &iamTypes.User{
 											Arn:      aws.String("arn:aws:iam::123456789012:user/JohnDoe"),
 											UserId:   aws.String("AIDAJQABLZS4A3QDU576Q"),
 											UserName: aws.String("JohnDoe"),
@@ -296,7 +301,7 @@ func TestStoragePlugin_OnCreateStorageBucket(t *testing.T) {
 								),
 								awsutil.WithCreateAccessKeyOutput(
 									&iam.CreateAccessKeyOutput{
-										AccessKey: &iam.AccessKey{
+										AccessKey: &iamTypes.AccessKey{
 											AccessKeyId:     aws.String("one"),
 											SecretAccessKey: aws.String("two"),
 											UserName:        aws.String("JohnDoe"),
@@ -323,6 +328,44 @@ func TestStoragePlugin_OnCreateStorageBucket(t *testing.T) {
 				credential.ConstSecretAccessKey: "two",
 			},
 		},
+		{
+			name: "success with dynamic credentials",
+			req: &pb.OnCreateStorageBucketRequest{
+				Bucket: &storagebuckets.StorageBucket{
+					BucketName: "foo",
+					Secrets:    &structpb.Struct{},
+					Attributes: credential.MockAssumeRoleAttributes("us-west-2", true),
+				},
+			},
+			credOpts: []credential.AwsCredentialPersistedStateOption{
+				credential.WithStateTestOpts(
+					[]awsutil.Option{
+						awsutil.WithSTSAPIFunc(
+							awsutil.NewMockSTS(
+								awsutil.WithAssumeRoleOutput(&sts.AssumeRoleOutput{
+									Credentials: &types.Credentials{
+										AccessKeyId:     aws.String("ASIAfoobar"),
+										Expiration:      aws.Time(time.Now().Add(time.Hour)),
+										SecretAccessKey: aws.String("secretkeyfoobar"),
+									},
+								}),
+							),
+						),
+					},
+				),
+			},
+			storageOpts: []awsStoragePersistedStateOption{
+				withTestS3APIFunc(
+					newTestMockS3(
+						nil,
+						testMockS3WithPutObjectOutput(&s3.PutObjectOutput{}),
+						testMockS3WithGetObjectOutput(&s3.GetObjectOutput{}),
+						testMockS3WithHeadObjectOutput(&s3.HeadObjectOutput{}),
+					),
+				),
+			},
+			expectedPersistedData: map[string]any{}, // No credentials sent back to Boundary as they are temporary.
+		},
 	}
 
 	for _, tc := range cases {
@@ -343,8 +386,10 @@ func TestStoragePlugin_OnCreateStorageBucket(t *testing.T) {
 			require.NotNil(resp)
 			require.NotNil(resp.GetPersisted())
 			require.NotNil(resp.GetPersisted().GetData())
+
 			actualPersistedData := resp.GetPersisted().GetData().AsMap()
-			if len(actualPersistedData) != 0 {
+			if len(tc.expectedPersistedData) != 0 {
+				require.NotEmpty(actualPersistedData)
 				require.Equal(tc.expectedPersistedData[credential.ConstAccessKeyId], actualPersistedData[credential.ConstAccessKeyId])
 				require.Equal(tc.expectedPersistedData[credential.ConstSecretAccessKey], actualPersistedData[credential.ConstSecretAccessKey])
 				require.NotEmpty(actualPersistedData[credential.ConstCredsLastRotatedTime])
@@ -353,6 +398,10 @@ func TestStoragePlugin_OnCreateStorageBucket(t *testing.T) {
 	}
 }
 
+// TODO: add tests for changing:
+// roleARN values
+// access/secret keys
+// swithcing between static & dynamic credentials
 func TestStoragePlugin_OnUpdateStorageBucket(t *testing.T) {
 	validRequest := func() *pb.OnUpdateStorageBucketRequest {
 		return &pb.OnUpdateStorageBucketRequest{
@@ -365,18 +414,27 @@ func TestStoragePlugin_OnUpdateStorageBucket(t *testing.T) {
 					},
 				},
 			},
+			CurrentBucket: &storagebuckets.StorageBucket{
+				Attributes: &structpb.Struct{
+					Fields: map[string]*structpb.Value{
+						credential.ConstRegion: structpb.NewStringValue("us-west-2"),
+					},
+				},
+			},
 			Persisted: &storagebuckets.StorageBucketPersisted{
 				Data: credential.MockStaticCredentialSecrets(),
 			},
 		}
 	}
 	cases := []struct {
-		name                string
-		req                 *pb.OnUpdateStorageBucketRequest
-		credOpts            []credential.AwsCredentialPersistedStateOption
-		storageOpts         []awsStoragePersistedStateOption
-		expectedErrContains string
-		expectedErrCode     codes.Code
+		name                       string
+		req                        *pb.OnUpdateStorageBucketRequest
+		credOpts                   []credential.AwsCredentialPersistedStateOption
+		storageOpts                []awsStoragePersistedStateOption
+		expectedPersistedData      map[string]any
+		expectCredsLastRotatedTime bool
+		expectedErrContains        string
+		expectedErrCode            codes.Code
 	}{
 		{
 			name:                "nil new bucket",
@@ -393,11 +451,39 @@ func TestStoragePlugin_OnUpdateStorageBucket(t *testing.T) {
 			expectedErrCode:     codes.InvalidArgument,
 		},
 		{
+			name: "nil current bucket",
+			req: &pb.OnUpdateStorageBucketRequest{
+				NewBucket: &storagebuckets.StorageBucket{
+					BucketName: "foo",
+				},
+			},
+			expectedErrContains: "current bucket is required",
+			expectedErrCode:     codes.InvalidArgument,
+		},
+		{
+			name: "nil current bucket attributes",
+			req: &pb.OnUpdateStorageBucketRequest{
+				NewBucket: &storagebuckets.StorageBucket{
+					BucketName: "foo",
+				},
+				CurrentBucket: &storagebuckets.StorageBucket{},
+			},
+			expectedErrContains: "current bucket attributes is required",
+			expectedErrCode:     codes.InvalidArgument,
+		},
+		{
 			name: "nil new bucket attributes",
 			req: &pb.OnUpdateStorageBucketRequest{
 				NewBucket: &storagebuckets.StorageBucket{
 					BucketName: "foo",
 					Secrets:    new(structpb.Struct),
+				},
+				CurrentBucket: &storagebuckets.StorageBucket{
+					Attributes: &structpb.Struct{
+						Fields: map[string]*structpb.Value{
+							credential.ConstRegion: structpb.NewStringValue("us-west-2"),
+						},
+					},
 				},
 			},
 			expectedErrContains: "new bucket attributes is required",
@@ -410,6 +496,13 @@ func TestStoragePlugin_OnUpdateStorageBucket(t *testing.T) {
 					BucketName: "foo",
 					Secrets:    new(structpb.Struct),
 					Attributes: new(structpb.Struct),
+				},
+				CurrentBucket: &storagebuckets.StorageBucket{
+					Attributes: &structpb.Struct{
+						Fields: map[string]*structpb.Value{
+							credential.ConstRegion: structpb.NewStringValue("us-west-2"),
+						},
+					},
 				},
 			},
 			expectedErrContains: "missing required value \"region\"",
@@ -426,6 +519,13 @@ func TestStoragePlugin_OnUpdateStorageBucket(t *testing.T) {
 						},
 					},
 				},
+				CurrentBucket: &storagebuckets.StorageBucket{
+					Attributes: &structpb.Struct{
+						Fields: map[string]*structpb.Value{
+							credential.ConstRegion: structpb.NewStringValue("us-west-2"),
+						},
+					},
+				},
 			},
 			expectedErrContains: "not a valid region: foobar",
 			expectedErrCode:     codes.InvalidArgument,
@@ -435,6 +535,13 @@ func TestStoragePlugin_OnUpdateStorageBucket(t *testing.T) {
 			req: &pb.OnUpdateStorageBucketRequest{
 				NewBucket: &storagebuckets.StorageBucket{
 					BucketName: "foo",
+					Attributes: &structpb.Struct{
+						Fields: map[string]*structpb.Value{
+							credential.ConstRegion: structpb.NewStringValue("us-west-2"),
+						},
+					},
+				},
+				CurrentBucket: &storagebuckets.StorageBucket{
 					Attributes: &structpb.Struct{
 						Fields: map[string]*structpb.Value{
 							credential.ConstRegion: structpb.NewStringValue("us-west-2"),
@@ -471,6 +578,13 @@ func TestStoragePlugin_OnUpdateStorageBucket(t *testing.T) {
 						},
 					},
 				},
+				CurrentBucket: &storagebuckets.StorageBucket{
+					Attributes: &structpb.Struct{
+						Fields: map[string]*structpb.Value{
+							credential.ConstRegion: structpb.NewStringValue("us-west-2"),
+						},
+					},
+				},
 				Persisted: &storagebuckets.StorageBucketPersisted{
 					Data: &structpb.Struct{
 						Fields: map[string]*structpb.Value{
@@ -483,6 +597,36 @@ func TestStoragePlugin_OnUpdateStorageBucket(t *testing.T) {
 			},
 			expectedErrContains: "cannot disable rotation for already-rotated credentials",
 			expectedErrCode:     codes.FailedPrecondition,
+		},
+		{
+			name: "attempt to enable credential rotation with dynamic credentials",
+			req: &pb.OnUpdateStorageBucketRequest{
+				CurrentBucket: &storagebuckets.StorageBucket{
+					BucketName: "foo",
+					Attributes: &structpb.Struct{
+						Fields: map[string]*structpb.Value{
+							credential.ConstRegion:                    structpb.NewStringValue("us-west-2"),
+							credential.ConstDisableCredentialRotation: structpb.NewBoolValue(true),
+							credential.ConstRoleArn:                   structpb.NewStringValue("arn:aws:iam::123456789012:role/S3Access"),
+						},
+					},
+				},
+				NewBucket: &storagebuckets.StorageBucket{
+					BucketName: "foo",
+					Attributes: &structpb.Struct{
+						Fields: map[string]*structpb.Value{
+							credential.ConstRegion:                    structpb.NewStringValue("us-west-2"),
+							credential.ConstDisableCredentialRotation: structpb.NewBoolValue(false),
+							credential.ConstRoleArn:                   structpb.NewStringValue("arn:aws:iam::123456789012:role/S3Access"),
+						},
+					},
+				},
+				Persisted: &storagebuckets.StorageBucketPersisted{
+					Data: credential.MockAssumeRoleAttributes("us-west-2", true),
+				},
+			},
+			expectedErrContains: "disable_credential_rotation attribute is required when providing a role_arn",
+			expectedErrCode:     codes.InvalidArgument,
 		},
 		{
 			name: "updating secrets, replace error",
@@ -502,6 +646,13 @@ func TestStoragePlugin_OnUpdateStorageBucket(t *testing.T) {
 						},
 					},
 				},
+				CurrentBucket: &storagebuckets.StorageBucket{
+					Attributes: &structpb.Struct{
+						Fields: map[string]*structpb.Value{
+							credential.ConstRegion: structpb.NewStringValue("us-west-2"),
+						},
+					},
+				},
 				Persisted: &storagebuckets.StorageBucketPersisted{
 					Data: &structpb.Struct{
 						Fields: map[string]*structpb.Value{
@@ -511,6 +662,16 @@ func TestStoragePlugin_OnUpdateStorageBucket(t *testing.T) {
 						},
 					},
 				},
+			},
+			storageOpts: []awsStoragePersistedStateOption{
+				withTestS3APIFunc(
+					newTestMockS3(
+						nil,
+						testMockS3WithPutObjectOutput(&s3.PutObjectOutput{}),
+						testMockS3WithGetObjectOutput(&s3.GetObjectOutput{}),
+						testMockS3WithHeadObjectOutput(&s3.HeadObjectOutput{}),
+					),
+				),
 			},
 			credOpts: []credential.AwsCredentialPersistedStateOption{
 				credential.WithStateTestOpts([]awsutil.Option{
@@ -535,6 +696,13 @@ func TestStoragePlugin_OnUpdateStorageBucket(t *testing.T) {
 						},
 					},
 				},
+				CurrentBucket: &storagebuckets.StorageBucket{
+					Attributes: &structpb.Struct{
+						Fields: map[string]*structpb.Value{
+							credential.ConstRegion: structpb.NewStringValue("us-west-2"),
+						},
+					},
+				},
 				Persisted: &storagebuckets.StorageBucketPersisted{
 					Data: &structpb.Struct{
 						Fields: map[string]*structpb.Value{
@@ -553,7 +721,7 @@ func TestStoragePlugin_OnUpdateStorageBucket(t *testing.T) {
 					),
 				}),
 			},
-			expectedErrContains: fmt.Sprintf("error during credential rotation: error rotating credentials: error calling CreateAccessKey: error calling aws.GetUser: %s", testGetUserErr),
+			expectedErrContains: fmt.Sprintf("error during credential rotation: error rotating credentials: error calling CreateAccessKey: error calling iam.GetUser: %s", testGetUserErr),
 			expectedErrCode:     codes.InvalidArgument,
 		},
 		{
@@ -659,6 +827,13 @@ func TestStoragePlugin_OnUpdateStorageBucket(t *testing.T) {
 						},
 					},
 				},
+				CurrentBucket: &storagebuckets.StorageBucket{
+					Attributes: &structpb.Struct{
+						Fields: map[string]*structpb.Value{
+							credential.ConstRegion: structpb.NewStringValue("us-west-2"),
+						},
+					},
+				},
 				Persisted: &storagebuckets.StorageBucketPersisted{
 					Data: &structpb.Struct{
 						Fields: map[string]*structpb.Value{
@@ -677,7 +852,7 @@ func TestStoragePlugin_OnUpdateStorageBucket(t *testing.T) {
 						awsutil.NewMockIAM(
 							awsutil.WithGetUserOutput(
 								&iam.GetUserOutput{
-									User: &iam.User{
+									User: &iamTypes.User{
 										Arn:      aws.String("arn:aws:iam::123456789012:user/JohnDoe"),
 										UserId:   aws.String("AIDAJQABLZS4A3QDU576Q"),
 										UserName: aws.String("JohnDoe"),
@@ -686,7 +861,7 @@ func TestStoragePlugin_OnUpdateStorageBucket(t *testing.T) {
 							),
 							awsutil.WithCreateAccessKeyOutput(
 								&iam.CreateAccessKeyOutput{
-									AccessKey: &iam.AccessKey{
+									AccessKey: &iamTypes.AccessKey{
 										AccessKeyId:     aws.String("AKIA_one"),
 										SecretAccessKey: aws.String("two"),
 										UserName:        aws.String("JohnDoe"),
@@ -707,6 +882,11 @@ func TestStoragePlugin_OnUpdateStorageBucket(t *testing.T) {
 					),
 				),
 			},
+			expectedPersistedData: map[string]any{
+				credential.ConstAccessKeyId:     "AKIA_one",
+				credential.ConstSecretAccessKey: "two",
+			},
+			expectCredsLastRotatedTime: true,
 		},
 		{
 			name:     "success",
@@ -722,6 +902,508 @@ func TestStoragePlugin_OnUpdateStorageBucket(t *testing.T) {
 					),
 				),
 			},
+			expectedPersistedData: map[string]any{
+				credential.ConstAccessKeyId:     "AKIA_foobar",
+				credential.ConstSecretAccessKey: "bazqux",
+			},
+		},
+		{
+			name: "dry run fail on dynamic to dynamic credentials update",
+			req: &pb.OnUpdateStorageBucketRequest{
+				CurrentBucket: &storagebuckets.StorageBucket{
+					BucketName: "foo",
+					Attributes: &structpb.Struct{
+						Fields: map[string]*structpb.Value{
+							credential.ConstRegion:                    structpb.NewStringValue("us-west-2"),
+							credential.ConstRoleArn:                   structpb.NewStringValue("arn:aws:iam::123456789012:role/S3Access"),
+							credential.ConstDisableCredentialRotation: structpb.NewBoolValue(true),
+						},
+					},
+				},
+				NewBucket: &storagebuckets.StorageBucket{
+					BucketName: "foo",
+					Attributes: &structpb.Struct{
+						Fields: map[string]*structpb.Value{
+							credential.ConstRegion:                    structpb.NewStringValue("us-west-2"),
+							credential.ConstRoleArn:                   structpb.NewStringValue("arn:aws:iam::098765432109:role/S3Access"),
+							credential.ConstDisableCredentialRotation: structpb.NewBoolValue(true),
+						},
+					},
+				},
+				Persisted: &storagebuckets.StorageBucketPersisted{Data: &structpb.Struct{}},
+			},
+			storageOpts: []awsStoragePersistedStateOption{
+				withTestS3APIFunc(
+					newTestMockS3(
+						nil,
+						testMockS3WithHeadObjectError(fmt.Errorf("head object failed oops")),
+						testMockS3WithGetObjectOutput(&s3.GetObjectOutput{}),
+						testMockS3WithPutObjectOutput(&s3.PutObjectOutput{}),
+					),
+				),
+			},
+			expectedErrContains: "head object failed oops",
+			expectedErrCode:     codes.InvalidArgument,
+		},
+		{
+			name: "dynamic to dynamic credentials success",
+			req: &pb.OnUpdateStorageBucketRequest{
+				CurrentBucket: &storagebuckets.StorageBucket{
+					BucketName: "foo",
+					Attributes: &structpb.Struct{
+						Fields: map[string]*structpb.Value{
+							credential.ConstRegion:                    structpb.NewStringValue("us-west-2"),
+							credential.ConstRoleArn:                   structpb.NewStringValue("arn:aws:iam::123456789012:role/S3Access"),
+							credential.ConstDisableCredentialRotation: structpb.NewBoolValue(true),
+						},
+					},
+				},
+				NewBucket: &storagebuckets.StorageBucket{
+					BucketName: "foo",
+					Attributes: &structpb.Struct{
+						Fields: map[string]*structpb.Value{
+							credential.ConstRegion:                    structpb.NewStringValue("us-west-2"),
+							credential.ConstRoleArn:                   structpb.NewStringValue("arn:aws:iam::098765432109:role/S3Access"),
+							credential.ConstDisableCredentialRotation: structpb.NewBoolValue(true),
+						},
+					},
+				},
+				Persisted: &storagebuckets.StorageBucketPersisted{Data: &structpb.Struct{}},
+			},
+			storageOpts: []awsStoragePersistedStateOption{
+				withTestS3APIFunc(
+					newTestMockS3(
+						nil,
+						testMockS3WithHeadObjectOutput(&s3.HeadObjectOutput{}),
+						testMockS3WithGetObjectOutput(&s3.GetObjectOutput{}),
+						testMockS3WithPutObjectOutput(&s3.PutObjectOutput{}),
+					),
+				),
+			},
+			expectedPersistedData: map[string]any{},
+		},
+		{
+			name: "dry run fail on static non rotated to dynamic credentials update",
+			req: &pb.OnUpdateStorageBucketRequest{
+				CurrentBucket: &storagebuckets.StorageBucket{
+					BucketName: "foo",
+					Attributes: &structpb.Struct{
+						Fields: map[string]*structpb.Value{
+							credential.ConstRegion:                    structpb.NewStringValue("us-west-2"),
+							credential.ConstDisableCredentialRotation: structpb.NewBoolValue(true),
+						},
+					},
+				},
+				NewBucket: &storagebuckets.StorageBucket{
+					BucketName: "foo",
+					Attributes: &structpb.Struct{
+						Fields: map[string]*structpb.Value{
+							credential.ConstRegion:                    structpb.NewStringValue("us-west-2"),
+							credential.ConstRoleArn:                   structpb.NewStringValue("arn:aws:iam::098765432109:role/S3Access"),
+							credential.ConstDisableCredentialRotation: structpb.NewBoolValue(true),
+						},
+					},
+				},
+				Persisted: &storagebuckets.StorageBucketPersisted{
+					Data: &structpb.Struct{
+						Fields: map[string]*structpb.Value{
+							credential.ConstAccessKeyId:     structpb.NewStringValue("AKIAfoobar"),
+							credential.ConstSecretAccessKey: structpb.NewStringValue("secretkey"),
+						},
+					},
+				},
+			},
+			storageOpts: []awsStoragePersistedStateOption{
+				withTestS3APIFunc(
+					newTestMockS3(
+						nil,
+						testMockS3WithPutObjectError(fmt.Errorf("put object failed oops")),
+						testMockS3WithGetObjectOutput(&s3.GetObjectOutput{}),
+						testMockS3WithHeadObjectOutput(&s3.HeadObjectOutput{}),
+					),
+				),
+			},
+			expectedErrContains: "put object failed oops",
+			expectedErrCode:     codes.InvalidArgument,
+		},
+		{
+			name: "success static non rotated to dynamic credentials",
+			req: &pb.OnUpdateStorageBucketRequest{
+				CurrentBucket: &storagebuckets.StorageBucket{
+					BucketName: "foo",
+					Attributes: &structpb.Struct{
+						Fields: map[string]*structpb.Value{
+							credential.ConstRegion:                    structpb.NewStringValue("us-west-2"),
+							credential.ConstDisableCredentialRotation: structpb.NewBoolValue(true),
+						},
+					},
+				},
+				NewBucket: &storagebuckets.StorageBucket{
+					BucketName: "foo",
+					Attributes: &structpb.Struct{
+						Fields: map[string]*structpb.Value{
+							credential.ConstRegion:                    structpb.NewStringValue("us-west-2"),
+							credential.ConstRoleArn:                   structpb.NewStringValue("arn:aws:iam::098765432109:role/S3Access"),
+							credential.ConstDisableCredentialRotation: structpb.NewBoolValue(true),
+						},
+					},
+				},
+				Persisted: &storagebuckets.StorageBucketPersisted{
+					Data: &structpb.Struct{
+						Fields: map[string]*structpb.Value{
+							credential.ConstAccessKeyId:     structpb.NewStringValue("AKIAfoobar"),
+							credential.ConstSecretAccessKey: structpb.NewStringValue("secretkey"),
+						},
+					},
+				},
+			},
+			storageOpts: []awsStoragePersistedStateOption{
+				withTestS3APIFunc(
+					newTestMockS3(
+						nil,
+						testMockS3WithPutObjectOutput(&s3.PutObjectOutput{}),
+						testMockS3WithGetObjectOutput(&s3.GetObjectOutput{}),
+						testMockS3WithHeadObjectOutput(&s3.HeadObjectOutput{}),
+					),
+				),
+			},
+			expectedPersistedData: map[string]any{},
+		},
+		{
+			name: "DeleteAccessKey error on static rotated to dynamic credentials update",
+			req: &pb.OnUpdateStorageBucketRequest{
+				CurrentBucket: &storagebuckets.StorageBucket{
+					BucketName: "foo",
+					Attributes: &structpb.Struct{
+						Fields: map[string]*structpb.Value{
+							credential.ConstRegion: structpb.NewStringValue("us-west-2"),
+						},
+					},
+				},
+				NewBucket: &storagebuckets.StorageBucket{
+					BucketName: "foo",
+					Attributes: &structpb.Struct{
+						Fields: map[string]*structpb.Value{
+							credential.ConstRegion:                    structpb.NewStringValue("us-west-2"),
+							credential.ConstRoleArn:                   structpb.NewStringValue("arn:aws:iam::098765432109:role/S3Access"),
+							credential.ConstDisableCredentialRotation: structpb.NewBoolValue(true),
+						},
+					},
+				},
+				Persisted: &storagebuckets.StorageBucketPersisted{
+					Data: &structpb.Struct{
+						Fields: map[string]*structpb.Value{
+							credential.ConstAccessKeyId:          structpb.NewStringValue("AKIAfoobar_rotated_accesskeyid"),
+							credential.ConstSecretAccessKey:      structpb.NewStringValue("secretkey"),
+							credential.ConstCredsLastRotatedTime: structpb.NewStringValue(time.Now().Add(-time.Hour).Format(time.RFC3339Nano)),
+						},
+					},
+				},
+			},
+			storageOpts: []awsStoragePersistedStateOption{
+				withTestS3APIFunc(
+					newTestMockS3(
+						nil,
+						testMockS3WithPutObjectOutput(&s3.PutObjectOutput{}),
+						testMockS3WithGetObjectOutput(&s3.GetObjectOutput{}),
+						testMockS3WithHeadObjectOutput(&s3.HeadObjectOutput{}),
+					),
+				),
+			},
+			credOpts: []credential.AwsCredentialPersistedStateOption{
+				credential.WithStateTestOpts([]awsutil.Option{
+					awsutil.WithIAMAPIFunc(
+						awsutil.NewMockIAM(
+							awsutil.WithDeleteAccessKeyError(fmt.Errorf("delete access key fail oops")),
+						),
+					),
+				}),
+			},
+			expectedErrContains: "delete access key fail oops",
+			expectedErrCode:     codes.InvalidArgument,
+		},
+		{
+			name: "success static rotated to dynamic credentials",
+			req: &pb.OnUpdateStorageBucketRequest{
+				CurrentBucket: &storagebuckets.StorageBucket{
+					BucketName: "foo",
+					Attributes: &structpb.Struct{
+						Fields: map[string]*structpb.Value{
+							credential.ConstRegion: structpb.NewStringValue("us-west-2"),
+						},
+					},
+				},
+				NewBucket: &storagebuckets.StorageBucket{
+					BucketName: "foo",
+					Attributes: &structpb.Struct{
+						Fields: map[string]*structpb.Value{
+							credential.ConstRegion:                    structpb.NewStringValue("us-west-2"),
+							credential.ConstRoleArn:                   structpb.NewStringValue("arn:aws:iam::098765432109:role/S3Access"),
+							credential.ConstDisableCredentialRotation: structpb.NewBoolValue(true),
+						},
+					},
+				},
+				Persisted: &storagebuckets.StorageBucketPersisted{
+					Data: &structpb.Struct{
+						Fields: map[string]*structpb.Value{
+							credential.ConstAccessKeyId:          structpb.NewStringValue("AKIAfoobar_rotated_accesskeyid"),
+							credential.ConstSecretAccessKey:      structpb.NewStringValue("secretkey"),
+							credential.ConstCredsLastRotatedTime: structpb.NewStringValue(time.Now().Add(-time.Hour).Format(time.RFC3339Nano)),
+						},
+					},
+				},
+			},
+			credOpts: []credential.AwsCredentialPersistedStateOption{
+				credential.WithStateTestOpts([]awsutil.Option{
+					awsutil.WithIAMAPIFunc(
+						awsutil.NewMockIAM(), // DeleteAccessKey Success
+					),
+				}),
+			},
+			storageOpts: []awsStoragePersistedStateOption{
+				withTestS3APIFunc(
+					newTestMockS3(
+						nil,
+						testMockS3WithPutObjectOutput(&s3.PutObjectOutput{}),
+						testMockS3WithGetObjectOutput(&s3.GetObjectOutput{}),
+						testMockS3WithHeadObjectOutput(&s3.HeadObjectOutput{}),
+					),
+				),
+			},
+			expectedPersistedData: map[string]any{},
+		},
+		{
+			name: "dry run fail on dynamic to static non-rotated credentials update",
+			req: &pb.OnUpdateStorageBucketRequest{
+				CurrentBucket: &storagebuckets.StorageBucket{
+					BucketName: "foo",
+					Attributes: &structpb.Struct{
+						Fields: map[string]*structpb.Value{
+							credential.ConstRegion:                    structpb.NewStringValue("us-west-2"),
+							credential.ConstRoleArn:                   structpb.NewStringValue("arn:aws:iam::098765432109:role/S3Access"),
+							credential.ConstDisableCredentialRotation: structpb.NewBoolValue(true),
+						},
+					},
+				},
+				NewBucket: &storagebuckets.StorageBucket{
+					BucketName: "foo",
+					Attributes: &structpb.Struct{
+						Fields: map[string]*structpb.Value{
+							credential.ConstRegion:                    structpb.NewStringValue("us-west-2"),
+							credential.ConstDisableCredentialRotation: structpb.NewBoolValue(true),
+						},
+					},
+					Secrets: &structpb.Struct{
+						Fields: map[string]*structpb.Value{
+							credential.ConstAccessKeyId:     structpb.NewStringValue("AKIA_foobar"),
+							credential.ConstSecretAccessKey: structpb.NewStringValue("secretkey"),
+						},
+					},
+				},
+				Persisted: &storagebuckets.StorageBucketPersisted{
+					Data: &structpb.Struct{Fields: map[string]*structpb.Value{}},
+				},
+			},
+			storageOpts: []awsStoragePersistedStateOption{
+				withTestS3APIFunc(
+					newTestMockS3(
+						nil,
+						testMockS3WithPutObjectError(fmt.Errorf("put object fail oops")),
+						testMockS3WithGetObjectOutput(&s3.GetObjectOutput{}),
+						testMockS3WithHeadObjectOutput(&s3.HeadObjectOutput{}),
+					),
+				),
+			},
+			expectedErrContains: "put object fail oops",
+			expectedErrCode:     codes.InvalidArgument,
+		},
+		{
+			name: "success dynamic to static non-rotated credentials",
+			req: &pb.OnUpdateStorageBucketRequest{
+				CurrentBucket: &storagebuckets.StorageBucket{
+					BucketName: "foo",
+					Attributes: &structpb.Struct{
+						Fields: map[string]*structpb.Value{
+							credential.ConstRegion:                    structpb.NewStringValue("us-west-2"),
+							credential.ConstRoleArn:                   structpb.NewStringValue("arn:aws:iam::098765432109:role/S3Access"),
+							credential.ConstDisableCredentialRotation: structpb.NewBoolValue(true),
+						},
+					},
+				},
+				NewBucket: &storagebuckets.StorageBucket{
+					BucketName: "foo",
+					Attributes: &structpb.Struct{
+						Fields: map[string]*structpb.Value{
+							credential.ConstRegion:                    structpb.NewStringValue("us-west-2"),
+							credential.ConstDisableCredentialRotation: structpb.NewBoolValue(true),
+						},
+					},
+					Secrets: &structpb.Struct{
+						Fields: map[string]*structpb.Value{
+							credential.ConstAccessKeyId:     structpb.NewStringValue("AKIA_foobar"),
+							credential.ConstSecretAccessKey: structpb.NewStringValue("secretkey"),
+						},
+					},
+				},
+				Persisted: &storagebuckets.StorageBucketPersisted{
+					Data: &structpb.Struct{Fields: map[string]*structpb.Value{}},
+				},
+			},
+			storageOpts: []awsStoragePersistedStateOption{
+				withTestS3APIFunc(
+					newTestMockS3(
+						nil,
+						testMockS3WithPutObjectOutput(&s3.PutObjectOutput{}),
+						testMockS3WithGetObjectOutput(&s3.GetObjectOutput{}),
+						testMockS3WithHeadObjectOutput(&s3.HeadObjectOutput{}),
+					),
+				),
+			},
+			expectedPersistedData: map[string]any{
+				credential.ConstAccessKeyId:     "AKIA_foobar",
+				credential.ConstSecretAccessKey: "secretkey",
+			},
+		},
+		{
+			name: "create access key error on dynamic to static rotated credentials update",
+			req: &pb.OnUpdateStorageBucketRequest{
+				CurrentBucket: &storagebuckets.StorageBucket{
+					BucketName: "foo",
+					Attributes: &structpb.Struct{
+						Fields: map[string]*structpb.Value{
+							credential.ConstRegion:                    structpb.NewStringValue("us-west-2"),
+							credential.ConstRoleArn:                   structpb.NewStringValue("arn:aws:iam::098765432109:role/S3Access"),
+							credential.ConstDisableCredentialRotation: structpb.NewBoolValue(true),
+						},
+					},
+				},
+				NewBucket: &storagebuckets.StorageBucket{
+					BucketName: "foo",
+					Attributes: &structpb.Struct{
+						Fields: map[string]*structpb.Value{
+							credential.ConstRegion: structpb.NewStringValue("us-west-2"),
+						},
+					},
+					Secrets: &structpb.Struct{
+						Fields: map[string]*structpb.Value{
+							credential.ConstAccessKeyId:     structpb.NewStringValue("AKIA_foobar"),
+							credential.ConstSecretAccessKey: structpb.NewStringValue("secretkey"),
+						},
+					},
+				},
+				Persisted: &storagebuckets.StorageBucketPersisted{
+					Data: &structpb.Struct{Fields: map[string]*structpb.Value{}},
+				},
+			},
+			storageOpts: []awsStoragePersistedStateOption{
+				withTestS3APIFunc(
+					newTestMockS3(
+						nil,
+						testMockS3WithPutObjectOutput(&s3.PutObjectOutput{}),
+						testMockS3WithGetObjectOutput(&s3.GetObjectOutput{}),
+						testMockS3WithHeadObjectOutput(&s3.HeadObjectOutput{}),
+					),
+				),
+			},
+			credOpts: []credential.AwsCredentialPersistedStateOption{
+				credential.WithStateTestOpts([]awsutil.Option{
+					awsutil.WithSTSAPIFunc(
+						awsutil.NewMockSTS(),
+					),
+					awsutil.WithIAMAPIFunc(
+						awsutil.NewMockIAM(
+							awsutil.WithGetUserOutput(
+								&iam.GetUserOutput{
+									User: &iamTypes.User{
+										Arn:      aws.String("arn:aws:iam::123456789012:user/JohnDoe"),
+										UserId:   aws.String("AIDAJQABLZS4A3QDU576Q"),
+										UserName: aws.String("JohnDoe"),
+									},
+								},
+							),
+							awsutil.WithCreateAccessKeyError(fmt.Errorf("create access key fail oops")),
+						),
+					),
+				}),
+			},
+			expectedErrContains: "create access key fail oops",
+			expectedErrCode:     codes.InvalidArgument,
+		},
+		{
+			name: "success dynamic to static rotated credentials",
+			req: &pb.OnUpdateStorageBucketRequest{
+				CurrentBucket: &storagebuckets.StorageBucket{
+					BucketName: "foo",
+					Attributes: &structpb.Struct{
+						Fields: map[string]*structpb.Value{
+							credential.ConstRegion:                    structpb.NewStringValue("us-west-2"),
+							credential.ConstRoleArn:                   structpb.NewStringValue("arn:aws:iam::098765432109:role/S3Access"),
+							credential.ConstDisableCredentialRotation: structpb.NewBoolValue(true),
+						},
+					},
+				},
+				NewBucket: &storagebuckets.StorageBucket{
+					BucketName: "foo",
+					Attributes: &structpb.Struct{
+						Fields: map[string]*structpb.Value{
+							credential.ConstRegion: structpb.NewStringValue("us-west-2"),
+						},
+					},
+					Secrets: &structpb.Struct{
+						Fields: map[string]*structpb.Value{
+							credential.ConstAccessKeyId:     structpb.NewStringValue("AKIA_foobar"),
+							credential.ConstSecretAccessKey: structpb.NewStringValue("secretkey"),
+						},
+					},
+				},
+				Persisted: &storagebuckets.StorageBucketPersisted{
+					Data: &structpb.Struct{Fields: map[string]*structpb.Value{}},
+				},
+			},
+			credOpts: []credential.AwsCredentialPersistedStateOption{
+				credential.WithStateTestOpts([]awsutil.Option{
+					awsutil.WithSTSAPIFunc(
+						awsutil.NewMockSTS(),
+					),
+					awsutil.WithIAMAPIFunc(
+						awsutil.NewMockIAM(
+							awsutil.WithGetUserOutput(
+								&iam.GetUserOutput{
+									User: &iamTypes.User{
+										Arn:      aws.String("arn:aws:iam::123456789012:user/JohnDoe"),
+										UserId:   aws.String("AIDAJQABLZS4A3QDU576Q"),
+										UserName: aws.String("JohnDoe"),
+									},
+								},
+							),
+							awsutil.WithCreateAccessKeyOutput(
+								&iam.CreateAccessKeyOutput{
+									AccessKey: &iamTypes.AccessKey{
+										AccessKeyId:     aws.String("AKIA_one"),
+										SecretAccessKey: aws.String("two"),
+										UserName:        aws.String("JohnDoe"),
+									},
+								},
+							),
+						),
+					),
+				}),
+			},
+			storageOpts: []awsStoragePersistedStateOption{
+				withTestS3APIFunc(
+					newTestMockS3(
+						nil,
+						testMockS3WithPutObjectOutput(&s3.PutObjectOutput{}),
+						testMockS3WithGetObjectOutput(&s3.GetObjectOutput{}),
+						testMockS3WithHeadObjectOutput(&s3.HeadObjectOutput{}),
+					),
+				),
+			},
+			expectedPersistedData: map[string]any{
+				credential.ConstAccessKeyId:     "AKIA_one",
+				credential.ConstSecretAccessKey: "two",
+			},
+			expectCredsLastRotatedTime: true,
 		},
 	}
 
@@ -735,6 +1417,7 @@ func TestStoragePlugin_OnUpdateStorageBucket(t *testing.T) {
 			}
 			resp, err := p.OnUpdateStorageBucket(context.Background(), tc.req)
 			if tc.expectedErrContains != "" {
+				require.NotNil(err)
 				require.Contains(err.Error(), tc.expectedErrContains)
 				require.Equal(status.Code(err).String(), tc.expectedErrCode.String())
 				return
@@ -744,18 +1427,18 @@ func TestStoragePlugin_OnUpdateStorageBucket(t *testing.T) {
 			require.NotNil(resp.GetPersisted())
 			require.NotNil(resp.GetPersisted().GetData())
 
-			var disableCredentialRotation bool
-			expectedAccessKey := tc.req.Persisted.Data.AsMap()[credential.ConstAccessKeyId]
-			expectedSecretKey := tc.req.Persisted.Data.AsMap()[credential.ConstSecretAccessKey]
-			if value, ok := tc.req.GetNewBucket().GetAttributes().AsMap()[credential.ConstDisableCredentialRotation]; ok {
-				disableCredentialRotation = value.(bool)
+			actualPersistedData := resp.GetPersisted().GetData().AsMap()
+			if len(actualPersistedData) > 0 && len(tc.expectedPersistedData) == 0 {
+				t.Fatalf("test case expected no persisted data, but got %#v", actualPersistedData)
 			}
-			if !disableCredentialRotation {
-				expectedAccessKey = "AKIA_one"
-				expectedSecretKey = "two"
+			if len(tc.expectedPersistedData) != 0 {
+				require.NotEmpty(actualPersistedData)
+				require.Equal(tc.expectedPersistedData[credential.ConstAccessKeyId], actualPersistedData[credential.ConstAccessKeyId])
+				require.Equal(tc.expectedPersistedData[credential.ConstSecretAccessKey], actualPersistedData[credential.ConstSecretAccessKey])
+				if tc.expectCredsLastRotatedTime {
+					require.NotEmpty(actualPersistedData[credential.ConstCredsLastRotatedTime])
+				}
 			}
-			require.Equal(expectedAccessKey, resp.GetPersisted().GetData().AsMap()[credential.ConstAccessKeyId])
-			require.Equal(expectedSecretKey, resp.GetPersisted().GetData().AsMap()[credential.ConstSecretAccessKey])
 		})
 	}
 }
@@ -897,6 +1580,23 @@ func TestStoragePlugin_OnDeleteStorageBucket(t *testing.T) {
 						),
 					),
 				}),
+			},
+		},
+		{
+			name: "success with dynamic credentials",
+			req: &pb.OnDeleteStorageBucketRequest{
+				Bucket: &storagebuckets.StorageBucket{
+					Attributes: &structpb.Struct{
+						Fields: map[string]*structpb.Value{
+							credential.ConstRegion:                    structpb.NewStringValue("us-west-2"),
+							credential.ConstRoleArn:                   structpb.NewStringValue("arn:aws:iam::098765432109:role/S3Access"),
+							credential.ConstDisableCredentialRotation: structpb.NewBoolValue(true),
+						},
+					},
+				},
+				Persisted: &storagebuckets.StorageBucketPersisted{
+					Data: &structpb.Struct{Fields: map[string]*structpb.Value{}},
+				},
 			},
 		},
 	}
@@ -1067,6 +1767,37 @@ func TestStoragePlugin_HeadObject(t *testing.T) {
 		{
 			name:          "success",
 			req:           validRequest(),
+			credOpts:      validSTSMock(),
+			contentLength: 1024,
+			lastModified:  createTime(t, "2006-01-02T15:04:05Z"),
+			storageOpts: []awsStoragePersistedStateOption{
+				withTestS3APIFunc(
+					newTestMockS3(
+						nil,
+						testMockS3WithHeadObjectOutput(&s3.HeadObjectOutput{
+							ContentLength: 1024,
+							LastModified:  aws.Time(createTime(t, "2006-01-02T15:04:05Z")),
+						}),
+					),
+				),
+			},
+		},
+		{
+			name: "success with dynamic credentials",
+			req: &pb.HeadObjectRequest{
+				Key: "/foo/bar/key",
+				Bucket: &storagebuckets.StorageBucket{
+					BucketName: "foo",
+					Secrets:    new(structpb.Struct),
+					Attributes: &structpb.Struct{
+						Fields: map[string]*structpb.Value{
+							credential.ConstRegion:                    structpb.NewStringValue("us-west-2"),
+							credential.ConstRoleArn:                   structpb.NewStringValue("arn:aws:iam::123456789012:role/S3Access"),
+							credential.ConstDisableCredentialRotation: structpb.NewBoolValue(true),
+						},
+					},
+				},
+			},
 			credOpts:      validSTSMock(),
 			contentLength: 1024,
 			lastModified:  createTime(t, "2006-01-02T15:04:05Z"),
@@ -1312,6 +2043,32 @@ func TestStoragePlugin_ValidatePermissions(t *testing.T) {
 				),
 			},
 		},
+		{
+			name: "success with dynamic credentials",
+			req: &pb.ValidatePermissionsRequest{
+				Bucket: &storagebuckets.StorageBucket{
+					BucketName: "foo",
+					Attributes: &structpb.Struct{
+						Fields: map[string]*structpb.Value{
+							credential.ConstRegion:                    structpb.NewStringValue("us-west-2"),
+							credential.ConstRoleArn:                   structpb.NewStringValue("arn:aws:iam::123456789012:role/S3Access"),
+							credential.ConstDisableCredentialRotation: structpb.NewBoolValue(true),
+						},
+					},
+				},
+			},
+			credOpts: validSTSMock(),
+			storageOpts: []awsStoragePersistedStateOption{
+				withTestS3APIFunc(
+					newTestMockS3(
+						nil,
+						testMockS3WithPutObjectOutput(&s3.PutObjectOutput{}),
+						testMockS3WithGetObjectOutput(&s3.GetObjectOutput{}),
+						testMockS3WithHeadObjectOutput(&s3.HeadObjectOutput{}),
+					),
+				),
+			},
+		},
 	}
 
 	for _, tc := range cases {
@@ -1500,6 +2257,34 @@ func TestStoragePlugin_GetObject(t *testing.T) {
 		{
 			name:       "success",
 			req:        validRequest(),
+			credOpts:   validSTSMock(),
+			objectData: []byte("test"),
+			storageOpts: []awsStoragePersistedStateOption{
+				withTestS3APIFunc(
+					newTestMockS3(
+						nil,
+						testMockS3WithGetObjectOutput(&s3.GetObjectOutput{
+							Body: ioutil.NopCloser(bytes.NewReader([]byte("test"))),
+						}),
+					),
+				),
+			},
+		},
+		{
+			name: "success with dynamic credentials",
+			req: &pb.GetObjectRequest{
+				Key: "/foo/bar/key",
+				Bucket: &storagebuckets.StorageBucket{
+					BucketName: "foo",
+					Attributes: &structpb.Struct{
+						Fields: map[string]*structpb.Value{
+							credential.ConstRegion:                    structpb.NewStringValue("us-west-2"),
+							credential.ConstRoleArn:                   structpb.NewStringValue("arn:aws:iam::123456789012:role/S3Access"),
+							credential.ConstDisableCredentialRotation: structpb.NewBoolValue(true),
+						},
+					},
+				},
+			},
 			credOpts:   validSTSMock(),
 			objectData: []byte("test"),
 			storageOpts: []awsStoragePersistedStateOption{
@@ -1860,6 +2645,43 @@ func TestStoragePlugin_PutObject(t *testing.T) {
 		{
 			name:           "valid file",
 			request:        validRequest(),
+			credOpts:       validSTSMock(),
+			expectedObject: []byte("CONTENT CHECK"),
+			storageOpts: func() []awsStoragePersistedStateOption {
+				hash := sha256.New()
+				_, err := hash.Write([]byte("CONTENT CHECK"))
+				require.NoError(t, err)
+				checksum := base64.StdEncoding.EncodeToString(hash.Sum(nil))
+				return []awsStoragePersistedStateOption{
+					withTestS3APIFunc(
+						newTestMockS3(
+							&testMockS3State{
+								PutObjectBody: []byte("CONTENT CHECK"),
+							},
+							testMockS3WithPutObjectOutput(&s3.PutObjectOutput{
+								ChecksumSHA256: aws.String(checksum),
+							}),
+						),
+					),
+				}
+			}(),
+		},
+		{
+			name: "valid file using dynamic credentials",
+			request: &pb.PutObjectRequest{
+				Bucket: &storagebuckets.StorageBucket{
+					BucketName: "external-obj-store",
+					Attributes: &structpb.Struct{
+						Fields: map[string]*structpb.Value{
+							credential.ConstRegion:                    structpb.NewStringValue("us-west-2"),
+							credential.ConstRoleArn:                   structpb.NewStringValue("arn:aws:iam::123456789012:role/S3Access"),
+							credential.ConstDisableCredentialRotation: structpb.NewBoolValue(true),
+						},
+					},
+				},
+				Key:  "mock-object",
+				Path: validFilePath,
+			},
 			credOpts:       validSTSMock(),
 			expectedObject: []byte("CONTENT CHECK"),
 			storageOpts: func() []awsStoragePersistedStateOption {

@@ -4,10 +4,11 @@
 package credential
 
 import (
-	"github.com/aws/aws-sdk-go/aws/session"
-	"github.com/aws/aws-sdk-go/service/iam"
-	"github.com/aws/aws-sdk-go/service/iam/iamiface"
-	"github.com/hashicorp/go-secure-stdlib/awsutil"
+	"context"
+
+	"github.com/aws/aws-sdk-go-v2/aws"
+	"github.com/aws/aws-sdk-go-v2/service/iam"
+	"github.com/hashicorp/go-secure-stdlib/awsutil/v2"
 	"google.golang.org/protobuf/types/known/structpb"
 )
 
@@ -27,25 +28,25 @@ func (s *testMockIAMState) Reset() {
 }
 
 type testMockIAM struct {
-	iamiface.IAMAPI
+	awsutil.IAMClient
 
 	State *testMockIAMState
 }
 
-func (m *testMockIAM) DeleteAccessKey(input *iam.DeleteAccessKeyInput) (*iam.DeleteAccessKeyOutput, error) {
+func (m *testMockIAM) DeleteAccessKey(ctx context.Context, input *iam.DeleteAccessKeyInput, opts ...func(*iam.Options)) (*iam.DeleteAccessKeyOutput, error) {
 	m.State.DeleteAccessKeyCalled = true
-	return m.IAMAPI.DeleteAccessKey(input)
+	return m.IAMClient.DeleteAccessKey(ctx, input, opts...)
 }
 
 func newTestMockIAM(state *testMockIAMState, opts ...awsutil.MockIAMOption) awsutil.IAMAPIFunc {
-	return func(sess *session.Session) (iamiface.IAMAPI, error) {
+	return func(awsConfig *aws.Config) (awsutil.IAMClient, error) {
 		m := &testMockIAM{
 			State: state,
 		}
 		f := awsutil.NewMockIAM(opts...)
 		var err error
 
-		m.IAMAPI, err = f(sess)
+		m.IAMClient, err = f(awsConfig)
 		return m, err
 	}
 }

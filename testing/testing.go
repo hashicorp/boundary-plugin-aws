@@ -13,10 +13,10 @@ import (
 	"testing"
 	"time"
 
-	"github.com/aws/aws-sdk-go/aws/awserr"
+	"github.com/aws/smithy-go"
 	"github.com/hashicorp/boundary-plugin-aws/internal/credential"
 	"github.com/hashicorp/boundary-plugin-aws/internal/values"
-	"github.com/hashicorp/go-secure-stdlib/awsutil"
+	"github.com/hashicorp/go-secure-stdlib/awsutil/v2"
 	tfjson "github.com/hashicorp/terraform-json"
 	"github.com/stretchr/testify/require"
 	"google.golang.org/protobuf/types/known/structpb"
@@ -293,7 +293,7 @@ func requireCredentialsInvalid(t *testing.T, accessKeyId, secretAccessKey string
 	defer cancel()
 waitErr:
 	for {
-		_, err = c.GetCallerIdentity()
+		_, err = c.GetCallerIdentity(context.Background())
 		if err != nil {
 			break
 		}
@@ -308,9 +308,9 @@ waitErr:
 	}
 
 	require.NotNil(err)
-	awsErr, ok := err.(awserr.Error)
-	require.True(ok)
-	require.Equal("InvalidClientTokenId", awsErr.Code())
+	var ae smithy.APIError
+	require.True(errors.As(err, &ae))
+	require.Equal("InvalidClientTokenId", ae.ErrorCode())
 }
 
 func requireCredentialsValid(t *testing.T, accessKeyId, secretAccessKey string) {
@@ -322,7 +322,7 @@ func requireCredentialsValid(t *testing.T, accessKeyId, secretAccessKey string) 
 		awsutil.WithSecretKey(secretAccessKey),
 	)
 	require.NoError(err)
-	_, err = c.GetCallerIdentity()
+	_, err = c.GetCallerIdentity(context.Background())
 	require.NoError(err)
 }
 

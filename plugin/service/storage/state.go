@@ -9,12 +9,12 @@ import (
 	"fmt"
 	"net"
 	"net/http"
+	"net/url"
 	"time"
 
 	"github.com/aws/aws-sdk-go-v2/aws"
-	"github.com/aws/aws-sdk-go-v2/config"
-	"github.com/aws/aws-sdk-go-v2/credentials"
 	"github.com/aws/aws-sdk-go-v2/service/s3"
+	smithyEndpoints "github.com/aws/smithy-go/endpoints"
 	"github.com/hashicorp/boundary-plugin-aws/internal/credential"
 	"github.com/hashicorp/boundary/sdk/pbs/controller/api/resources/storagebuckets"
 	"google.golang.org/protobuf/types/known/structpb"
@@ -97,55 +97,23 @@ func (s *awsStoragePersistedState) S3Client(ctx context.Context, opt ...s3Option
 	if err != nil {
 		return nil, fmt.Errorf("error parsing options when fetching S3 client: %w", err)
 	}
-
-	awsConfigOpts := []func(*config.LoadOptions) error{}
-	sess, err := s.GetSession()
+	awsCfg, err := s.GenerateCredentialChain(ctx)
 	if err != nil {
-		return nil, fmt.Errorf("error getting AWS session when fetching S3 client: %w", err)
+		return nil, fmt.Errorf("error getting AWS configuration when fetching S3 client: %w", err)
 	}
-	creds, err := sess.Config.Credentials.Get()
-	if err != nil {
-		return nil, fmt.Errorf("error getting AWS session when fetching S3 client: %w", err)
+	if awsCfg == nil {
+		return nil, fmt.Errorf("nil aws configuration")
 	}
-	customCredentials := config.WithCredentialsProvider(
-		credentials.NewStaticCredentialsProvider(creds.AccessKeyID, creds.SecretAccessKey, creds.SessionToken),
-	)
-	awsConfigOpts = append(awsConfigOpts, customCredentials)
-	if sess.Config.Region != nil {
-		awsConfigOpts = append(awsConfigOpts, config.WithRegion(*sess.Config.Region))
-	}
-	if opts.withRegion != "" {
-		awsConfigOpts = append(awsConfigOpts, config.WithRegion(opts.withRegion))
-	}
+	var s3Opts []func(*s3.Options)
 	if opts.withEndpoint != "" {
-		customResolver := aws.EndpointResolverWithOptionsFunc(func(service, region string, options ...interface{}) (aws.Endpoint, error) {
-			if service == s3.ServiceID {
-				if opts.withRegion != "" {
-					region = opts.withRegion
-				}
-				return aws.Endpoint{
-					PartitionID:   "aws",
-					URL:           opts.withEndpoint,
-					SigningRegion: region,
-				}, nil
-			}
-			// returning EndpointNotFoundError will allow the service to fallback to it's default resolution
-			return aws.Endpoint{}, &aws.EndpointNotFoundError{}
-		})
-		awsConfigOpts = append(awsConfigOpts, config.WithEndpointResolverWithOptions(customResolver))
+		s3Opts = append(s3Opts, s3.WithEndpointResolverV2(&endpointResolver{
+			endpoint: opts.withEndpoint,
+		}))
 	}
-	cfg, err := config.LoadDefaultConfig(ctx, awsConfigOpts...)
-	if err != nil {
-		return nil, fmt.Errorf("error loading aws configuration when fetching S3 client: %w", err)
-	}
-
 	if s.testS3APIFunc != nil {
-		return s.testS3APIFunc(cfg)
+		return s.testS3APIFunc(*awsCfg)
 	}
-
-	cfg.HTTPClient = customClient
-
-	return s3.NewFromConfig(cfg), nil
+	return s3.NewFromConfig(*awsCfg, s3Opts...), nil
 }
 
 // getOpts iterates the inbound s3Options and returns a struct
@@ -167,20 +135,11 @@ type s3Option func(*s3Options) error
 
 // options = how options are represented
 type s3Options struct {
-	withRegion   string
 	withEndpoint string
 }
 
 func getDefaultS3Options() s3Options {
 	return s3Options{}
-}
-
-// WithRegion contains the region to use
-func WithRegion(with string) s3Option {
-	return func(o *s3Options) error {
-		o.withRegion = with
-		return nil
-	}
 }
 
 // WithEndpoint contains the endpoint to use
@@ -189,4 +148,32 @@ func WithEndpoint(with string) s3Option {
 		o.withEndpoint = with
 		return nil
 	}
+}
+
+type endpointResolver struct {
+	endpoint string
+}
+
+func (e *endpointResolver) ResolveEndpoint(ctx context.Context, params s3.EndpointParameters) (resolver smithyEndpoints.Endpoint, err error) {
+	var uri *url.URL
+	resolver, err = s3.NewDefaultEndpointResolverV2().ResolveEndpoint(ctx, params)
+	if err != nil {
+		return
+	}
+	if e.endpoint == "" {
+		// TODO: not sure if we should set an error or ignore the missing endpoint value and continue with the default resolver
+		return
+	}
+	uri, err = url.Parse(e.endpoint)
+	if err != nil {
+		return
+	}
+	if uri == nil {
+		// TODO: not sure if we should set an error or ignore the missing uri value and continue with the default resolver
+		return
+	}
+	resolver = smithyEndpoints.Endpoint{
+		URI: *uri,
+	}
+	return
 }

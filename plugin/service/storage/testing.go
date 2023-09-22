@@ -13,11 +13,11 @@ import (
 
 	"github.com/aws/aws-sdk-go-v2/aws"
 	"github.com/aws/aws-sdk-go-v2/service/s3"
-	"github.com/aws/aws-sdk-go/service/sts"
+	"github.com/aws/aws-sdk-go-v2/service/sts"
 	"github.com/hashicorp/boundary-plugin-aws/internal/credential"
 	"github.com/hashicorp/boundary/sdk/pbs/controller/api/resources/storagebuckets"
 	pb "github.com/hashicorp/boundary/sdk/pbs/plugin"
-	"github.com/hashicorp/go-secure-stdlib/awsutil"
+	"github.com/hashicorp/go-secure-stdlib/awsutil/v2"
 	"github.com/stretchr/testify/require"
 	"google.golang.org/grpc"
 	"google.golang.org/protobuf/types/known/structpb"
@@ -69,9 +69,8 @@ func (s *testMockS3State) Reset() {
 type testMockS3 struct {
 	S3API
 
-	State    *testMockS3State
-	Region   string
-	Endpoint aws.EndpointResolverWithOptions
+	State  *testMockS3State
+	Region string
 
 	// mocked responses for getObject
 	GetObjectOutput *s3.GetObjectOutput
@@ -146,9 +145,6 @@ func newTestMockS3(state *testMockS3State, opts ...testMockS3Option) s3APIFunc {
 			// Last region takes precedence
 			if cfg.Region != "" {
 				m.Region = cfg.Region
-			}
-			if cfg.EndpointResolverWithOptions != nil {
-				m.Endpoint = cfg.EndpointResolverWithOptions
 			}
 		}
 

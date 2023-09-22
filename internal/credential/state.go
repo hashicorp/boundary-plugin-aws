@@ -4,17 +4,39 @@
 package credential
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"strings"
 	"time"
 
-	"github.com/aws/aws-sdk-go/aws/awserr"
-	"github.com/aws/aws-sdk-go/aws/session"
-	"github.com/aws/aws-sdk-go/service/iam"
+	"github.com/aws/aws-sdk-go-v2/aws"
+	iamTypes "github.com/aws/aws-sdk-go-v2/service/iam/types"
 	"github.com/hashicorp/boundary-plugin-aws/internal/values"
-	"github.com/hashicorp/go-secure-stdlib/awsutil"
+	"github.com/hashicorp/go-secure-stdlib/awsutil/v2"
 	"google.golang.org/protobuf/types/known/structpb"
+)
+
+type CredentialType int
+
+const (
+	// StaticAWS denotes an Access Key Id that begins with "AKIA". These are
+	// long-term access keys, provided by AWS, for an IAM user or an AWS account
+	// root user.
+	// https://docs.aws.amazon.com/IAM/latest/UserGuide/security-creds.html#sec-access-keys-and-secret-access-keys
+	StaticAWS CredentialType = iota
+
+	// DynamicAWS denotes the presence of a RoleARN, or an Access Key Id that
+	// begins with "ASIA". The latter are temporary credentials access keys that
+	// are created using AWS STS operations.
+	DynamicAWS
+
+	// StaticOther denotes the presence of an Access Key Id that does not follow
+	// the AKIA/ASIA convention outlined by AWS.
+	StaticOther
+
+	// Unknown is a catch-all for everything else.
+	Unknown
 )
 
 // rotationWaitTimeout controls the time we wait for credential rotation to
@@ -85,11 +107,11 @@ func NewAwsCredentialPersistedState(opts ...AwsCredentialPersistedStateOption) (
 // ValidateCreds takes the credentials configuration from the persisted state
 // and runs sts.GetCallerIdentity for the current credentials, which is done
 // to check that the credentials are valid.
-func (s *AwsCredentialPersistedState) ValidateCreds() error {
+func (s *AwsCredentialPersistedState) ValidateCreds(ctx context.Context) error {
 	if s.CredentialsConfig == nil {
 		return errors.New("missing credentials config")
 	}
-	if _, err := s.CredentialsConfig.GetCallerIdentity(s.testOpts...); err != nil {
+	if _, err := s.CredentialsConfig.GetCallerIdentity(ctx, s.testOpts...); err != nil {
 		return fmt.Errorf("error validating credentials: %w", err)
 	}
 	return nil
@@ -100,11 +122,14 @@ func (s *AwsCredentialPersistedState) ValidateCreds() error {
 // written into the credentials config and the persisted state. On any error, the old credentials are not overwritten.
 // This ensures that any generated new secret key never leaves this function in case of an error, even though it will
 // still result in an extraneous access key existing.
-func (s *AwsCredentialPersistedState) RotateCreds() error {
+func (s *AwsCredentialPersistedState) RotateCreds(ctx context.Context) error {
 	if s.CredentialsConfig == nil {
 		return errors.New("missing credentials config")
 	}
-	if err := s.CredentialsConfig.RotateKeys(append([]awsutil.Option{
+	if GetCredentialType(s.CredentialsConfig) != StaticAWS {
+		return errors.New("invalid credential type")
+	}
+	if err := s.CredentialsConfig.RotateKeys(ctx, append([]awsutil.Option{
 		awsutil.WithValidityCheckTimeout(rotationWaitTimeout),
 	}, s.testOpts...)...); err != nil {
 		return fmt.Errorf("error rotating credentials: %w", err)
@@ -116,7 +141,7 @@ func (s *AwsCredentialPersistedState) RotateCreds() error {
 // ReplaceCreds replaces the access key in the state with a new key.
 // If the existing key was rotated at any point in time, it is
 // deleted first, otherwise it's left alone.
-func (s *AwsCredentialPersistedState) ReplaceCreds(credentialsConfig *awsutil.CredentialsConfig) error {
+func (s *AwsCredentialPersistedState) ReplaceCreds(ctx context.Context, credentialsConfig *awsutil.CredentialsConfig) error {
 	if credentialsConfig == nil {
 		return errors.New("missing new credentials config")
 	}
@@ -124,11 +149,11 @@ func (s *AwsCredentialPersistedState) ReplaceCreds(credentialsConfig *awsutil.Cr
 		return errors.New("missing credentials config")
 	}
 
-	if !s.CredsLastRotatedTime.IsZero() {
-		// Delete old/existing credentials. This is done with the same
-		// credentials to ensure that it has the proper permissions to do
-		// it.
-		if err := s.DeleteCreds(); err != nil {
+	// Delete old/existing credentials. This action is only possible for static credential types.
+	// This is done with the same credentials to ensure that it has the proper permissions to do it.
+	ct := GetCredentialType(s.CredentialsConfig)
+	if !s.CredsLastRotatedTime.IsZero() && ct == StaticAWS {
+		if err := s.DeleteCreds(ctx); err != nil {
 			return err
 		}
 	}
@@ -142,21 +167,22 @@ func (s *AwsCredentialPersistedState) ReplaceCreds(credentialsConfig *awsutil.Cr
 // DeleteCreds deletes the credentials in the state. The access key
 // ID, secret access key, and rotation time fields are zeroed out in
 // the state just to ensure that they cannot be re-used after.
-func (s *AwsCredentialPersistedState) DeleteCreds() error {
+func (s *AwsCredentialPersistedState) DeleteCreds(ctx context.Context) error {
 	if s.CredentialsConfig == nil {
 		return errors.New("missing credentials config")
 	}
+	if GetCredentialType(s.CredentialsConfig) != StaticAWS {
+		return errors.New("invalid credential type")
+	}
 
-	if err := s.CredentialsConfig.DeleteAccessKey(s.CredentialsConfig.AccessKey, s.testOpts...); err != nil {
+	if err := s.CredentialsConfig.DeleteAccessKey(ctx, s.CredentialsConfig.AccessKey, s.testOpts...); err != nil {
 		// Determine if the deletion error was due to a missing
 		// resource. If it was, just pass it.
-		var awsErr awserr.Error
-		if errors.As(err, &awsErr) {
-			if awsErr.Code() == iam.ErrCodeNoSuchEntityException {
-				s.CredentialsConfig = nil
-				s.CredsLastRotatedTime = time.Time{}
-				return nil
-			}
+		var awsErr *iamTypes.NoSuchEntityException
+		if errors.As(err, &awsErr) && awsErr.ErrorCode() == "NoSuchEntity" {
+			s.CredentialsConfig = nil
+			s.CredsLastRotatedTime = time.Time{}
+			return nil
 		}
 
 		// Otherwise treat it as an actual error.
@@ -168,10 +194,9 @@ func (s *AwsCredentialPersistedState) DeleteCreds() error {
 	return nil
 }
 
-// GetSession returns a configured AWS session for the credentials in
-// the state.
-func (s *AwsCredentialPersistedState) GetSession() (*session.Session, error) {
-	return s.CredentialsConfig.GetSession(s.testOpts...)
+// GenerateCredentialChain returns a AWS configuration for the credentials in the state.
+func (s *AwsCredentialPersistedState) GenerateCredentialChain(ctx context.Context) (*aws.Config, error) {
+	return s.CredentialsConfig.GenerateCredentialChain(ctx, s.testOpts...)
 }
 
 // ToMap returns a map of the credentials stored in the persisted state.
@@ -179,7 +204,15 @@ func (s *AwsCredentialPersistedState) GetSession() (*session.Session, error) {
 // return a map for long-term credentials with following keys:
 // access_key_id, secret_access_key & creds_last_rotated_time
 func (s *AwsCredentialPersistedState) ToMap() map[string]any {
-	if HasDynamicCredentials(s.CredentialsConfig.AccessKey) {
+	ct := GetCredentialType(s.CredentialsConfig)
+	// Dynamic AWS credentials are temporary credentials that expire within an hour.
+	// ToMap() returns an empty map here so that Boundary does not store temporary
+	// credentials into the database.
+	//
+	// Uknown credentials are not aws compatiable secrets that may have been provided
+	// for a non-aws s3 compatiable service. These credentials will not be returned
+	// because the plugin does not know how to manage non-aws credentials.
+	if ct == DynamicAWS || ct == Unknown {
 		return map[string]any{}
 	}
 	return map[string]any{
@@ -256,18 +289,22 @@ func AwsCredentialPersistedStateFromProto(secrets *structpb.Struct, attrs *Crede
 	return s, nil
 }
 
-// HasDynamicCredentials returns true if the access key is a dynamic credential type.
-//
-// https://docs.aws.amazon.com/IAM/latest/UserGuide/security-creds.html#sec-access-keys-and-secret-access-keys
-// Access key IDs beginning with ASIA are temporary credentials access keys that you create using AWS STS operations.
-func HasDynamicCredentials(accessKey string) bool {
-	return strings.HasPrefix(accessKey, "ASIA")
-}
+// GetCredentialType returns the credential type based on the given
+// AccessKey/RoleARN. See CredentialType definition for more information.
+func GetCredentialType(cc *awsutil.CredentialsConfig) CredentialType {
+	if cc == nil {
+		return Unknown
+	}
 
-// HasStaticCredentials returns true if the access key is a static credential type.
-//
-// https://docs.aws.amazon.com/IAM/latest/UserGuide/security-creds.html#sec-access-keys-and-secret-access-keys
-// Access key IDs beginning with AKIA are long-term access keys for an IAM user or an AWS account root user.
-func HasStaticCredentials(accessKey string) bool {
-	return strings.HasPrefix(accessKey, "AKIA")
+	if len(cc.RoleARN) > 0 || strings.HasPrefix(cc.AccessKey, "ASIA") {
+		return DynamicAWS
+	}
+	if strings.HasPrefix(cc.AccessKey, "AKIA") {
+		return StaticAWS
+	}
+	if len(cc.AccessKey) > 0 {
+		return StaticOther
+	}
+
+	return Unknown
 }

@@ -75,7 +75,7 @@ func TestStoragePlugin(t *testing.T) {
 	iamSecretAccessKeyMissingPutObject, err := tf.GetOutputString("iam_secret_access_key_missing_put_obj")
 	require.NoError(err)
 
-	// Start the workflow now. Set up the host catalog. Note that this
+	// Start the workflow now. Set up the storage bucket. Note that this
 	// will cause the state to go out of drift above in the sense that
 	// the access key ID/secret access key will no longer be valid. We
 	// will assert this through the returned state.

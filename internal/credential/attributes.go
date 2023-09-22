@@ -9,7 +9,7 @@ import (
 	"github.com/aws/aws-sdk-go/aws/endpoints"
 	"github.com/hashicorp/boundary-plugin-aws/internal/errors"
 	"github.com/hashicorp/boundary-plugin-aws/internal/values"
-	"github.com/hashicorp/go-secure-stdlib/awsutil"
+	"github.com/hashicorp/go-secure-stdlib/awsutil/v2"
 	"google.golang.org/protobuf/types/known/structpb"
 )
 
@@ -68,24 +68,44 @@ func GetCredentialsConfig(secrets *structpb.Struct, attrs *CredentialAttributes,
 		badFields[fmt.Sprintf("secrets.%s", s)] = "unrecognized field"
 	}
 
-	if len(badFields) > 0 {
-		return nil, errors.InvalidArgumentError("Error in the secrets provided", badFields)
-	}
-
-	opts := []awsutil.Option{
-		awsutil.WithEnvironmentCredentials(true),
-	}
-	if accessKey != "" && secretKey != "" {
+	opts := []awsutil.Option{}
+	// logic for parsing the credential type
+	// supported types:
+	//		- user static credential
+	//		- ec2 assume role dynamic credential
+	//		- enviornment variables credential
+	switch {
+	// static credentials and dynamic credentials cannot be used together
+	case accessKey != "" && secretKey != "" && attrs.RoleArn != "":
+		badFields[fmt.Sprintf("secrets.%s", ConstAccessKeyId)] = "conflicts with role_arn value"
+		badFields[fmt.Sprintf("secrets.%s", ConstSecretAccessKey)] = "conflicts with role_arn value"
+		badFields[fmt.Sprintf("attributes.%s", ConstRoleArn)] = "conflicts with access_key_id and secret_access_key values"
+	// static credential is missing it's secret_access_key
+	case accessKey != "" && secretKey == "":
+		badFields[fmt.Sprintf("secrets.%s", ConstSecretAccessKey)] = "missing required value"
+	// static credential is missing it's access_key_id
+	case accessKey == "" && secretKey != "":
+		badFields[fmt.Sprintf("secrets.%s", ConstAccessKeyId)] = "missing required value"
+	// dynamic credentials and credential rotation is not supported
+	case len(attrs.RoleArn) > 0 && !attrs.DisableCredentialRotation:
+		badFields[fmt.Sprintf("attributes.%s", ConstDisableCredentialRotation)] = "disable_credential_rotation attribute is required when providing a role_arn"
+	// add static credentials
+	case accessKey != "" && secretKey != "":
 		opts = append(opts,
 			awsutil.WithAccessKey(accessKey),
 			awsutil.WithSecretKey(secretKey),
 		)
+	// add dynamic credentials
+	case attrs.RoleArn != "":
+		opts = append(opts, awsutil.WithRoleArn(attrs.RoleArn))
 	}
+
+	if len(badFields) > 0 {
+		return nil, errors.InvalidArgumentError("Error in the secrets provided", badFields)
+	}
+
 	if attrs.Region != "" {
 		opts = append(opts, awsutil.WithRegion(attrs.Region))
-	}
-	if attrs.RoleArn != "" {
-		opts = append(opts, awsutil.WithRoleArn(attrs.RoleArn))
 	}
 	if attrs.RoleExternalId != "" {
 		opts = append(opts, awsutil.WithRoleExternalId(attrs.RoleExternalId))
