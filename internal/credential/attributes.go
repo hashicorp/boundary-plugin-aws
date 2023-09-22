@@ -9,7 +9,7 @@ import (
 	"github.com/aws/aws-sdk-go/aws/endpoints"
 	"github.com/hashicorp/boundary-plugin-aws/internal/errors"
 	"github.com/hashicorp/boundary-plugin-aws/internal/values"
-	awsutilv2 "github.com/hashicorp/go-secure-stdlib/awsutil/v2"
+	"github.com/hashicorp/go-secure-stdlib/awsutil/v2"
 	"google.golang.org/protobuf/types/known/structpb"
 )
 
@@ -37,7 +37,7 @@ type CredentialAttributes struct {
 // GetCredentialsConfig parses values out of a protobuf struct secrets and returns a
 // CredentialsConfig used for configuring an AWS session. An error is returned if
 // any unrecognized fields are found in the protobuf struct input.
-func GetCredentialsConfig(secrets *structpb.Struct, attrs *CredentialAttributes, required bool) (*awsutilv2.CredentialsConfig, error) {
+func GetCredentialsConfig(secrets *structpb.Struct, attrs *CredentialAttributes, required bool) (*awsutil.CredentialsConfig, error) {
 	// initialize secrets if it is nil
 	// secrets can be nil because static credentials are optional
 	if secrets == nil {
@@ -68,7 +68,7 @@ func GetCredentialsConfig(secrets *structpb.Struct, attrs *CredentialAttributes,
 		badFields[fmt.Sprintf("secrets.%s", s)] = "unrecognized field"
 	}
 
-	opts := []awsutilv2.Option{}
+	opts := []awsutil.Option{}
 	// logic for parsing the credential type
 	// supported types:
 	//		- user static credential
@@ -92,12 +92,12 @@ func GetCredentialsConfig(secrets *structpb.Struct, attrs *CredentialAttributes,
 	// add static credentials
 	case accessKey != "" && secretKey != "":
 		opts = append(opts,
-			awsutilv2.WithAccessKey(accessKey),
-			awsutilv2.WithSecretKey(secretKey),
+			awsutil.WithAccessKey(accessKey),
+			awsutil.WithSecretKey(secretKey),
 		)
 	// add dynamic credentials
 	case attrs.RoleArn != "":
-		opts = append(opts, awsutilv2.WithRoleArn(attrs.RoleArn))
+		opts = append(opts, awsutil.WithRoleArn(attrs.RoleArn))
 	}
 
 	if len(badFields) > 0 {
@@ -105,19 +105,19 @@ func GetCredentialsConfig(secrets *structpb.Struct, attrs *CredentialAttributes,
 	}
 
 	if attrs.Region != "" {
-		opts = append(opts, awsutilv2.WithRegion(attrs.Region))
+		opts = append(opts, awsutil.WithRegion(attrs.Region))
 	}
 	if attrs.RoleExternalId != "" {
-		opts = append(opts, awsutilv2.WithRoleExternalId(attrs.RoleExternalId))
+		opts = append(opts, awsutil.WithRoleExternalId(attrs.RoleExternalId))
 	}
 	if attrs.RoleSessionName != "" {
-		opts = append(opts, awsutilv2.WithRoleSessionName(attrs.RoleSessionName))
+		opts = append(opts, awsutil.WithRoleSessionName(attrs.RoleSessionName))
 	}
 	if len(attrs.RoleTags) != 0 {
-		opts = append(opts, awsutilv2.WithRoleTags(attrs.RoleTags))
+		opts = append(opts, awsutil.WithRoleTags(attrs.RoleTags))
 	}
 
-	return awsutilv2.NewCredentialsConfig(opts...)
+	return awsutil.NewCredentialsConfig(opts...)
 }
 
 // GetCredentialAttributes parses values out of a protobuf struct input and returns a

@@ -6,7 +6,7 @@ package credential
 import (
 	"testing"
 
-	awsutilv2 "github.com/hashicorp/go-secure-stdlib/awsutil/v2"
+	"github.com/hashicorp/go-secure-stdlib/awsutil/v2"
 	"github.com/stretchr/testify/require"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
@@ -114,7 +114,7 @@ func TestGetCredentialsConfig(t *testing.T) {
 		secrets             *structpb.Struct
 		required            bool
 		attrs               *CredentialAttributes
-		expected            *awsutilv2.CredentialsConfig
+		expected            *awsutil.CredentialsConfig
 		expectedErrContains string
 	}{
 		{
@@ -122,7 +122,7 @@ func TestGetCredentialsConfig(t *testing.T) {
 			attrs: &CredentialAttributes{
 				Region: "us-west-2",
 			},
-			expected: &awsutilv2.CredentialsConfig{
+			expected: &awsutil.CredentialsConfig{
 				Region: "us-west-2",
 			},
 		},
@@ -137,7 +137,7 @@ func TestGetCredentialsConfig(t *testing.T) {
 			attrs: &CredentialAttributes{
 				Region: "us-west-2",
 			},
-			expected: &awsutilv2.CredentialsConfig{
+			expected: &awsutil.CredentialsConfig{
 				AccessKey: "AKIAfoobar",
 				SecretKey: "bazqux",
 				Region:    "us-west-2",
@@ -196,7 +196,7 @@ func TestGetCredentialsConfig(t *testing.T) {
 			attrs: &CredentialAttributes{
 				Region: "us-west-2",
 			},
-			expected: &awsutilv2.CredentialsConfig{
+			expected: &awsutil.CredentialsConfig{
 				AccessKey: "AKIAfoobar",
 				SecretKey: "bazqux",
 				Region:    "us-west-2",
@@ -217,7 +217,7 @@ func TestGetCredentialsConfig(t *testing.T) {
 				},
 				DisableCredentialRotation: true,
 			},
-			expected: &awsutilv2.CredentialsConfig{
+			expected: &awsutil.CredentialsConfig{
 				Region:          "us-west-2",
 				RoleARN:         "arn:aws:iam::123456789012:role/S3Access",
 				RoleExternalId:  "1234567890",

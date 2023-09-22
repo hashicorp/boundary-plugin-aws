@@ -17,7 +17,7 @@ import (
 	"github.com/hashicorp/boundary-plugin-aws/internal/credential"
 	"github.com/hashicorp/boundary/sdk/pbs/controller/api/resources/storagebuckets"
 	pb "github.com/hashicorp/boundary/sdk/pbs/plugin"
-	awsutilv2 "github.com/hashicorp/go-secure-stdlib/awsutil/v2"
+	"github.com/hashicorp/go-secure-stdlib/awsutil/v2"
 	"github.com/stretchr/testify/require"
 	"google.golang.org/grpc"
 	"google.golang.org/protobuf/types/known/structpb"
@@ -146,9 +146,6 @@ func newTestMockS3(state *testMockS3State, opts ...testMockS3Option) s3APIFunc {
 			if cfg.Region != "" {
 				m.Region = cfg.Region
 			}
-			// if cfg. != nil {
-			// 	m.Endpoint = cfg.EndpointResolverWithOptions
-			// }
 		}
 
 		return m, nil
@@ -287,10 +284,10 @@ func deepCopyPutObjectRequest(v *pb.PutObjectRequest) *pb.PutObjectRequest {
 
 func validSTSMock() []credential.AwsCredentialPersistedStateOption {
 	return []credential.AwsCredentialPersistedStateOption{
-		credential.WithStateTestOpts([]awsutilv2.Option{
-			awsutilv2.WithSTSAPIFunc(
-				awsutilv2.NewMockSTS(
-					awsutilv2.WithGetCallerIdentityOutput(&sts.GetCallerIdentityOutput{
+		credential.WithStateTestOpts([]awsutil.Option{
+			awsutil.WithSTSAPIFunc(
+				awsutil.NewMockSTS(
+					awsutil.WithGetCallerIdentityOutput(&sts.GetCallerIdentityOutput{
 						Account: aws.String("0123456789"),
 						Arn:     aws.String("arn:aws:iam::0123456789:user/test"),
 						UserId:  aws.String("test"),

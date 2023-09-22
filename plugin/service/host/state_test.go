@@ -8,14 +8,14 @@ import (
 	"testing"
 
 	"github.com/hashicorp/boundary-plugin-aws/internal/credential"
-	awsutilv2 "github.com/hashicorp/go-secure-stdlib/awsutil/v2"
+	"github.com/hashicorp/go-secure-stdlib/awsutil/v2"
 	"github.com/stretchr/testify/require"
 )
 
 func TestAwsCatalogPersistedStateEC2Client(t *testing.T) {
 	require := require.New(t)
 	cred, err := credential.NewAwsCredentialPersistedState(
-		credential.WithCredentialsConfig(&awsutilv2.CredentialsConfig{
+		credential.WithCredentialsConfig(&awsutil.CredentialsConfig{
 			Region:    "us-west-2",
 			AccessKey: "foobar",
 			SecretKey: "barfoo",

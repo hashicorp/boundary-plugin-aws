@@ -8,34 +8,34 @@ import (
 	"testing"
 
 	"github.com/hashicorp/boundary-plugin-aws/internal/credential"
-	awsutilv2 "github.com/hashicorp/go-secure-stdlib/awsutil/v2"
+	"github.com/hashicorp/go-secure-stdlib/awsutil/v2"
 	"github.com/stretchr/testify/require"
 )
 
 func TestAwsStoragePersistedStateS3Client(t *testing.T) {
 	cases := []struct {
 		name             string
-		creds            *awsutilv2.CredentialsConfig
+		creds            *awsutil.CredentialsConfig
 		opts             []awsStoragePersistedStateOption
-		awsOpts          []awsutilv2.Option
+		awsOpts          []awsutil.Option
 		s3Opts           []s3Option
 		expectedRegion   string
 		expectedEndpoint string
 	}{
 		{
 			name: "static credentials",
-			creds: func() *awsutilv2.CredentialsConfig {
-				creds, err := awsutilv2.NewCredentialsConfig(
-					awsutilv2.WithRegion("us-west-2"),
-					awsutilv2.WithAccessKey("foobar"),
-					awsutilv2.WithSecretKey("barfoo"),
+			creds: func() *awsutil.CredentialsConfig {
+				creds, err := awsutil.NewCredentialsConfig(
+					awsutil.WithRegion("us-west-2"),
+					awsutil.WithAccessKey("foobar"),
+					awsutil.WithSecretKey("barfoo"),
 				)
 				require.NoError(t, err)
 				return creds
 			}(),
-			awsOpts: []awsutilv2.Option{
-				awsutilv2.WithIAMAPIFunc(
-					awsutilv2.NewMockIAM(),
+			awsOpts: []awsutil.Option{
+				awsutil.WithIAMAPIFunc(
+					awsutil.NewMockIAM(),
 				),
 			},
 			opts: []awsStoragePersistedStateOption{

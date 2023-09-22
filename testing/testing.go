@@ -16,7 +16,7 @@ import (
 	"github.com/aws/smithy-go"
 	"github.com/hashicorp/boundary-plugin-aws/internal/credential"
 	"github.com/hashicorp/boundary-plugin-aws/internal/values"
-	awsutilv2 "github.com/hashicorp/go-secure-stdlib/awsutil/v2"
+	"github.com/hashicorp/go-secure-stdlib/awsutil/v2"
 	tfjson "github.com/hashicorp/terraform-json"
 	"github.com/stretchr/testify/require"
 	"google.golang.org/protobuf/types/known/structpb"
@@ -280,9 +280,9 @@ func requireCredentialsInvalid(t *testing.T, accessKeyId, secretAccessKey string
 	t.Helper()
 	require := require.New(t)
 
-	c, err := awsutilv2.NewCredentialsConfig(
-		awsutilv2.WithAccessKey(accessKeyId),
-		awsutilv2.WithSecretKey(secretAccessKey),
+	c, err := awsutil.NewCredentialsConfig(
+		awsutil.WithAccessKey(accessKeyId),
+		awsutil.WithSecretKey(secretAccessKey),
 	)
 	require.NoError(err)
 
@@ -317,9 +317,9 @@ func requireCredentialsValid(t *testing.T, accessKeyId, secretAccessKey string) 
 	t.Helper()
 	require := require.New(t)
 
-	c, err := awsutilv2.NewCredentialsConfig(
-		awsutilv2.WithAccessKey(accessKeyId),
-		awsutilv2.WithSecretKey(secretAccessKey),
+	c, err := awsutil.NewCredentialsConfig(
+		awsutil.WithAccessKey(accessKeyId),
+		awsutil.WithSecretKey(secretAccessKey),
 	)
 	require.NoError(err)
 	_, err = c.GetCallerIdentity(context.Background())

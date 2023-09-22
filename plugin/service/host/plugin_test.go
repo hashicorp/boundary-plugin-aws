@@ -17,7 +17,7 @@ import (
 	"github.com/hashicorp/boundary/sdk/pbs/controller/api/resources/hostcatalogs"
 	"github.com/hashicorp/boundary/sdk/pbs/controller/api/resources/hostsets"
 	pb "github.com/hashicorp/boundary/sdk/pbs/plugin"
-	awsutilv2 "github.com/hashicorp/go-secure-stdlib/awsutil/v2"
+	"github.com/hashicorp/go-secure-stdlib/awsutil/v2"
 	"github.com/stretchr/testify/require"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
@@ -145,10 +145,10 @@ func TestPluginOnCreateCatalogErr(t *testing.T) {
 				},
 			},
 			credOpts: []credential.AwsCredentialPersistedStateOption{
-				credential.WithStateTestOpts([]awsutilv2.Option{
-					awsutilv2.WithIAMAPIFunc(
-						awsutilv2.NewMockIAM(
-							awsutilv2.WithGetUserError(errors.New(testGetUserErr)),
+				credential.WithStateTestOpts([]awsutil.Option{
+					awsutil.WithIAMAPIFunc(
+						awsutil.NewMockIAM(
+							awsutil.WithGetUserError(errors.New(testGetUserErr)),
 						),
 					),
 				}),
@@ -176,10 +176,10 @@ func TestPluginOnCreateCatalogErr(t *testing.T) {
 				},
 			},
 			credOpts: []credential.AwsCredentialPersistedStateOption{
-				credential.WithStateTestOpts([]awsutilv2.Option{
-					awsutilv2.WithSTSAPIFunc(
-						awsutilv2.NewMockSTS(
-							awsutilv2.WithGetCallerIdentityError(errors.New(testGetCallerIdentityErr)),
+				credential.WithStateTestOpts([]awsutil.Option{
+					awsutil.WithSTSAPIFunc(
+						awsutil.NewMockSTS(
+							awsutil.WithGetCallerIdentityError(errors.New(testGetCallerIdentityErr)),
 						),
 					),
 				}),
@@ -370,10 +370,10 @@ func TestPluginOnUpdateCatalogErr(t *testing.T) {
 				},
 			},
 			credOpts: []credential.AwsCredentialPersistedStateOption{
-				credential.WithStateTestOpts([]awsutilv2.Option{
-					awsutilv2.WithIAMAPIFunc(
-						awsutilv2.NewMockIAM(
-							awsutilv2.WithDeleteAccessKeyError(errors.New(testDeleteAccessKeyErr)),
+				credential.WithStateTestOpts([]awsutil.Option{
+					awsutil.WithIAMAPIFunc(
+						awsutil.NewMockIAM(
+							awsutil.WithDeleteAccessKeyError(errors.New(testDeleteAccessKeyErr)),
 						),
 					),
 				}),
@@ -403,10 +403,10 @@ func TestPluginOnUpdateCatalogErr(t *testing.T) {
 				},
 			},
 			credOpts: []credential.AwsCredentialPersistedStateOption{
-				credential.WithStateTestOpts([]awsutilv2.Option{
-					awsutilv2.WithIAMAPIFunc(
-						awsutilv2.NewMockIAM(
-							awsutilv2.WithGetUserError(errors.New(testGetUserErr)),
+				credential.WithStateTestOpts([]awsutil.Option{
+					awsutil.WithIAMAPIFunc(
+						awsutil.NewMockIAM(
+							awsutil.WithGetUserError(errors.New(testGetUserErr)),
 						),
 					),
 				}),
@@ -493,10 +493,10 @@ func TestPluginOnDeleteCatalogErr(t *testing.T) {
 				},
 			},
 			credOpts: []credential.AwsCredentialPersistedStateOption{
-				credential.WithStateTestOpts([]awsutilv2.Option{
-					awsutilv2.WithIAMAPIFunc(
-						awsutilv2.NewMockIAM(
-							awsutilv2.WithDeleteAccessKeyError(errors.New(testDeleteAccessKeyErr)),
+				credential.WithStateTestOpts([]awsutil.Option{
+					awsutil.WithIAMAPIFunc(
+						awsutil.NewMockIAM(
+							awsutil.WithDeleteAccessKeyError(errors.New(testDeleteAccessKeyErr)),
 						),
 					),
 				}),
@@ -729,8 +729,8 @@ func TestPluginOnCreateSetErr(t *testing.T) {
 				},
 			},
 			credOpts: []credential.AwsCredentialPersistedStateOption{
-				credential.WithStateTestOpts([]awsutilv2.Option{
-					awsutilv2.MockOptionErr(errors.New(testOptionErr)),
+				credential.WithStateTestOpts([]awsutil.Option{
+					awsutil.MockOptionErr(errors.New(testOptionErr)),
 				}),
 			},
 			expectedErrContains: fmt.Sprintf("error loading persisted state: error reading options in NewCredentialsConfig: %s", testOptionErr),
@@ -1098,8 +1098,8 @@ func TestPluginOnUpdateSetErr(t *testing.T) {
 				},
 			},
 			credOpts: []credential.AwsCredentialPersistedStateOption{
-				credential.WithStateTestOpts([]awsutilv2.Option{
-					awsutilv2.MockOptionErr(errors.New(testOptionErr)),
+				credential.WithStateTestOpts([]awsutil.Option{
+					awsutil.MockOptionErr(errors.New(testOptionErr)),
 				}),
 			},
 			expectedErrContains: fmt.Sprintf("error loading persisted state: error reading options in NewCredentialsConfig: %s", testOptionErr),
@@ -1458,8 +1458,8 @@ func TestPluginListHostsErr(t *testing.T) {
 				},
 			},
 			credOpts: []credential.AwsCredentialPersistedStateOption{
-				credential.WithStateTestOpts([]awsutilv2.Option{
-					awsutilv2.MockOptionErr(errors.New(testOptionErr)),
+				credential.WithStateTestOpts([]awsutil.Option{
+					awsutil.MockOptionErr(errors.New(testOptionErr)),
 				}),
 			},
 			expectedErrContains: fmt.Sprintf("error loading persisted state: error reading options in NewCredentialsConfig: %s", testOptionErr),

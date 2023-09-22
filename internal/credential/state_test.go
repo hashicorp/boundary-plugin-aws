@@ -13,7 +13,7 @@ import (
 	"github.com/aws/aws-sdk-go-v2/aws"
 	"github.com/aws/aws-sdk-go-v2/service/iam"
 	iamTypes "github.com/aws/aws-sdk-go-v2/service/iam/types"
-	awsutilv2 "github.com/hashicorp/go-secure-stdlib/awsutil/v2"
+	"github.com/hashicorp/go-secure-stdlib/awsutil/v2"
 	"github.com/stretchr/testify/require"
 	"google.golang.org/protobuf/types/known/structpb"
 )
@@ -40,7 +40,7 @@ func TestNewAwsCredentialPersistedState(t *testing.T) {
 			name: "with credentials config",
 			opts: []AwsCredentialPersistedStateOption{
 				WithCredentialsConfig(
-					&awsutilv2.CredentialsConfig{
+					&awsutil.CredentialsConfig{
 						AccessKey: "foobar",
 						SecretKey: "bazqux",
 						Region:    "us-west-2",
@@ -48,7 +48,7 @@ func TestNewAwsCredentialPersistedState(t *testing.T) {
 				),
 			},
 			expected: &AwsCredentialPersistedState{
-				CredentialsConfig: &awsutilv2.CredentialsConfig{
+				CredentialsConfig: &awsutil.CredentialsConfig{
 					AccessKey: "foobar",
 					SecretKey: "bazqux",
 					Region:    "us-west-2",
@@ -67,8 +67,8 @@ func TestNewAwsCredentialPersistedState(t *testing.T) {
 		{
 			name: "double set credentials config",
 			opts: []AwsCredentialPersistedStateOption{
-				WithCredentialsConfig(&awsutilv2.CredentialsConfig{}),
-				WithCredentialsConfig(&awsutilv2.CredentialsConfig{}),
+				WithCredentialsConfig(&awsutil.CredentialsConfig{}),
+				WithCredentialsConfig(&awsutil.CredentialsConfig{}),
 			},
 			expectedErr: "credentials config already set",
 		},
@@ -123,7 +123,7 @@ func TestAwsCredentialPersistedStateFromProto(t *testing.T) {
 				Region: "us-west-2",
 			},
 			expected: &AwsCredentialPersistedState{
-				CredentialsConfig: &awsutilv2.CredentialsConfig{
+				CredentialsConfig: &awsutil.CredentialsConfig{
 					Region: "us-west-2",
 				},
 			},
@@ -135,7 +135,7 @@ func TestAwsCredentialPersistedStateFromProto(t *testing.T) {
 				Region: "us-west-2",
 			},
 			expected: &AwsCredentialPersistedState{
-				CredentialsConfig: &awsutilv2.CredentialsConfig{
+				CredentialsConfig: &awsutil.CredentialsConfig{
 					Region: "us-west-2",
 				},
 			},
@@ -147,7 +147,7 @@ func TestAwsCredentialPersistedStateFromProto(t *testing.T) {
 				Region: "us-west-2",
 			},
 			expected: &AwsCredentialPersistedState{
-				CredentialsConfig: &awsutilv2.CredentialsConfig{
+				CredentialsConfig: &awsutil.CredentialsConfig{
 					Region: "us-west-2",
 				},
 			},
@@ -164,7 +164,7 @@ func TestAwsCredentialPersistedStateFromProto(t *testing.T) {
 				Region: "us-west-2",
 			},
 			expected: &AwsCredentialPersistedState{
-				CredentialsConfig: &awsutilv2.CredentialsConfig{
+				CredentialsConfig: &awsutil.CredentialsConfig{
 					Region:    "us-west-2",
 					AccessKey: "foobar",
 					SecretKey: "bazqux",
@@ -217,7 +217,7 @@ func TestAwsCredentialPersistedStateFromProto(t *testing.T) {
 				Region: "us-west-2",
 			},
 			expected: &AwsCredentialPersistedState{
-				CredentialsConfig: &awsutilv2.CredentialsConfig{
+				CredentialsConfig: &awsutil.CredentialsConfig{
 					AccessKey: "foobar",
 					SecretKey: "bazqux",
 					Region:    "us-west-2",
@@ -244,7 +244,7 @@ func TestAwsCredentialPersistedStateFromProto(t *testing.T) {
 				Region: "us-west-2",
 			},
 			expected: &AwsCredentialPersistedState{
-				CredentialsConfig: &awsutilv2.CredentialsConfig{
+				CredentialsConfig: &awsutil.CredentialsConfig{
 					AccessKey: "foobar",
 					SecretKey: "bazqux",
 					Region:    "us-west-2",
@@ -264,7 +264,7 @@ func TestAwsCredentialPersistedStateFromProto(t *testing.T) {
 				},
 			},
 			expected: &AwsCredentialPersistedState{
-				CredentialsConfig: &awsutilv2.CredentialsConfig{
+				CredentialsConfig: &awsutil.CredentialsConfig{
 					Region:          "us-west-2",
 					RoleARN:         "arn:aws:iam::123456789012:role/S3Access",
 					RoleExternalId:  "1234567890",
@@ -294,7 +294,7 @@ func TestAwsCredentialPersistedStateFromProto(t *testing.T) {
 				},
 			},
 			expected: &AwsCredentialPersistedState{
-				CredentialsConfig: &awsutilv2.CredentialsConfig{
+				CredentialsConfig: &awsutil.CredentialsConfig{
 					AccessKey:       "foobar",
 					SecretKey:       "bazqux",
 					Region:          "us-west-2",
@@ -352,15 +352,15 @@ func TestAwsCatalogPersistedState_ValidateCreds(t *testing.T) {
 		{
 			name: "validation error",
 			in: &AwsCredentialPersistedState{
-				CredentialsConfig: &awsutilv2.CredentialsConfig{
+				CredentialsConfig: &awsutil.CredentialsConfig{
 					AccessKey: "foobar",
 					SecretKey: "bazqux",
 					Region:    "us-west-2",
 				},
-				testOpts: []awsutilv2.Option{
-					awsutilv2.WithSTSAPIFunc(
-						awsutilv2.NewMockSTS(
-							awsutilv2.WithGetCallerIdentityError(errors.New(testGetCallerIdentityErr)),
+				testOpts: []awsutil.Option{
+					awsutil.WithSTSAPIFunc(
+						awsutil.NewMockSTS(
+							awsutil.WithGetCallerIdentityError(errors.New(testGetCallerIdentityErr)),
 						),
 					),
 				},
@@ -370,12 +370,12 @@ func TestAwsCatalogPersistedState_ValidateCreds(t *testing.T) {
 		{
 			name: "good",
 			in: &AwsCredentialPersistedState{
-				CredentialsConfig: &awsutilv2.CredentialsConfig{
+				CredentialsConfig: &awsutil.CredentialsConfig{
 					AccessKey: "foobar",
 					SecretKey: "bazqux",
 					Region:    "us-west-2",
 				},
-				testOpts: []awsutilv2.Option{awsutilv2.WithSTSAPIFunc(awsutilv2.NewMockSTS())},
+				testOpts: []awsutil.Option{awsutil.WithSTSAPIFunc(awsutil.NewMockSTS())},
 			},
 		},
 	}
@@ -399,7 +399,7 @@ func TestAwsCatalogPersistedState_RotateCreds(t *testing.T) {
 	cases := []struct {
 		name                       string
 		in                         *AwsCredentialPersistedState
-		exepected                  *awsutilv2.CredentialsConfig
+		exepected                  *awsutil.CredentialsConfig
 		expectedNonZeroRotatedTime bool
 		expectedErr                string
 	}{
@@ -411,7 +411,7 @@ func TestAwsCatalogPersistedState_RotateCreds(t *testing.T) {
 		{
 			name: "cannot delete dynamic credential type",
 			in: &AwsCredentialPersistedState{
-				CredentialsConfig: &awsutilv2.CredentialsConfig{
+				CredentialsConfig: &awsutil.CredentialsConfig{
 					AccessKey: "ASIAfoobar",
 					SecretKey: "bazqux",
 				},
@@ -422,7 +422,7 @@ func TestAwsCatalogPersistedState_RotateCreds(t *testing.T) {
 		{
 			name: "cannot delete unknown credential type",
 			in: &AwsCredentialPersistedState{
-				CredentialsConfig: &awsutilv2.CredentialsConfig{
+				CredentialsConfig: &awsutil.CredentialsConfig{
 					AccessKey: "DNEfoobar",
 					SecretKey: "bazqux",
 				},
@@ -433,15 +433,15 @@ func TestAwsCatalogPersistedState_RotateCreds(t *testing.T) {
 		{
 			name: "rotation error",
 			in: &AwsCredentialPersistedState{
-				CredentialsConfig: &awsutilv2.CredentialsConfig{
+				CredentialsConfig: &awsutil.CredentialsConfig{
 					AccessKey: "AKIAfoobar",
 					SecretKey: "bazqux",
 					Region:    "us-west-2",
 				},
-				testOpts: []awsutilv2.Option{
-					awsutilv2.WithIAMAPIFunc(
-						awsutilv2.NewMockIAM(
-							awsutilv2.WithGetUserError(errors.New(testGetUserErr)),
+				testOpts: []awsutil.Option{
+					awsutil.WithIAMAPIFunc(
+						awsutil.NewMockIAM(
+							awsutil.WithGetUserError(errors.New(testGetUserErr)),
 						),
 					),
 				},
@@ -451,18 +451,18 @@ func TestAwsCatalogPersistedState_RotateCreds(t *testing.T) {
 		{
 			name: "good",
 			in: &AwsCredentialPersistedState{
-				CredentialsConfig: &awsutilv2.CredentialsConfig{
+				CredentialsConfig: &awsutil.CredentialsConfig{
 					AccessKey: "AKIAfoobar",
 					SecretKey: "bazqux",
 					Region:    "us-west-2",
 				},
-				testOpts: []awsutilv2.Option{
-					awsutilv2.WithSTSAPIFunc(
-						awsutilv2.NewMockSTS(),
+				testOpts: []awsutil.Option{
+					awsutil.WithSTSAPIFunc(
+						awsutil.NewMockSTS(),
 					),
-					awsutilv2.WithIAMAPIFunc(
-						awsutilv2.NewMockIAM(
-							awsutilv2.WithGetUserOutput(
+					awsutil.WithIAMAPIFunc(
+						awsutil.NewMockIAM(
+							awsutil.WithGetUserOutput(
 								&iam.GetUserOutput{
 									User: &iamTypes.User{
 										Arn:      aws.String("arn:aws:iam::123456789012:user/JohnDoe"),
@@ -471,7 +471,7 @@ func TestAwsCatalogPersistedState_RotateCreds(t *testing.T) {
 									},
 								},
 							),
-							awsutilv2.WithCreateAccessKeyOutput(
+							awsutil.WithCreateAccessKeyOutput(
 								&iam.CreateAccessKeyOutput{
 									AccessKey: &iamTypes.AccessKey{
 										AccessKeyId:     aws.String("one"),
@@ -484,7 +484,7 @@ func TestAwsCatalogPersistedState_RotateCreds(t *testing.T) {
 					),
 				},
 			},
-			exepected: &awsutilv2.CredentialsConfig{
+			exepected: &awsutil.CredentialsConfig{
 				AccessKey: "one",
 				SecretKey: "two",
 				Region:    "us-west-2",
@@ -517,8 +517,8 @@ func TestAwsCatalogPersistedState_ReplaceCreds(t *testing.T) {
 	cases := []struct {
 		name                 string
 		in                   *AwsCredentialPersistedState
-		credentialConfig     *awsutilv2.CredentialsConfig
-		expected             *awsutilv2.CredentialsConfig
+		credentialConfig     *awsutil.CredentialsConfig
+		expected             *awsutil.CredentialsConfig
 		expectedDeleteCalled bool
 		expectedErr          string
 	}{
@@ -530,47 +530,47 @@ func TestAwsCatalogPersistedState_ReplaceCreds(t *testing.T) {
 		{
 			name:             "missing credentials config",
 			in:               &AwsCredentialPersistedState{},
-			credentialConfig: &awsutilv2.CredentialsConfig{},
+			credentialConfig: &awsutil.CredentialsConfig{},
 			expectedErr:      "missing credentials config",
 		},
 		{
 			name: "deletion error",
 			in: &AwsCredentialPersistedState{
-				CredentialsConfig: &awsutilv2.CredentialsConfig{
+				CredentialsConfig: &awsutil.CredentialsConfig{
 					AccessKey: "AKIAfoobar",
 					SecretKey: "bazqux",
 				},
 				CredsLastRotatedTime: time.Now(),
-				testOpts: []awsutilv2.Option{
-					awsutilv2.WithIAMAPIFunc(
-						awsutilv2.NewMockIAM(
-							awsutilv2.WithDeleteAccessKeyError(errors.New(testDeleteAccessKeyErr)),
+				testOpts: []awsutil.Option{
+					awsutil.WithIAMAPIFunc(
+						awsutil.NewMockIAM(
+							awsutil.WithDeleteAccessKeyError(errors.New(testDeleteAccessKeyErr)),
 						),
 					),
 				},
 			},
-			credentialConfig: &awsutilv2.CredentialsConfig{},
+			credentialConfig: &awsutil.CredentialsConfig{},
 			expectedErr:      fmt.Sprintf("error deleting old access key: %s", testDeleteAccessKeyErr),
 		},
 		{
 			name: "good with delete of old rotated",
 			in: &AwsCredentialPersistedState{
-				CredentialsConfig: &awsutilv2.CredentialsConfig{
+				CredentialsConfig: &awsutil.CredentialsConfig{
 					AccessKey: "AKIAfoobar",
 					SecretKey: "bazqux",
 				},
 				CredsLastRotatedTime: time.Now(),
-				testOpts: []awsutilv2.Option{
-					awsutilv2.WithIAMAPIFunc(
+				testOpts: []awsutil.Option{
+					awsutil.WithIAMAPIFunc(
 						newTestMockIAM(state),
 					),
 				},
 			},
-			credentialConfig: &awsutilv2.CredentialsConfig{
+			credentialConfig: &awsutil.CredentialsConfig{
 				AccessKey: "one",
 				SecretKey: "two",
 			},
-			expected: &awsutilv2.CredentialsConfig{
+			expected: &awsutil.CredentialsConfig{
 				AccessKey: "one",
 				SecretKey: "two",
 			},
@@ -579,21 +579,21 @@ func TestAwsCatalogPersistedState_ReplaceCreds(t *testing.T) {
 		{
 			name: "good without delete of old rotated",
 			in: &AwsCredentialPersistedState{
-				CredentialsConfig: &awsutilv2.CredentialsConfig{
+				CredentialsConfig: &awsutil.CredentialsConfig{
 					AccessKey: "AKIAfoobar",
 					SecretKey: "bazqux",
 				},
-				testOpts: []awsutilv2.Option{
-					awsutilv2.WithIAMAPIFunc(
+				testOpts: []awsutil.Option{
+					awsutil.WithIAMAPIFunc(
 						newTestMockIAM(state),
 					),
 				},
 			},
-			credentialConfig: &awsutilv2.CredentialsConfig{
+			credentialConfig: &awsutil.CredentialsConfig{
 				AccessKey: "one",
 				SecretKey: "two",
 			},
-			expected: &awsutilv2.CredentialsConfig{
+			expected: &awsutil.CredentialsConfig{
 				AccessKey: "one",
 				SecretKey: "two",
 			},
@@ -635,7 +635,7 @@ func TestAwsCatalogPersistedState_DeleteCreds(t *testing.T) {
 		{
 			name: "cannot delete dynamic credential type",
 			in: &AwsCredentialPersistedState{
-				CredentialsConfig: &awsutilv2.CredentialsConfig{
+				CredentialsConfig: &awsutil.CredentialsConfig{
 					AccessKey: "ASIAfoobar",
 					SecretKey: "bazqux",
 				},
@@ -646,7 +646,7 @@ func TestAwsCatalogPersistedState_DeleteCreds(t *testing.T) {
 		{
 			name: "cannot delete unknown credential type",
 			in: &AwsCredentialPersistedState{
-				CredentialsConfig: &awsutilv2.CredentialsConfig{
+				CredentialsConfig: &awsutil.CredentialsConfig{
 					AccessKey: "DNEfoobar",
 					SecretKey: "bazqux",
 				},
@@ -657,14 +657,14 @@ func TestAwsCatalogPersistedState_DeleteCreds(t *testing.T) {
 		{
 			name: "deletion error",
 			in: &AwsCredentialPersistedState{
-				CredentialsConfig: &awsutilv2.CredentialsConfig{
+				CredentialsConfig: &awsutil.CredentialsConfig{
 					AccessKey: "AKIAfoobar",
 					SecretKey: "bazqux",
 				},
-				testOpts: []awsutilv2.Option{
-					awsutilv2.WithIAMAPIFunc(
-						awsutilv2.NewMockIAM(
-							awsutilv2.WithDeleteAccessKeyError(errors.New(testDeleteAccessKeyErr)),
+				testOpts: []awsutil.Option{
+					awsutil.WithIAMAPIFunc(
+						awsutil.NewMockIAM(
+							awsutil.WithDeleteAccessKeyError(errors.New(testDeleteAccessKeyErr)),
 						),
 					),
 				},
@@ -674,14 +674,14 @@ func TestAwsCatalogPersistedState_DeleteCreds(t *testing.T) {
 		{
 			name: "deletion error, but OK because key was just gone",
 			in: &AwsCredentialPersistedState{
-				CredentialsConfig: &awsutilv2.CredentialsConfig{
+				CredentialsConfig: &awsutil.CredentialsConfig{
 					AccessKey: "AKIAfoobar",
 					SecretKey: "bazqux",
 				},
-				testOpts: []awsutilv2.Option{
-					awsutilv2.WithIAMAPIFunc(
-						awsutilv2.NewMockIAM(
-							awsutilv2.WithDeleteAccessKeyError(
+				testOpts: []awsutil.Option{
+					awsutil.WithIAMAPIFunc(
+						awsutil.NewMockIAM(
+							awsutil.WithDeleteAccessKeyError(
 								&iamTypes.NoSuchEntityException{},
 							),
 						),
@@ -692,13 +692,13 @@ func TestAwsCatalogPersistedState_DeleteCreds(t *testing.T) {
 		{
 			name: "good",
 			in: &AwsCredentialPersistedState{
-				CredentialsConfig: &awsutilv2.CredentialsConfig{
+				CredentialsConfig: &awsutil.CredentialsConfig{
 					AccessKey: "AKIAfoobar",
 					SecretKey: "bazqux",
 				},
-				testOpts: []awsutilv2.Option{
-					awsutilv2.WithIAMAPIFunc(
-						awsutilv2.NewMockIAM(),
+				testOpts: []awsutil.Option{
+					awsutil.WithIAMAPIFunc(
+						awsutil.NewMockIAM(),
 					),
 				},
 			},
@@ -732,24 +732,24 @@ func TestAwsCatalogPersistedState_GenerateCredentialChain(t *testing.T) {
 		{
 			name: "error",
 			in: &AwsCredentialPersistedState{
-				CredentialsConfig: &awsutilv2.CredentialsConfig{
+				CredentialsConfig: &awsutil.CredentialsConfig{
 					AccessKey: "foobar",
 					SecretKey: "bazqux",
 				},
-				testOpts: []awsutilv2.Option{awsutilv2.MockOptionErr(errors.New(testOptionErr))},
+				testOpts: []awsutil.Option{awsutil.MockOptionErr(errors.New(testOptionErr))},
 			},
 			expectedErr: fmt.Sprintf("error reading options in GenerateCredentialChain: %s", testOptionErr),
 		},
 		{
 			name: "static credentials",
 			in: &AwsCredentialPersistedState{
-				CredentialsConfig: &awsutilv2.CredentialsConfig{
+				CredentialsConfig: &awsutil.CredentialsConfig{
 					AccessKey: "AKIA_foobar",
 					SecretKey: "bazqux",
 				},
-				testOpts: []awsutilv2.Option{
-					awsutilv2.WithIAMAPIFunc(
-						awsutilv2.NewMockIAM(),
+				testOpts: []awsutil.Option{
+					awsutil.WithIAMAPIFunc(
+						awsutil.NewMockIAM(),
 					),
 				},
 			},
@@ -757,22 +757,22 @@ func TestAwsCatalogPersistedState_GenerateCredentialChain(t *testing.T) {
 		{
 			name: "assume role",
 			in: &AwsCredentialPersistedState{
-				CredentialsConfig: func() *awsutilv2.CredentialsConfig {
-					config, err := awsutilv2.NewCredentialsConfig(
-						awsutilv2.WithRegion("us-west-2"),
-						awsutilv2.WithRoleArn("arn:aws:iam::123456789012:role/S3Access"),
-						awsutilv2.WithRoleExternalId("1234567890"),
-						awsutilv2.WithRoleSessionName("assume-role"),
-						awsutilv2.WithRoleTags(map[string]string{
+				CredentialsConfig: func() *awsutil.CredentialsConfig {
+					config, err := awsutil.NewCredentialsConfig(
+						awsutil.WithRegion("us-west-2"),
+						awsutil.WithRoleArn("arn:aws:iam::123456789012:role/S3Access"),
+						awsutil.WithRoleExternalId("1234567890"),
+						awsutil.WithRoleSessionName("assume-role"),
+						awsutil.WithRoleTags(map[string]string{
 							"foo": "bar",
 						}),
 					)
 					require.NoError(err)
 					return config
 				}(),
-				testOpts: []awsutilv2.Option{
-					awsutilv2.WithIAMAPIFunc(
-						awsutilv2.NewMockIAM(),
+				testOpts: []awsutil.Option{
+					awsutil.WithIAMAPIFunc(
+						awsutil.NewMockIAM(),
 					),
 				},
 			},
@@ -794,7 +794,7 @@ func TestAwsCatalogPersistedState_GenerateCredentialChain(t *testing.T) {
 func TestGetCredentialType(t *testing.T) {
 	tests := []struct {
 		name             string
-		credConfig       *awsutilv2.CredentialsConfig
+		credConfig       *awsutil.CredentialsConfig
 		expectedCredType CredentialType
 	}{
 		{
@@ -804,32 +804,32 @@ func TestGetCredentialType(t *testing.T) {
 		},
 		{
 			name:             "empty credential config",
-			credConfig:       &awsutilv2.CredentialsConfig{},
+			credConfig:       &awsutil.CredentialsConfig{},
 			expectedCredType: Unknown,
 		},
 		{
 			name:             "static aws",
-			credConfig:       &awsutilv2.CredentialsConfig{AccessKey: "AKIAfoobar"},
+			credConfig:       &awsutil.CredentialsConfig{AccessKey: "AKIAfoobar"},
 			expectedCredType: StaticAWS,
 		},
 		{
 			name:             "static other",
-			credConfig:       &awsutilv2.CredentialsConfig{AccessKey: "cK3kNFa24foobar"},
+			credConfig:       &awsutil.CredentialsConfig{AccessKey: "cK3kNFa24foobar"},
 			expectedCredType: StaticOther,
 		},
 		{
 			name:             "dynamic aws - role arn",
-			credConfig:       &awsutilv2.CredentialsConfig{RoleARN: "arn:aws:iam::123456789012:role/S3Access"},
+			credConfig:       &awsutil.CredentialsConfig{RoleARN: "arn:aws:iam::123456789012:role/S3Access"},
 			expectedCredType: DynamicAWS,
 		},
 		{
 			name:             "dynamic aws - access key",
-			credConfig:       &awsutilv2.CredentialsConfig{AccessKey: "ASIAfoobar"},
+			credConfig:       &awsutil.CredentialsConfig{AccessKey: "ASIAfoobar"},
 			expectedCredType: DynamicAWS,
 		},
 		{
 			name:             "dynamic aws - role arn and access key",
-			credConfig:       &awsutilv2.CredentialsConfig{AccessKey: "ASIAfoobar", RoleARN: "arn:aws:iam::123456789012:role/S3Access"},
+			credConfig:       &awsutil.CredentialsConfig{AccessKey: "ASIAfoobar", RoleARN: "arn:aws:iam::123456789012:role/S3Access"},
 			expectedCredType: DynamicAWS,
 		},
 	}

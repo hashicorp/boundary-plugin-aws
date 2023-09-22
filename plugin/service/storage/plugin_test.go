@@ -25,7 +25,7 @@ import (
 	"github.com/hashicorp/boundary-plugin-aws/internal/credential"
 	"github.com/hashicorp/boundary/sdk/pbs/controller/api/resources/storagebuckets"
 	pb "github.com/hashicorp/boundary/sdk/pbs/plugin"
-	awsutilv2 "github.com/hashicorp/go-secure-stdlib/awsutil/v2"
+	"github.com/hashicorp/go-secure-stdlib/awsutil/v2"
 	"github.com/stretchr/testify/require"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
@@ -149,10 +149,10 @@ func TestStoragePlugin_OnCreateStorageBucket(t *testing.T) {
 				},
 			},
 			credOpts: []credential.AwsCredentialPersistedStateOption{
-				credential.WithStateTestOpts([]awsutilv2.Option{
-					awsutilv2.WithIAMAPIFunc(
-						awsutilv2.NewMockIAM(
-							awsutilv2.WithGetUserError(errors.New(testGetUserErr)),
+				credential.WithStateTestOpts([]awsutil.Option{
+					awsutil.WithIAMAPIFunc(
+						awsutil.NewMockIAM(
+							awsutil.WithGetUserError(errors.New(testGetUserErr)),
 						),
 					),
 				}),
@@ -284,13 +284,13 @@ func TestStoragePlugin_OnCreateStorageBucket(t *testing.T) {
 			},
 			credOpts: []credential.AwsCredentialPersistedStateOption{
 				credential.WithStateTestOpts(
-					[]awsutilv2.Option{
-						awsutilv2.WithSTSAPIFunc(
-							awsutilv2.NewMockSTS(),
+					[]awsutil.Option{
+						awsutil.WithSTSAPIFunc(
+							awsutil.NewMockSTS(),
 						),
-						awsutilv2.WithIAMAPIFunc(
-							awsutilv2.NewMockIAM(
-								awsutilv2.WithGetUserOutput(
+						awsutil.WithIAMAPIFunc(
+							awsutil.NewMockIAM(
+								awsutil.WithGetUserOutput(
 									&iam.GetUserOutput{
 										User: &iamTypes.User{
 											Arn:      aws.String("arn:aws:iam::123456789012:user/JohnDoe"),
@@ -299,7 +299,7 @@ func TestStoragePlugin_OnCreateStorageBucket(t *testing.T) {
 										},
 									},
 								),
-								awsutilv2.WithCreateAccessKeyOutput(
+								awsutil.WithCreateAccessKeyOutput(
 									&iam.CreateAccessKeyOutput{
 										AccessKey: &iamTypes.AccessKey{
 											AccessKeyId:     aws.String("one"),
@@ -339,10 +339,10 @@ func TestStoragePlugin_OnCreateStorageBucket(t *testing.T) {
 			},
 			credOpts: []credential.AwsCredentialPersistedStateOption{
 				credential.WithStateTestOpts(
-					[]awsutilv2.Option{
-						awsutilv2.WithSTSAPIFunc(
-							awsutilv2.NewMockSTS(
-								awsutilv2.WithAssumeRoleOutput(&sts.AssumeRoleOutput{
+					[]awsutil.Option{
+						awsutil.WithSTSAPIFunc(
+							awsutil.NewMockSTS(
+								awsutil.WithAssumeRoleOutput(&sts.AssumeRoleOutput{
 									Credentials: &types.Credentials{
 										AccessKeyId:     aws.String("ASIAfoobar"),
 										Expiration:      aws.Time(time.Now().Add(time.Hour)),
@@ -674,10 +674,10 @@ func TestStoragePlugin_OnUpdateStorageBucket(t *testing.T) {
 				),
 			},
 			credOpts: []credential.AwsCredentialPersistedStateOption{
-				credential.WithStateTestOpts([]awsutilv2.Option{
-					awsutilv2.WithIAMAPIFunc(
-						awsutilv2.NewMockIAM(
-							awsutilv2.WithDeleteAccessKeyError(errors.New(testDeleteAccessKeyErr)),
+				credential.WithStateTestOpts([]awsutil.Option{
+					awsutil.WithIAMAPIFunc(
+						awsutil.NewMockIAM(
+							awsutil.WithDeleteAccessKeyError(errors.New(testDeleteAccessKeyErr)),
 						),
 					),
 				}),
@@ -713,10 +713,10 @@ func TestStoragePlugin_OnUpdateStorageBucket(t *testing.T) {
 				},
 			},
 			credOpts: []credential.AwsCredentialPersistedStateOption{
-				credential.WithStateTestOpts([]awsutilv2.Option{
-					awsutilv2.WithIAMAPIFunc(
-						awsutilv2.NewMockIAM(
-							awsutilv2.WithGetUserError(errors.New(testGetUserErr)),
+				credential.WithStateTestOpts([]awsutil.Option{
+					awsutil.WithIAMAPIFunc(
+						awsutil.NewMockIAM(
+							awsutil.WithGetUserError(errors.New(testGetUserErr)),
 						),
 					),
 				}),
@@ -844,13 +844,13 @@ func TestStoragePlugin_OnUpdateStorageBucket(t *testing.T) {
 				},
 			},
 			credOpts: []credential.AwsCredentialPersistedStateOption{
-				credential.WithStateTestOpts([]awsutilv2.Option{
-					awsutilv2.WithSTSAPIFunc(
-						awsutilv2.NewMockSTS(),
+				credential.WithStateTestOpts([]awsutil.Option{
+					awsutil.WithSTSAPIFunc(
+						awsutil.NewMockSTS(),
 					),
-					awsutilv2.WithIAMAPIFunc(
-						awsutilv2.NewMockIAM(
-							awsutilv2.WithGetUserOutput(
+					awsutil.WithIAMAPIFunc(
+						awsutil.NewMockIAM(
+							awsutil.WithGetUserOutput(
 								&iam.GetUserOutput{
 									User: &iamTypes.User{
 										Arn:      aws.String("arn:aws:iam::123456789012:user/JohnDoe"),
@@ -859,7 +859,7 @@ func TestStoragePlugin_OnUpdateStorageBucket(t *testing.T) {
 									},
 								},
 							),
-							awsutilv2.WithCreateAccessKeyOutput(
+							awsutil.WithCreateAccessKeyOutput(
 								&iam.CreateAccessKeyOutput{
 									AccessKey: &iamTypes.AccessKey{
 										AccessKeyId:     aws.String("AKIA_one"),
@@ -1111,10 +1111,10 @@ func TestStoragePlugin_OnUpdateStorageBucket(t *testing.T) {
 				),
 			},
 			credOpts: []credential.AwsCredentialPersistedStateOption{
-				credential.WithStateTestOpts([]awsutilv2.Option{
-					awsutilv2.WithIAMAPIFunc(
-						awsutilv2.NewMockIAM(
-							awsutilv2.WithDeleteAccessKeyError(fmt.Errorf("delete access key fail oops")),
+				credential.WithStateTestOpts([]awsutil.Option{
+					awsutil.WithIAMAPIFunc(
+						awsutil.NewMockIAM(
+							awsutil.WithDeleteAccessKeyError(fmt.Errorf("delete access key fail oops")),
 						),
 					),
 				}),
@@ -1154,9 +1154,9 @@ func TestStoragePlugin_OnUpdateStorageBucket(t *testing.T) {
 				},
 			},
 			credOpts: []credential.AwsCredentialPersistedStateOption{
-				credential.WithStateTestOpts([]awsutilv2.Option{
-					awsutilv2.WithIAMAPIFunc(
-						awsutilv2.NewMockIAM(), // DeleteAccessKey Success
+				credential.WithStateTestOpts([]awsutil.Option{
+					awsutil.WithIAMAPIFunc(
+						awsutil.NewMockIAM(), // DeleteAccessKey Success
 					),
 				}),
 			},
@@ -1306,13 +1306,13 @@ func TestStoragePlugin_OnUpdateStorageBucket(t *testing.T) {
 				),
 			},
 			credOpts: []credential.AwsCredentialPersistedStateOption{
-				credential.WithStateTestOpts([]awsutilv2.Option{
-					awsutilv2.WithSTSAPIFunc(
-						awsutilv2.NewMockSTS(),
+				credential.WithStateTestOpts([]awsutil.Option{
+					awsutil.WithSTSAPIFunc(
+						awsutil.NewMockSTS(),
 					),
-					awsutilv2.WithIAMAPIFunc(
-						awsutilv2.NewMockIAM(
-							awsutilv2.WithGetUserOutput(
+					awsutil.WithIAMAPIFunc(
+						awsutil.NewMockIAM(
+							awsutil.WithGetUserOutput(
 								&iam.GetUserOutput{
 									User: &iamTypes.User{
 										Arn:      aws.String("arn:aws:iam::123456789012:user/JohnDoe"),
@@ -1321,7 +1321,7 @@ func TestStoragePlugin_OnUpdateStorageBucket(t *testing.T) {
 									},
 								},
 							),
-							awsutilv2.WithCreateAccessKeyError(fmt.Errorf("create access key fail oops")),
+							awsutil.WithCreateAccessKeyError(fmt.Errorf("create access key fail oops")),
 						),
 					),
 				}),
@@ -1361,13 +1361,13 @@ func TestStoragePlugin_OnUpdateStorageBucket(t *testing.T) {
 				},
 			},
 			credOpts: []credential.AwsCredentialPersistedStateOption{
-				credential.WithStateTestOpts([]awsutilv2.Option{
-					awsutilv2.WithSTSAPIFunc(
-						awsutilv2.NewMockSTS(),
+				credential.WithStateTestOpts([]awsutil.Option{
+					awsutil.WithSTSAPIFunc(
+						awsutil.NewMockSTS(),
 					),
-					awsutilv2.WithIAMAPIFunc(
-						awsutilv2.NewMockIAM(
-							awsutilv2.WithGetUserOutput(
+					awsutil.WithIAMAPIFunc(
+						awsutil.NewMockIAM(
+							awsutil.WithGetUserOutput(
 								&iam.GetUserOutput{
 									User: &iamTypes.User{
 										Arn:      aws.String("arn:aws:iam::123456789012:user/JohnDoe"),
@@ -1376,7 +1376,7 @@ func TestStoragePlugin_OnUpdateStorageBucket(t *testing.T) {
 									},
 								},
 							),
-							awsutilv2.WithCreateAccessKeyOutput(
+							awsutil.WithCreateAccessKeyOutput(
 								&iam.CreateAccessKeyOutput{
 									AccessKey: &iamTypes.AccessKey{
 										AccessKeyId:     aws.String("AKIA_one"),
@@ -1541,10 +1541,10 @@ func TestStoragePlugin_OnDeleteStorageBucket(t *testing.T) {
 				},
 			},
 			credOpts: []credential.AwsCredentialPersistedStateOption{
-				credential.WithStateTestOpts([]awsutilv2.Option{
-					awsutilv2.WithIAMAPIFunc(
-						awsutilv2.NewMockIAM(
-							awsutilv2.WithDeleteAccessKeyError(errors.New(testDeleteAccessKeyErr)),
+				credential.WithStateTestOpts([]awsutil.Option{
+					awsutil.WithIAMAPIFunc(
+						awsutil.NewMockIAM(
+							awsutil.WithDeleteAccessKeyError(errors.New(testDeleteAccessKeyErr)),
 						),
 					),
 				}),
@@ -1573,10 +1573,10 @@ func TestStoragePlugin_OnDeleteStorageBucket(t *testing.T) {
 				},
 			},
 			credOpts: []credential.AwsCredentialPersistedStateOption{
-				credential.WithStateTestOpts([]awsutilv2.Option{
-					awsutilv2.WithIAMAPIFunc(
-						awsutilv2.NewMockIAM(
-							awsutilv2.WithDeleteAccessKeyError(nil),
+				credential.WithStateTestOpts([]awsutil.Option{
+					awsutil.WithIAMAPIFunc(
+						awsutil.NewMockIAM(
+							awsutil.WithDeleteAccessKeyError(nil),
 						),
 					),
 				}),

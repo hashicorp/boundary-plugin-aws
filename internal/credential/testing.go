@@ -8,7 +8,7 @@ import (
 
 	"github.com/aws/aws-sdk-go-v2/aws"
 	"github.com/aws/aws-sdk-go-v2/service/iam"
-	awsutilv2 "github.com/hashicorp/go-secure-stdlib/awsutil/v2"
+	"github.com/hashicorp/go-secure-stdlib/awsutil/v2"
 	"google.golang.org/protobuf/types/known/structpb"
 )
 
@@ -28,7 +28,7 @@ func (s *testMockIAMState) Reset() {
 }
 
 type testMockIAM struct {
-	awsutilv2.IAMClient
+	awsutil.IAMClient
 
 	State *testMockIAMState
 }
@@ -38,12 +38,12 @@ func (m *testMockIAM) DeleteAccessKey(ctx context.Context, input *iam.DeleteAcce
 	return m.IAMClient.DeleteAccessKey(ctx, input, opts...)
 }
 
-func newTestMockIAM(state *testMockIAMState, opts ...awsutilv2.MockIAMOption) awsutilv2.IAMAPIFunc {
-	return func(awsConfig *aws.Config) (awsutilv2.IAMClient, error) {
+func newTestMockIAM(state *testMockIAMState, opts ...awsutil.MockIAMOption) awsutil.IAMAPIFunc {
+	return func(awsConfig *aws.Config) (awsutil.IAMClient, error) {
 		m := &testMockIAM{
 			State: state,
 		}
-		f := awsutilv2.NewMockIAM(opts...)
+		f := awsutil.NewMockIAM(opts...)
 		var err error
 
 		m.IAMClient, err = f(awsConfig)

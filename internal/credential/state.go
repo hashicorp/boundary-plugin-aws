@@ -13,7 +13,7 @@ import (
 	"github.com/aws/aws-sdk-go-v2/aws"
 	iamTypes "github.com/aws/aws-sdk-go-v2/service/iam/types"
 	"github.com/hashicorp/boundary-plugin-aws/internal/values"
-	awsutilv2 "github.com/hashicorp/go-secure-stdlib/awsutil/v2"
+	"github.com/hashicorp/go-secure-stdlib/awsutil/v2"
 	"google.golang.org/protobuf/types/known/structpb"
 )
 
@@ -49,18 +49,18 @@ type AwsCredentialPersistedStateOption func(s *AwsCredentialPersistedState) erro
 // AwsCredentialPersistedState is the persisted state for the AWS credential.
 type AwsCredentialPersistedState struct {
 	// CredentialsConfig is the credential configuration for the AWS credential.
-	CredentialsConfig *awsutilv2.CredentialsConfig
+	CredentialsConfig *awsutil.CredentialsConfig
 	// CredsLastRotatedTime is the last rotation of aws secrets for the AWS credential.
 	CredsLastRotatedTime time.Time
 
 	// testOpts are options that should be used for testing only
-	testOpts []awsutilv2.Option
+	testOpts []awsutil.Option
 }
 
 // WithStateTestOpts enables unit testing different edge cases
 // when using CredentialsConfig. This should never be used in
 // production code. This should only be used in unit tests.
-func WithStateTestOpts(opts []awsutilv2.Option) AwsCredentialPersistedStateOption {
+func WithStateTestOpts(opts []awsutil.Option) AwsCredentialPersistedStateOption {
 	return func(s *AwsCredentialPersistedState) error {
 		s.testOpts = opts
 		return nil
@@ -68,7 +68,7 @@ func WithStateTestOpts(opts []awsutilv2.Option) AwsCredentialPersistedStateOptio
 }
 
 // WithCredentialsConfig sets the value for CredentialsConfig in the credential persisted state.
-func WithCredentialsConfig(x *awsutilv2.CredentialsConfig) AwsCredentialPersistedStateOption {
+func WithCredentialsConfig(x *awsutil.CredentialsConfig) AwsCredentialPersistedStateOption {
 	return func(s *AwsCredentialPersistedState) error {
 		if s.CredentialsConfig != nil {
 			return errors.New("credentials config already set")
@@ -129,8 +129,8 @@ func (s *AwsCredentialPersistedState) RotateCreds(ctx context.Context) error {
 	if GetCredentialType(s.CredentialsConfig) != StaticAWS {
 		return errors.New("invalid credential type")
 	}
-	if err := s.CredentialsConfig.RotateKeys(ctx, append([]awsutilv2.Option{
-		awsutilv2.WithValidityCheckTimeout(rotationWaitTimeout),
+	if err := s.CredentialsConfig.RotateKeys(ctx, append([]awsutil.Option{
+		awsutil.WithValidityCheckTimeout(rotationWaitTimeout),
 	}, s.testOpts...)...); err != nil {
 		return fmt.Errorf("error rotating credentials: %w", err)
 	}
@@ -141,7 +141,7 @@ func (s *AwsCredentialPersistedState) RotateCreds(ctx context.Context) error {
 // ReplaceCreds replaces the access key in the state with a new key.
 // If the existing key was rotated at any point in time, it is
 // deleted first, otherwise it's left alone.
-func (s *AwsCredentialPersistedState) ReplaceCreds(ctx context.Context, credentialsConfig *awsutilv2.CredentialsConfig) error {
+func (s *AwsCredentialPersistedState) ReplaceCreds(ctx context.Context, credentialsConfig *awsutil.CredentialsConfig) error {
 	if credentialsConfig == nil {
 		return errors.New("missing new credentials config")
 	}
@@ -250,29 +250,29 @@ func AwsCredentialPersistedStateFromProto(secrets *structpb.Struct, attrs *Crede
 		return nil, err
 	}
 
-	awsOpts := append([]awsutilv2.Option{}, s.testOpts...)
+	awsOpts := append([]awsutil.Option{}, s.testOpts...)
 	if accessKeyId != "" && secretAccessKey != "" {
 		awsOpts = append(awsOpts,
-			awsutilv2.WithAccessKey(accessKeyId),
-			awsutilv2.WithSecretKey(secretAccessKey),
+			awsutil.WithAccessKey(accessKeyId),
+			awsutil.WithSecretKey(secretAccessKey),
 		)
 	}
 	if attrs.Region != "" {
-		awsOpts = append(awsOpts, awsutilv2.WithRegion(attrs.Region))
+		awsOpts = append(awsOpts, awsutil.WithRegion(attrs.Region))
 	}
 	if attrs.RoleArn != "" {
-		awsOpts = append(awsOpts, awsutilv2.WithRoleArn(attrs.RoleArn))
+		awsOpts = append(awsOpts, awsutil.WithRoleArn(attrs.RoleArn))
 	}
 	if attrs.RoleExternalId != "" {
-		awsOpts = append(awsOpts, awsutilv2.WithRoleExternalId(attrs.RoleExternalId))
+		awsOpts = append(awsOpts, awsutil.WithRoleExternalId(attrs.RoleExternalId))
 	}
 	if attrs.RoleSessionName != "" {
-		awsOpts = append(awsOpts, awsutilv2.WithRoleSessionName(attrs.RoleSessionName))
+		awsOpts = append(awsOpts, awsutil.WithRoleSessionName(attrs.RoleSessionName))
 	}
 	if len(attrs.RoleTags) != 0 {
-		awsOpts = append(awsOpts, awsutilv2.WithRoleTags(attrs.RoleTags))
+		awsOpts = append(awsOpts, awsutil.WithRoleTags(attrs.RoleTags))
 	}
-	credentialsConfig, err := awsutilv2.NewCredentialsConfig(awsOpts...)
+	credentialsConfig, err := awsutil.NewCredentialsConfig(awsOpts...)
 	if err != nil {
 		return nil, err
 	}
@@ -284,7 +284,7 @@ func AwsCredentialPersistedStateFromProto(secrets *structpb.Struct, attrs *Crede
 
 // GetCredentialType returns the credential type based on the given
 // AccessKey/RoleARN. See CredentialType definition for more information.
-func GetCredentialType(cc *awsutilv2.CredentialsConfig) CredentialType {
+func GetCredentialType(cc *awsutil.CredentialsConfig) CredentialType {
 	if cc == nil {
 		return Unknown
 	}
