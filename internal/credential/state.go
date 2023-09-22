@@ -205,6 +205,13 @@ func (s *AwsCredentialPersistedState) GenerateCredentialChain(ctx context.Contex
 // access_key_id, secret_access_key & creds_last_rotated_time
 func (s *AwsCredentialPersistedState) ToMap() map[string]any {
 	ct := GetCredentialType(s.CredentialsConfig)
+	// Dynamic AWS credentials are temporary credentials that expire within an hour.
+	// ToMap() returns an empty map here so that Boundary does not store temporary
+	// credentials into the database.
+	//
+	// Uknown credentials are not aws compatiable secrets that may have been provided
+	// for a non-aws s3 compatiable service. These credentials will not be returned
+	// because the plugin does not know how to manage non-aws credentials.
 	if ct == DynamicAWS || ct == Unknown {
 		return map[string]any{}
 	}
