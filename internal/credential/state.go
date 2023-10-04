@@ -196,7 +196,13 @@ func (s *AwsCredentialPersistedState) DeleteCreds(ctx context.Context) error {
 
 // GenerateCredentialChain returns a AWS configuration for the credentials in the state.
 func (s *AwsCredentialPersistedState) GenerateCredentialChain(ctx context.Context) (*aws.Config, error) {
-	return s.CredentialsConfig.GenerateCredentialChain(ctx, s.testOpts...)
+	// Default `WithSharedCredentials` is `true` - This disables the ability to
+	// read credentials from environment variables because we set the default
+	// profile options, so we need to set it to false (see
+	// awsutil@v2.(*CredentialsConfig).generateAwsConfigOptions) for extra
+	// details.
+	opts := append(s.testOpts, awsutil.WithSharedCredentials(false))
+	return s.CredentialsConfig.GenerateCredentialChain(ctx, opts...)
 }
 
 // ToMap returns a map of the credentials stored in the persisted state.
