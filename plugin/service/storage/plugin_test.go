@@ -20,6 +20,7 @@ import (
 	"github.com/aws/aws-sdk-go-v2/service/iam"
 	iamTypes "github.com/aws/aws-sdk-go-v2/service/iam/types"
 	"github.com/aws/aws-sdk-go-v2/service/s3"
+	s3types "github.com/aws/aws-sdk-go-v2/service/s3/types"
 	"github.com/aws/aws-sdk-go-v2/service/sts"
 	"github.com/aws/aws-sdk-go-v2/service/sts/types"
 	"github.com/hashicorp/boundary-plugin-aws/internal/credential"
@@ -263,6 +264,15 @@ func TestStoragePlugin_OnCreateStorageBucket(t *testing.T) {
 						testMockS3WithPutObjectOutput(&s3.PutObjectOutput{}),
 						testMockS3WithGetObjectOutput(&s3.GetObjectOutput{}),
 						testMockS3WithHeadObjectOutput(&s3.HeadObjectOutput{}),
+						testMockS3WithListObjectsV2OutputFunc(func(i *s3.ListObjectsV2Input) *s3.ListObjectsV2Output {
+							return &s3.ListObjectsV2Output{
+								Contents: []s3types.Object{
+									{
+										Key: i.Prefix,
+									},
+								},
+							}
+						}),
 					),
 				),
 			},
@@ -320,6 +330,15 @@ func TestStoragePlugin_OnCreateStorageBucket(t *testing.T) {
 						testMockS3WithPutObjectOutput(&s3.PutObjectOutput{}),
 						testMockS3WithGetObjectOutput(&s3.GetObjectOutput{}),
 						testMockS3WithHeadObjectOutput(&s3.HeadObjectOutput{}),
+						testMockS3WithListObjectsV2OutputFunc(func(i *s3.ListObjectsV2Input) *s3.ListObjectsV2Output {
+							return &s3.ListObjectsV2Output{
+								Contents: []s3types.Object{
+									{
+										Key: i.Prefix,
+									},
+								},
+							}
+						}),
 					),
 				),
 			},
@@ -361,6 +380,15 @@ func TestStoragePlugin_OnCreateStorageBucket(t *testing.T) {
 						testMockS3WithPutObjectOutput(&s3.PutObjectOutput{}),
 						testMockS3WithGetObjectOutput(&s3.GetObjectOutput{}),
 						testMockS3WithHeadObjectOutput(&s3.HeadObjectOutput{}),
+						testMockS3WithListObjectsV2OutputFunc(func(i *s3.ListObjectsV2Input) *s3.ListObjectsV2Output {
+							return &s3.ListObjectsV2Output{
+								Contents: []s3types.Object{
+									{
+										Key: i.Prefix,
+									},
+								},
+							}
+						}),
 					),
 				),
 			},
@@ -670,6 +698,15 @@ func TestStoragePlugin_OnUpdateStorageBucket(t *testing.T) {
 						testMockS3WithPutObjectOutput(&s3.PutObjectOutput{}),
 						testMockS3WithGetObjectOutput(&s3.GetObjectOutput{}),
 						testMockS3WithHeadObjectOutput(&s3.HeadObjectOutput{}),
+						testMockS3WithListObjectsV2OutputFunc(func(i *s3.ListObjectsV2Input) *s3.ListObjectsV2Output {
+							return &s3.ListObjectsV2Output{
+								Contents: []s3types.Object{
+									{
+										Key: i.Prefix,
+									},
+								},
+							}
+						}),
 					),
 				),
 			},
@@ -879,6 +916,15 @@ func TestStoragePlugin_OnUpdateStorageBucket(t *testing.T) {
 						testMockS3WithPutObjectOutput(&s3.PutObjectOutput{}),
 						testMockS3WithGetObjectOutput(&s3.GetObjectOutput{}),
 						testMockS3WithHeadObjectOutput(&s3.HeadObjectOutput{}),
+						testMockS3WithListObjectsV2OutputFunc(func(i *s3.ListObjectsV2Input) *s3.ListObjectsV2Output {
+							return &s3.ListObjectsV2Output{
+								Contents: []s3types.Object{
+									{
+										Key: i.Prefix,
+									},
+								},
+							}
+						}),
 					),
 				),
 			},
@@ -899,6 +945,15 @@ func TestStoragePlugin_OnUpdateStorageBucket(t *testing.T) {
 						testMockS3WithPutObjectOutput(&s3.PutObjectOutput{}),
 						testMockS3WithGetObjectOutput(&s3.GetObjectOutput{}),
 						testMockS3WithHeadObjectOutput(&s3.HeadObjectOutput{}),
+						testMockS3WithListObjectsV2OutputFunc(func(i *s3.ListObjectsV2Input) *s3.ListObjectsV2Output {
+							return &s3.ListObjectsV2Output{
+								Contents: []s3types.Object{
+									{
+										Key: i.Prefix,
+									},
+								},
+							}
+						}),
 					),
 				),
 			},
@@ -977,6 +1032,15 @@ func TestStoragePlugin_OnUpdateStorageBucket(t *testing.T) {
 						testMockS3WithHeadObjectOutput(&s3.HeadObjectOutput{}),
 						testMockS3WithGetObjectOutput(&s3.GetObjectOutput{}),
 						testMockS3WithPutObjectOutput(&s3.PutObjectOutput{}),
+						testMockS3WithListObjectsV2OutputFunc(func(i *s3.ListObjectsV2Input) *s3.ListObjectsV2Output {
+							return &s3.ListObjectsV2Output{
+								Contents: []s3types.Object{
+									{
+										Key: i.Prefix,
+									},
+								},
+							}
+						}),
 					),
 				),
 			},
@@ -1064,6 +1128,15 @@ func TestStoragePlugin_OnUpdateStorageBucket(t *testing.T) {
 						testMockS3WithPutObjectOutput(&s3.PutObjectOutput{}),
 						testMockS3WithGetObjectOutput(&s3.GetObjectOutput{}),
 						testMockS3WithHeadObjectOutput(&s3.HeadObjectOutput{}),
+						testMockS3WithListObjectsV2OutputFunc(func(i *s3.ListObjectsV2Input) *s3.ListObjectsV2Output {
+							return &s3.ListObjectsV2Output{
+								Contents: []s3types.Object{
+									{
+										Key: i.Prefix,
+									},
+								},
+							}
+						}),
 					),
 				),
 			},
@@ -1107,6 +1180,15 @@ func TestStoragePlugin_OnUpdateStorageBucket(t *testing.T) {
 						testMockS3WithPutObjectOutput(&s3.PutObjectOutput{}),
 						testMockS3WithGetObjectOutput(&s3.GetObjectOutput{}),
 						testMockS3WithHeadObjectOutput(&s3.HeadObjectOutput{}),
+						testMockS3WithListObjectsV2OutputFunc(func(i *s3.ListObjectsV2Input) *s3.ListObjectsV2Output {
+							return &s3.ListObjectsV2Output{
+								Contents: []s3types.Object{
+									{
+										Key: i.Prefix,
+									},
+								},
+							}
+						}),
 					),
 				),
 			},
@@ -1167,6 +1249,15 @@ func TestStoragePlugin_OnUpdateStorageBucket(t *testing.T) {
 						testMockS3WithPutObjectOutput(&s3.PutObjectOutput{}),
 						testMockS3WithGetObjectOutput(&s3.GetObjectOutput{}),
 						testMockS3WithHeadObjectOutput(&s3.HeadObjectOutput{}),
+						testMockS3WithListObjectsV2OutputFunc(func(i *s3.ListObjectsV2Input) *s3.ListObjectsV2Output {
+							return &s3.ListObjectsV2Output{
+								Contents: []s3types.Object{
+									{
+										Key: i.Prefix,
+									},
+								},
+							}
+						}),
 					),
 				),
 			},
@@ -1211,6 +1302,15 @@ func TestStoragePlugin_OnUpdateStorageBucket(t *testing.T) {
 						testMockS3WithPutObjectError(fmt.Errorf("put object fail oops")),
 						testMockS3WithGetObjectOutput(&s3.GetObjectOutput{}),
 						testMockS3WithHeadObjectOutput(&s3.HeadObjectOutput{}),
+						testMockS3WithListObjectsV2OutputFunc(func(i *s3.ListObjectsV2Input) *s3.ListObjectsV2Output {
+							return &s3.ListObjectsV2Output{
+								Contents: []s3types.Object{
+									{
+										Key: i.Prefix,
+									},
+								},
+							}
+						}),
 					),
 				),
 			},
@@ -1256,6 +1356,15 @@ func TestStoragePlugin_OnUpdateStorageBucket(t *testing.T) {
 						testMockS3WithPutObjectOutput(&s3.PutObjectOutput{}),
 						testMockS3WithGetObjectOutput(&s3.GetObjectOutput{}),
 						testMockS3WithHeadObjectOutput(&s3.HeadObjectOutput{}),
+						testMockS3WithListObjectsV2OutputFunc(func(i *s3.ListObjectsV2Input) *s3.ListObjectsV2Output {
+							return &s3.ListObjectsV2Output{
+								Contents: []s3types.Object{
+									{
+										Key: i.Prefix,
+									},
+								},
+							}
+						}),
 					),
 				),
 			},
@@ -1302,6 +1411,15 @@ func TestStoragePlugin_OnUpdateStorageBucket(t *testing.T) {
 						testMockS3WithPutObjectOutput(&s3.PutObjectOutput{}),
 						testMockS3WithGetObjectOutput(&s3.GetObjectOutput{}),
 						testMockS3WithHeadObjectOutput(&s3.HeadObjectOutput{}),
+						testMockS3WithListObjectsV2OutputFunc(func(i *s3.ListObjectsV2Input) *s3.ListObjectsV2Output {
+							return &s3.ListObjectsV2Output{
+								Contents: []s3types.Object{
+									{
+										Key: i.Prefix,
+									},
+								},
+							}
+						}),
 					),
 				),
 			},
@@ -1396,6 +1514,15 @@ func TestStoragePlugin_OnUpdateStorageBucket(t *testing.T) {
 						testMockS3WithPutObjectOutput(&s3.PutObjectOutput{}),
 						testMockS3WithGetObjectOutput(&s3.GetObjectOutput{}),
 						testMockS3WithHeadObjectOutput(&s3.HeadObjectOutput{}),
+						testMockS3WithListObjectsV2OutputFunc(func(i *s3.ListObjectsV2Input) *s3.ListObjectsV2Output {
+							return &s3.ListObjectsV2Output{
+								Contents: []s3types.Object{
+									{
+										Key: i.Prefix,
+									},
+								},
+							}
+						}),
 					),
 				),
 			},
@@ -2039,6 +2166,15 @@ func TestStoragePlugin_ValidatePermissions(t *testing.T) {
 						testMockS3WithPutObjectOutput(&s3.PutObjectOutput{}),
 						testMockS3WithGetObjectOutput(&s3.GetObjectOutput{}),
 						testMockS3WithHeadObjectOutput(&s3.HeadObjectOutput{}),
+						testMockS3WithListObjectsV2OutputFunc(func(i *s3.ListObjectsV2Input) *s3.ListObjectsV2Output {
+							return &s3.ListObjectsV2Output{
+								Contents: []s3types.Object{
+									{
+										Key: i.Prefix,
+									},
+								},
+							}
+						}),
 					),
 				),
 			},
@@ -2065,6 +2201,15 @@ func TestStoragePlugin_ValidatePermissions(t *testing.T) {
 						testMockS3WithPutObjectOutput(&s3.PutObjectOutput{}),
 						testMockS3WithGetObjectOutput(&s3.GetObjectOutput{}),
 						testMockS3WithHeadObjectOutput(&s3.HeadObjectOutput{}),
+						testMockS3WithListObjectsV2OutputFunc(func(i *s3.ListObjectsV2Input) *s3.ListObjectsV2Output {
+							return &s3.ListObjectsV2Output{
+								Contents: []s3types.Object{
+									{
+										Key: i.Prefix,
+									},
+								},
+							}
+						}),
 					),
 				),
 			},
@@ -2732,6 +2877,361 @@ func TestStoragePlugin_PutObject(t *testing.T) {
 			_, err = hash.Write(tc.expectedObject)
 			require.NoError(err)
 			require.True(bytes.Equal(hash.Sum(nil), resp.GetChecksumSha_256()))
+		})
+	}
+}
+
+func TestStoragePlugin_DeleteObjects(t *testing.T) {
+	validRequest := func() *pb.DeleteObjectsRequest {
+		return &pb.DeleteObjectsRequest{
+			Bucket: &storagebuckets.StorageBucket{
+				BucketName: "external-obj-store",
+				Secrets:    credential.MockStaticCredentialSecrets(),
+				Attributes: &structpb.Struct{
+					Fields: map[string]*structpb.Value{
+						credential.ConstRegion: structpb.NewStringValue("us-west-2"),
+					},
+				},
+			},
+			KeyPrefix: "abc/",
+		}
+	}
+
+	validRecursiveRequest := func() *pb.DeleteObjectsRequest {
+		return &pb.DeleteObjectsRequest{
+			Bucket: &storagebuckets.StorageBucket{
+				BucketName: "external-obj-store",
+				Secrets:    credential.MockStaticCredentialSecrets(),
+				Attributes: &structpb.Struct{
+					Fields: map[string]*structpb.Value{
+						credential.ConstRegion: structpb.NewStringValue("us-west-2"),
+					},
+				},
+			},
+			KeyPrefix: "abc/",
+			Recursive: true,
+		}
+	}
+
+	cases := []struct {
+		name                string
+		req                 *pb.DeleteObjectsRequest
+		credOpts            []credential.AwsCredentialPersistedStateOption
+		storageOpts         []awsStoragePersistedStateOption
+		expectedErrContains string
+		expectedErrCode     codes.Code
+		expected            uint32
+	}{
+		{
+			name:                "empty key prefix",
+			req:                 &pb.DeleteObjectsRequest{},
+			expectedErrContains: "key prefix is required",
+			expectedErrCode:     codes.InvalidArgument,
+		},
+		{
+			name: "nil bucket",
+			req: &pb.DeleteObjectsRequest{
+				KeyPrefix: "/foo/bar/key",
+			},
+			expectedErrContains: "bucket is required",
+			expectedErrCode:     codes.InvalidArgument,
+		},
+		{
+			name: "missing bucket name",
+			req: &pb.DeleteObjectsRequest{
+				KeyPrefix: "/foo/bar/key",
+				Bucket:    &storagebuckets.StorageBucket{},
+			},
+			expectedErrContains: "bucketName is required",
+			expectedErrCode:     codes.InvalidArgument,
+		},
+		{
+			name: "nil attributes",
+			req: &pb.DeleteObjectsRequest{
+				KeyPrefix: "/foo/bar/key",
+				Bucket: &storagebuckets.StorageBucket{
+					BucketName: "foo",
+					Secrets:    new(structpb.Struct),
+				},
+			},
+			expectedErrContains: "attributes is required",
+			expectedErrCode:     codes.InvalidArgument,
+		},
+		{
+			name: "error reading attributes",
+			req: &pb.DeleteObjectsRequest{
+				KeyPrefix: "/foo/bar/key",
+				Bucket: &storagebuckets.StorageBucket{
+					BucketName: "foo",
+					Secrets:    new(structpb.Struct),
+					Attributes: new(structpb.Struct),
+				},
+			},
+			expectedErrContains: "missing required value \"region\"",
+			expectedErrCode:     codes.InvalidArgument,
+		},
+		{
+			name: "invalid region",
+			req: &pb.DeleteObjectsRequest{
+				KeyPrefix: "/foo/bar/key",
+				Bucket: &storagebuckets.StorageBucket{
+					BucketName: "foo",
+					Secrets:    new(structpb.Struct),
+					Attributes: &structpb.Struct{
+						Fields: map[string]*structpb.Value{
+							credential.ConstRegion: structpb.NewStringValue("foobar"),
+						},
+					},
+				},
+			},
+			expectedErrContains: "not a valid region: foobar",
+			expectedErrCode:     codes.InvalidArgument,
+		},
+		{
+			name: "credential persisted state setup error",
+			req:  validRequest(),
+			credOpts: []credential.AwsCredentialPersistedStateOption{
+				func(s *credential.AwsCredentialPersistedState) error {
+					return errors.New(testOptionErr)
+				},
+			},
+			expectedErrContains: fmt.Sprintf("error setting up persisted state: %s", testOptionErr),
+			expectedErrCode:     codes.InvalidArgument,
+		},
+		{
+			name: "storage persisted state setup error",
+			req:  validRequest(),
+			storageOpts: []awsStoragePersistedStateOption{
+				func(s *awsStoragePersistedState) error {
+					return errors.New(testOptionErr)
+				},
+			},
+			expectedErrContains: fmt.Sprintf("error setting up persisted state: %s", testOptionErr),
+			expectedErrCode:     codes.InvalidArgument,
+		},
+		{
+			name:     "DeleteObject error",
+			req:      validRequest(),
+			credOpts: validSTSMock(),
+			storageOpts: []awsStoragePersistedStateOption{
+				withTestS3APIFunc(
+					newTestMockS3(
+						nil,
+						testMockS3WithDeleteObjectError(errors.New(testDeleteObjectErr)),
+					),
+				),
+			},
+			expectedErrContains: "error deleting S3 object: test error for DeleteObject",
+			expectedErrCode:     codes.Internal,
+		},
+		{
+			name:     "ListObjectV2 error",
+			req:      validRecursiveRequest(),
+			credOpts: validSTSMock(),
+			storageOpts: []awsStoragePersistedStateOption{
+				withTestS3APIFunc(
+					newTestMockS3(
+						nil,
+						testMockS3WithListObjectsV2Error(errors.New(testListObjectV2Err)),
+					),
+				),
+			},
+			expectedErrContains: "error iterating S3 bucket contents: test error for ListObjectV2",
+			expectedErrCode:     codes.Internal,
+		},
+		{
+			name:     "DeleteObjects error",
+			req:      validRecursiveRequest(),
+			credOpts: validSTSMock(),
+			storageOpts: []awsStoragePersistedStateOption{
+				withTestS3APIFunc(
+					newTestMockS3(
+						nil,
+						testMockS3WithListObjectsV2Output(&s3.ListObjectsV2Output{
+							IsTruncated: false,
+							Contents: []s3types.Object{
+								s3types.Object{
+									Key: aws.String("abc/abc"),
+								},
+							},
+						}),
+						testMockS3WithDeleteObjectsError(errors.New(testDeleteObjectsErr)),
+					),
+				),
+			},
+			expectedErrContains: "error deleting S3 object(s): test error for DeleteObjects",
+			expectedErrCode:     codes.Internal,
+		},
+		{
+			name:     "DeleteObject throttle error",
+			req:      validRequest(),
+			credOpts: validSTSMock(),
+			storageOpts: []awsStoragePersistedStateOption{
+				withTestS3APIFunc(
+					newTestMockS3(
+						nil,
+						testMockS3WithDeleteObjectError(new(throttleErr)),
+					),
+				),
+			},
+			expectedErrContains: "error deleting S3 object: ThrottlingException",
+			expectedErrCode:     codes.Unavailable,
+		},
+		{
+			name:     "ListObjectsV2 throttle error",
+			req:      validRecursiveRequest(),
+			credOpts: validSTSMock(),
+			storageOpts: []awsStoragePersistedStateOption{
+				withTestS3APIFunc(
+					newTestMockS3(
+						nil,
+						testMockS3WithListObjectsV2Error(new(throttleErr)),
+					),
+				),
+			},
+			expectedErrContains: "error iterating S3 bucket contents: ThrottlingException",
+			expectedErrCode:     codes.Unavailable,
+		},
+		{
+			name:     "DeleteObjects throttle error",
+			req:      validRecursiveRequest(),
+			credOpts: validSTSMock(),
+			storageOpts: []awsStoragePersistedStateOption{
+				withTestS3APIFunc(
+					newTestMockS3(
+						nil,
+						testMockS3WithListObjectsV2Output(&s3.ListObjectsV2Output{
+							IsTruncated: false,
+							Contents: []s3types.Object{
+								s3types.Object{
+									Key: aws.String("abc/abc"),
+								},
+							},
+						}),
+						testMockS3WithDeleteObjectsError(new(throttleErr)),
+					),
+				),
+			},
+			expectedErrContains: "error deleting S3 object(s): ThrottlingException",
+			expectedErrCode:     codes.Unavailable,
+		},
+		{
+			name:     "success",
+			req:      validRequest(),
+			credOpts: validSTSMock(),
+			storageOpts: []awsStoragePersistedStateOption{
+				withTestS3APIFunc(
+					newTestMockS3(
+						nil,
+						testMockS3WithDeleteObjectOutput(&s3.DeleteObjectOutput{}),
+					),
+				),
+			},
+			expected: 1,
+		},
+		{
+			name:     "recursive success",
+			req:      validRecursiveRequest(),
+			credOpts: validSTSMock(),
+			storageOpts: []awsStoragePersistedStateOption{
+				withTestS3APIFunc(
+					newTestMockS3(
+						nil,
+						testMockS3WithListObjectsV2Output(&s3.ListObjectsV2Output{
+							IsTruncated: false,
+							Contents: []s3types.Object{
+								s3types.Object{
+									Key: aws.String("abc/abc1"),
+								},
+								s3types.Object{
+									Key: aws.String("abc/abc2"),
+								},
+								s3types.Object{
+									Key: aws.String("abc/abc3"),
+								},
+							},
+						}),
+						testMockS3WithDeleteObjectsOutput(&s3.DeleteObjectsOutput{
+							Deleted: []s3types.DeletedObject{
+								s3types.DeletedObject{},
+								s3types.DeletedObject{},
+								s3types.DeletedObject{},
+							},
+						}),
+					),
+				),
+			},
+			expected: 3,
+		},
+		{
+			name:     "recursive success empty",
+			req:      validRecursiveRequest(),
+			credOpts: validSTSMock(),
+			storageOpts: []awsStoragePersistedStateOption{
+				withTestS3APIFunc(
+					newTestMockS3(
+						nil,
+						testMockS3WithListObjectsV2Output(&s3.ListObjectsV2Output{
+							IsTruncated: false,
+							Contents:    []s3types.Object{},
+						}),
+						// no deleted response since it shouldn't be called
+					),
+				),
+			},
+			expected: 0,
+		},
+		{
+			name: "success with dynamic credentials",
+			req: &pb.DeleteObjectsRequest{
+				KeyPrefix: "/foo/bar/key",
+				Bucket: &storagebuckets.StorageBucket{
+					BucketName: "foo",
+					Attributes: &structpb.Struct{
+						Fields: map[string]*structpb.Value{
+							credential.ConstRegion:                    structpb.NewStringValue("us-west-2"),
+							credential.ConstRoleArn:                   structpb.NewStringValue("arn:aws:iam::123456789012:role/S3Access"),
+							credential.ConstDisableCredentialRotation: structpb.NewBoolValue(true),
+						},
+					},
+				},
+			},
+			credOpts: validSTSMock(),
+			storageOpts: []awsStoragePersistedStateOption{
+				withTestS3APIFunc(
+					newTestMockS3(
+						nil,
+						testMockS3WithDeleteObjectOutput(&s3.DeleteObjectOutput{}),
+					),
+				),
+			},
+			expected: 1,
+		},
+		// NOTE: there is no automated test for checking continuation tokens or multiple
+		// delete calls due to not having a stack for output responses. this was tested
+		// manually
+	}
+
+	for _, tc := range cases {
+		tc := tc
+		t.Run(tc.name, func(t *testing.T) {
+			require := require.New(t)
+			p := &StoragePlugin{
+				testCredStateOpts:    tc.credOpts,
+				testStorageStateOpts: tc.storageOpts,
+			}
+			res, err := p.DeleteObjects(context.Background(), tc.req)
+			if tc.expectedErrContains != "" {
+				require.Error(err)
+				require.Contains(err.Error(), tc.expectedErrContains)
+				require.Equal(status.Code(err).String(), tc.expectedErrCode.String())
+				return
+			}
+			require.NoError(err)
+
+			require.NoError(err)
+			require.NotNil(res)
+			require.Equal(tc.expected, res.ObjectsDeleted)
 		})
 	}
 }

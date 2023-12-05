@@ -31,6 +31,9 @@ const (
 	testGetObjectErr         = "test error for GetObject"
 	testPutObjectErr         = "test error for PutObject"
 	testHeadObjectErr        = "test error for HeadObject"
+	testListObjectV2Err      = "test error for ListObjectV2"
+	testDeleteObjectErr      = "test error for DeleteObject"
+	testDeleteObjectsErr     = "test error for DeleteObjects"
 )
 
 // throttleErr is a mocked error used for testing the aws s3 client
@@ -54,6 +57,14 @@ type testMockS3State struct {
 
 	HeadObjectCalled      bool
 	HeadObjectInputParams *s3.HeadObjectInput
+
+	ListObjectsV2Called      bool
+	ListObjectsV2InputParams *s3.ListObjectsV2Input
+
+	DeleteObjectCalled       bool
+	DeleteObjectInputParams  *s3.DeleteObjectInput
+	DeleteObjectsCalled      bool
+	DeleteObjectsInputParams *s3.DeleteObjectsInput
 }
 
 func (s *testMockS3State) Reset() {
@@ -64,6 +75,12 @@ func (s *testMockS3State) Reset() {
 	s.PutObjectBody = nil
 	s.HeadObjectCalled = false
 	s.HeadObjectInputParams = nil
+	s.ListObjectsV2Called = false
+	s.ListObjectsV2InputParams = nil
+	s.DeleteObjectCalled = false
+	s.DeleteObjectInputParams = nil
+	s.DeleteObjectsCalled = false
+	s.DeleteObjectsInputParams = nil
 }
 
 type testMockS3 struct {
@@ -83,6 +100,18 @@ type testMockS3 struct {
 	// mocked responses for headObject
 	HeadObjectOutput *s3.HeadObjectOutput
 	HeadObjectErr    error
+
+	// mocked responses for ListObjectsV2 (needed for delete)
+	ListObjectsV2Output *s3.ListObjectsV2Output
+	ListObjectsV2Err    error
+	// sometimes we need to create a wildcard output
+	ListObjectsV2OutputFunc func(*s3.ListObjectsV2Input) *s3.ListObjectsV2Output
+
+	// mocked responses for DeleteObject(s)
+	DeleteObjectOutput  *s3.DeleteObjectOutput
+	DeleteObjectErr     error
+	DeleteObjectsOutput *s3.DeleteObjectsOutput
+	DeleteObjectsErr    error
 }
 
 type testMockS3Option func(m *testMockS3) error
@@ -125,6 +154,55 @@ func testMockS3WithHeadObjectOutput(o *s3.HeadObjectOutput) testMockS3Option {
 func testMockS3WithHeadObjectError(e error) testMockS3Option {
 	return func(m *testMockS3) error {
 		m.HeadObjectErr = e
+		return nil
+	}
+}
+
+func testMockS3WithListObjectsV2Output(o *s3.ListObjectsV2Output) testMockS3Option {
+	return func(m *testMockS3) error {
+		m.ListObjectsV2Output = o
+		return nil
+	}
+}
+
+func testMockS3WithListObjectsV2Error(e error) testMockS3Option {
+	return func(m *testMockS3) error {
+		m.ListObjectsV2Err = e
+		return nil
+	}
+}
+
+func testMockS3WithListObjectsV2OutputFunc(o func(*s3.ListObjectsV2Input) *s3.ListObjectsV2Output) testMockS3Option {
+	return func(m *testMockS3) error {
+		m.ListObjectsV2OutputFunc = o
+		return nil
+	}
+}
+
+func testMockS3WithDeleteObjectOutput(o *s3.DeleteObjectOutput) testMockS3Option {
+	return func(m *testMockS3) error {
+		m.DeleteObjectOutput = o
+		return nil
+	}
+}
+
+func testMockS3WithDeleteObjectError(e error) testMockS3Option {
+	return func(m *testMockS3) error {
+		m.DeleteObjectErr = e
+		return nil
+	}
+}
+
+func testMockS3WithDeleteObjectsOutput(o *s3.DeleteObjectsOutput) testMockS3Option {
+	return func(m *testMockS3) error {
+		m.DeleteObjectsOutput = o
+		return nil
+	}
+}
+
+func testMockS3WithDeleteObjectsError(e error) testMockS3Option {
+	return func(m *testMockS3) error {
+		m.DeleteObjectsErr = e
 		return nil
 	}
 }
@@ -193,8 +271,47 @@ func (m *testMockS3) PutObject(ctx context.Context, params *s3.PutObjectInput, o
 	return m.PutObjectOutput, nil
 }
 
+func (m *testMockS3) ListObjectsV2(ctx context.Context, params *s3.ListObjectsV2Input, optFns ...func(*s3.Options)) (*s3.ListObjectsV2Output, error) {
+	if m.State != nil {
+		m.State.ListObjectsV2Called = true
+		m.State.ListObjectsV2InputParams = params
+	}
+
+	if m.ListObjectsV2Err != nil {
+		return nil, m.ListObjectsV2Err
+	}
+
+	if m.ListObjectsV2OutputFunc != nil {
+		return m.ListObjectsV2OutputFunc(params), nil
+	}
+
+	return m.ListObjectsV2Output, nil
+}
+
 func (m *testMockS3) DeleteObject(ctx context.Context, params *s3.DeleteObjectInput, optFns ...func(*s3.Options)) (*s3.DeleteObjectOutput, error) {
-	return &s3.DeleteObjectOutput{}, nil
+	if m.State != nil {
+		m.State.DeleteObjectCalled = true
+		m.State.DeleteObjectInputParams = params
+	}
+
+	if m.DeleteObjectErr != nil {
+		return nil, m.DeleteObjectErr
+	}
+
+	return m.DeleteObjectOutput, nil
+}
+
+func (m *testMockS3) DeleteObjects(ctx context.Context, params *s3.DeleteObjectsInput, optFns ...func(*s3.Options)) (*s3.DeleteObjectsOutput, error) {
+	if m.State != nil {
+		m.State.DeleteObjectsCalled = true
+		m.State.DeleteObjectsInputParams = params
+	}
+
+	if m.DeleteObjectsErr != nil {
+		return nil, m.DeleteObjectsErr
+	}
+
+	return m.DeleteObjectsOutput, nil
 }
 
 func (m *testMockS3) HeadObject(ctx context.Context, params *s3.HeadObjectInput, optFns ...func(*s3.Options)) (*s3.HeadObjectOutput, error) {
