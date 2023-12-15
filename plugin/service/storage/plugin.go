@@ -12,6 +12,7 @@ import (
 	"io"
 	"os"
 	"path"
+	"strings"
 
 	"github.com/aws/aws-sdk-go-v2/aws"
 	"github.com/aws/aws-sdk-go-v2/aws/retry"
@@ -622,6 +623,129 @@ func (p *StoragePlugin) PutObject(ctx context.Context, req *pb.PutObjectRequest)
 	}, nil
 }
 
+// DeleteObjects is used to delete one or many objects from an s3 bucket.
+func (p *StoragePlugin) DeleteObjects(ctx context.Context, req *pb.DeleteObjectsRequest) (*pb.DeleteObjectsResponse, error) {
+	if req.GetKeyPrefix() == "" {
+		return nil, status.Error(codes.InvalidArgument, "key prefix is required")
+	}
+
+	bucket := req.GetBucket()
+	if bucket == nil {
+		return nil, status.Error(codes.InvalidArgument, "bucket is required")
+	}
+
+	if bucket.GetBucketName() == "" {
+		return nil, status.Error(codes.InvalidArgument, "bucketName is required")
+	}
+
+	attrs := bucket.GetAttributes()
+	if attrs == nil {
+		return nil, status.Error(codes.InvalidArgument, "attributes is required")
+	}
+
+	storageAttributes, err := getStorageAttributes(attrs)
+	if err != nil {
+		return nil, err
+	}
+
+	credConfig, err := cred.GetCredentialsConfig(bucket.GetSecrets(), storageAttributes.CredentialAttributes, false)
+	if err != nil {
+		return nil, err
+	}
+
+	// Set up the creds in our persisted state.
+	credState, err := cred.NewAwsCredentialPersistedState(
+		append([]cred.AwsCredentialPersistedStateOption{
+			cred.WithCredentialsConfig(credConfig),
+		}, p.testCredStateOpts...)...,
+	)
+	if err != nil {
+		return nil, status.Errorf(codes.InvalidArgument, "error setting up persisted state: %s", err)
+	}
+
+	storageState, err := newAwsStoragePersistedState(
+		append([]awsStoragePersistedStateOption{
+			withCredentials(credState),
+		}, p.testStorageStateOpts...)...,
+	)
+	if err != nil {
+		return nil, status.Errorf(codes.InvalidArgument, "error setting up persisted state: %s", err)
+	}
+
+	opts := []s3Option{}
+	if storageAttributes.EndpointUrl != "" {
+		opts = append(opts, WithEndpoint(storageAttributes.EndpointUrl))
+	}
+	client, err := storageState.S3Client(ctx, opts...)
+	if err != nil {
+		return nil, status.Errorf(codes.InvalidArgument, "error getting S3 client: %s", err)
+	}
+
+	prefix := path.Join(bucket.GetBucketPrefix(), req.GetKeyPrefix())
+	if strings.HasSuffix(req.GetKeyPrefix(), "/") {
+		// path.Join ends by "cleaning" the path, including removing a trailing slash, if
+		// it exists. given that a slash is used to denote a folder, it is required here.
+		prefix += "/"
+	}
+
+	if !req.Recursive {
+		_, err := client.DeleteObject(ctx, &s3.DeleteObjectInput{
+			Bucket: aws.String(bucket.GetBucketName()),
+			Key:    aws.String(prefix),
+		})
+		if err != nil {
+			return nil, parseAWSErrCode("error deleting S3 object", err)
+		}
+		return &pb.DeleteObjectsResponse{
+			ObjectsDeleted: uint32(1),
+		}, nil
+	}
+
+	const maxkeys = 1000
+
+	objects := []types.ObjectIdentifier{}
+	var conToken *string
+	truncated := true
+	for truncated {
+		res, err := client.ListObjectsV2(ctx, &s3.ListObjectsV2Input{
+			Bucket:            aws.String(bucket.GetBucketName()),
+			Prefix:            aws.String(prefix),
+			MaxKeys:           maxkeys,
+			ContinuationToken: conToken,
+		})
+		if err != nil {
+			return nil, parseAWSErrCode("error iterating S3 bucket contents", err)
+		}
+		truncated = res.IsTruncated
+		conToken = res.NextContinuationToken
+		for _, o := range res.Contents {
+			objects = append(objects, types.ObjectIdentifier{
+				Key: o.Key,
+			})
+		}
+	}
+
+	deleted := 0
+
+	for i := 0; i < len(objects); i += maxkeys {
+		toDelete := objects[i:min(len(objects), i+maxkeys)] // min is required to avoid an out of bounds panic
+		res, err := client.DeleteObjects(ctx, &s3.DeleteObjectsInput{
+			Bucket: aws.String(bucket.GetBucketName()),
+			Delete: &types.Delete{
+				Objects: toDelete,
+			},
+		})
+		if err != nil {
+			return nil, parseAWSErrCode("error deleting S3 object(s)", err)
+		}
+		deleted += len(res.Deleted)
+	}
+
+	return &pb.DeleteObjectsResponse{
+		ObjectsDeleted: uint32(deleted),
+	}, nil
+}
+
 // dryRunValidation validates that the IAM role policy attached to the given secrets of the
 // storage bucket has the minimum required permissions needed for this plugin to function
 // as expected. This function will create an object in the s3 bucket to validate it has
@@ -672,13 +796,21 @@ func dryRunValidation(ctx context.Context, state *awsStoragePersistedState, attr
 		return parseAWSErrCode("error failed to get head object", err)
 	}
 
-	// attempt to delete the test object created for the dry run validation,
-	// this step is allowed to fail because DeleteObject is not a required
-	// operation for the plugin.
-	client.DeleteObject(ctx, &s3.DeleteObjectInput{
+	if res, err := client.ListObjectsV2(ctx, &s3.ListObjectsV2Input{
+		Bucket: aws.String(bucket.GetBucketName()),
+		Prefix: aws.String(objectKey),
+	}); err != nil {
+		return parseAWSErrCode("error failed to list objects", err)
+	} else if res == nil || len(res.Contents) != 1 || *res.Contents[0].Key != objectKey {
+		return status.Errorf(codes.InvalidArgument, "list response did not contain the expected key: %+v", res)
+	}
+
+	if _, err := client.DeleteObject(ctx, &s3.DeleteObjectInput{
 		Bucket: aws.String(bucket.GetBucketName()),
 		Key:    aws.String(objectKey),
-	})
+	}); err != nil {
+		return parseAWSErrCode("error failed to delete object", err)
+	}
 
 	return nil
 }
