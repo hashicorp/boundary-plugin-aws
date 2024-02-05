@@ -68,7 +68,7 @@ The following `attributes` are valid on an AWS storage bucket resource:
 - `disable_credential_rotation` (bool): If `true`, credential rotation will not
   be performed.
 - `region` (string): The region to configure the storage bucket for.
-- `endpoint-url` (string): The endpoint to configure the storage.
+- `endpoint_url` (string): The endpoint to configure the storage.
 - `role_arn` (string): The role arn configured for the assume role provider.
 - `role_external_id` (string):  The external id configured for the assume role provider.
 - `role_session_name` (string): The session name configured for the assume role provider.
