@@ -15,7 +15,6 @@ import (
 	"strings"
 
 	"github.com/aws/aws-sdk-go-v2/aws"
-	"github.com/aws/aws-sdk-go-v2/aws/retry"
 	"github.com/aws/aws-sdk-go-v2/service/s3"
 	"github.com/aws/aws-sdk-go-v2/service/s3/types"
 	"github.com/google/uuid"
@@ -181,7 +180,7 @@ func (p *StoragePlugin) OnUpdateStorageBucket(ctx context.Context, req *pb.OnUpd
 			return nil, status.Errorf(codes.InvalidArgument, "error loading persisted state: %s", err)
 		}
 		if err := dryRunValidation(ctx, newStorageState, newStorageAttributes, newBucket); err != nil {
-			return nil, status.Errorf(codes.InvalidArgument, "failed to validate incoming credentials: %s", err)
+			return nil, err
 		}
 
 		// Replace the existing credential state.
@@ -355,7 +354,7 @@ func (p *StoragePlugin) HeadObject(ctx context.Context, req *pb.HeadObjectReques
 		Key:    aws.String(objectKey),
 	})
 	if err != nil {
-		return nil, parseAWSErrCode("error getting head object from s3", err)
+		return nil, parseS3Error(err, "failed to head object").Err()
 	}
 	return &pb.HeadObjectResponse{
 		ContentLength: resp.ContentLength,
@@ -481,7 +480,7 @@ func (p *StoragePlugin) GetObject(req *pb.GetObjectRequest, stream pb.StoragePlu
 		Key:    aws.String(objectKey),
 	})
 	if err != nil {
-		return parseAWSErrCode("error getting object from s3", err)
+		return parseS3Error(err, "failed to get object").Err()
 	}
 
 	defer resp.Body.Close()
@@ -606,7 +605,7 @@ func (p *StoragePlugin) PutObject(ctx context.Context, req *pb.PutObjectRequest)
 		ChecksumSHA256:    aws.String(checksum),
 	})
 	if err != nil {
-		return nil, parseAWSErrCode("error putting object into s3", err)
+		return nil, parseS3Error(err, "failed to put object").Err()
 	}
 	if resp.ChecksumSHA256 == nil {
 		return nil, status.Errorf(codes.Internal, "missing checksum response from aws")
@@ -694,7 +693,7 @@ func (p *StoragePlugin) DeleteObjects(ctx context.Context, req *pb.DeleteObjects
 			Key:    aws.String(prefix),
 		})
 		if err != nil {
-			return nil, parseAWSErrCode("error deleting S3 object", err)
+			return nil, parseS3Error(err, "failed to delete object").Err()
 		}
 		return &pb.DeleteObjectsResponse{
 			ObjectsDeleted: uint32(1),
@@ -714,7 +713,7 @@ func (p *StoragePlugin) DeleteObjects(ctx context.Context, req *pb.DeleteObjects
 			ContinuationToken: conToken,
 		})
 		if err != nil {
-			return nil, parseAWSErrCode("error iterating S3 bucket contents", err)
+			return nil, parseS3Error(err, "failed to list objects").Err()
 		}
 		truncated = res.IsTruncated
 		conToken = res.NextContinuationToken
@@ -736,7 +735,7 @@ func (p *StoragePlugin) DeleteObjects(ctx context.Context, req *pb.DeleteObjects
 			},
 		})
 		if err != nil {
-			return nil, parseAWSErrCode("error deleting S3 object(s)", err)
+			return nil, parseS3Error(err, "failed to delete objects").Err()
 		}
 		deleted += len(res.Deleted)
 	}
@@ -779,28 +778,28 @@ func dryRunValidation(ctx context.Context, state *awsStoragePersistedState, attr
 		Key:    aws.String(objectKey),
 		Body:   bytes.NewReader([]byte("hashicorp boundary aws plugin access test")),
 	}); err != nil {
-		return parseAWSErrCode("error failed to put object", err)
+		return parseS3Error(err, "failed to put object").Err()
 	}
 
 	if _, err := client.GetObject(ctx, &s3.GetObjectInput{
 		Bucket: aws.String(bucket.GetBucketName()),
 		Key:    aws.String(objectKey),
 	}); err != nil {
-		return parseAWSErrCode("error failed to get object", err)
+		return parseS3Error(err, "failed to get object").Err()
 	}
 
 	if _, err := client.HeadObject(ctx, &s3.HeadObjectInput{
 		Bucket: aws.String(bucket.GetBucketName()),
 		Key:    aws.String(objectKey),
 	}); err != nil {
-		return parseAWSErrCode("error failed to get head object", err)
+		return parseS3Error(err, "failed to head object").Err()
 	}
 
 	if res, err := client.ListObjectsV2(ctx, &s3.ListObjectsV2Input{
 		Bucket: aws.String(bucket.GetBucketName()),
 		Prefix: aws.String(objectKey),
 	}); err != nil {
-		return parseAWSErrCode("error failed to list objects", err)
+		return parseS3Error(err, "failed to list objects").Err()
 	} else if res == nil || len(res.Contents) != 1 || *res.Contents[0].Key != objectKey {
 		return status.Errorf(codes.InvalidArgument, "list response did not contain the expected key: %+v", res)
 	}
@@ -809,22 +808,8 @@ func dryRunValidation(ctx context.Context, state *awsStoragePersistedState, attr
 		Bucket: aws.String(bucket.GetBucketName()),
 		Key:    aws.String(objectKey),
 	}); err != nil {
-		return parseAWSErrCode("error failed to delete object", err)
+		return parseS3Error(err, "failed to delete object").Err()
 	}
 
 	return nil
-}
-
-// parseAWSErrCode detects if an aws error is a throttle error.
-// If the error is a throttle error, then an Unavailable status code
-// is returned. Otherwise the default status code is an Internal error.
-func parseAWSErrCode(msg string, err error) error {
-	errCode := codes.Internal
-	retryErr := retry.ThrottleErrorCode{
-		Codes: retry.DefaultThrottleErrorCodes,
-	}
-	if retryErr.IsErrorThrottle(err).Bool() {
-		errCode = codes.Unavailable
-	}
-	return status.Errorf(errCode, "%s: %s", msg, err)
 }

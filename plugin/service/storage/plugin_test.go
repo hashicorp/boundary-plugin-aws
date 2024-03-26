@@ -153,11 +153,11 @@ func TestStoragePlugin_OnCreateStorageBucket(t *testing.T) {
 			storageOpts: []awsStoragePersistedStateOption{
 				withTestS3APIFunc(newTestMockS3(
 					nil,
-					testMockS3WithPutObjectError(errors.New(testPutObjectErr)),
+					testMockS3WithPutObjectError(TestAwsS3Error("AccessDenied", "not authorized to perform PutObject action")),
 				)),
 			},
-			expectedErrContains: "error failed to put object: test error for PutObject",
-			expectedErrCode:     codes.Internal,
+			expectedErrContains: "aws service s3: invalid credentials error: failed to put object",
+			expectedErrCode:     codes.PermissionDenied,
 		},
 		{
 			name:     "dryRunValidation putObject throttle",
@@ -166,10 +166,10 @@ func TestStoragePlugin_OnCreateStorageBucket(t *testing.T) {
 			storageOpts: []awsStoragePersistedStateOption{
 				withTestS3APIFunc(newTestMockS3(
 					nil,
-					testMockS3WithPutObjectError(new(throttleErr)),
+					testMockS3WithPutObjectError(TestAwsS3Error("ThrottlingException", "throttling exception")),
 				)),
 			},
-			expectedErrContains: "error failed to put object: ThrottlingException",
+			expectedErrContains: "aws service s3: throttling error: failed to put object",
 			expectedErrCode:     codes.Unavailable,
 		},
 		{
@@ -181,12 +181,12 @@ func TestStoragePlugin_OnCreateStorageBucket(t *testing.T) {
 					newTestMockS3(
 						nil,
 						testMockS3WithPutObjectOutput(&s3.PutObjectOutput{}),
-						testMockS3WithGetObjectError(errors.New(testGetObjectErr)),
+						testMockS3WithGetObjectError(TestAwsS3Error("AccessDenied", "not authorized to perform GetObject action")),
 					),
 				),
 			},
-			expectedErrContains: "error failed to get object: test error for GetObject",
-			expectedErrCode:     codes.Internal,
+			expectedErrContains: "aws service s3: invalid credentials error: failed to get object",
+			expectedErrCode:     codes.PermissionDenied,
 		},
 		{
 			name:     "dryRunValidation failed getObject throttle",
@@ -197,11 +197,11 @@ func TestStoragePlugin_OnCreateStorageBucket(t *testing.T) {
 					newTestMockS3(
 						nil,
 						testMockS3WithPutObjectOutput(&s3.PutObjectOutput{}),
-						testMockS3WithGetObjectError(new(throttleErr)),
+						testMockS3WithGetObjectError(TestAwsS3Error("ThrottlingException", "throttling exception")),
 					),
 				),
 			},
-			expectedErrContains: "error failed to get object: ThrottlingException",
+			expectedErrContains: "aws service s3: throttling error: failed to get object",
 			expectedErrCode:     codes.Unavailable,
 		},
 		{
@@ -214,12 +214,12 @@ func TestStoragePlugin_OnCreateStorageBucket(t *testing.T) {
 						nil,
 						testMockS3WithPutObjectOutput(&s3.PutObjectOutput{}),
 						testMockS3WithGetObjectOutput(&s3.GetObjectOutput{}),
-						testMockS3WithHeadObjectError(errors.New(testHeadObjectErr)),
+						testMockS3WithHeadObjectError(TestAwsS3Error("AccessDenied", "not authorized to perform HeadObject action")),
 					),
 				),
 			},
-			expectedErrContains: "error failed to get head object: test error for HeadObject",
-			expectedErrCode:     codes.Internal,
+			expectedErrContains: "aws service s3: invalid credentials error: failed to head object",
+			expectedErrCode:     codes.PermissionDenied,
 		},
 		{
 			name:     "dryRunValidation failed headObject throttle",
@@ -231,11 +231,11 @@ func TestStoragePlugin_OnCreateStorageBucket(t *testing.T) {
 						nil,
 						testMockS3WithPutObjectOutput(&s3.PutObjectOutput{}),
 						testMockS3WithGetObjectOutput(&s3.GetObjectOutput{}),
-						testMockS3WithHeadObjectError(new(throttleErr)),
+						testMockS3WithHeadObjectError(TestAwsS3Error("ThrottlingException", "throttling exception")),
 					),
 				),
 			},
-			expectedErrContains: "error failed to get head object: ThrottlingException",
+			expectedErrContains: "aws service s3: throttling error: failed to head object",
 			expectedErrCode:     codes.Unavailable,
 		},
 		{
@@ -731,11 +731,11 @@ func TestStoragePlugin_OnUpdateStorageBucket(t *testing.T) {
 			storageOpts: []awsStoragePersistedStateOption{
 				withTestS3APIFunc(newTestMockS3(
 					nil,
-					testMockS3WithPutObjectError(errors.New(testPutObjectErr)),
+					testMockS3WithPutObjectError(TestAwsS3Error("AccessDenied", "not authorized to perform PutObject action")),
 				)),
 			},
-			expectedErrContains: "error failed to put object: test error for PutObject",
-			expectedErrCode:     codes.Internal,
+			expectedErrContains: "aws service s3: invalid credentials error: failed to put object",
+			expectedErrCode:     codes.PermissionDenied,
 		},
 		{
 			name:     "dryRunValidation failed putObject throttle",
@@ -744,10 +744,10 @@ func TestStoragePlugin_OnUpdateStorageBucket(t *testing.T) {
 			storageOpts: []awsStoragePersistedStateOption{
 				withTestS3APIFunc(newTestMockS3(
 					nil,
-					testMockS3WithPutObjectError(new(throttleErr)),
+					testMockS3WithPutObjectError(TestAwsS3Error("ThrottlingException", "throttling exception")),
 				)),
 			},
-			expectedErrContains: "error failed to put object: ThrottlingException",
+			expectedErrContains: "aws service s3: throttling error: failed to put object",
 			expectedErrCode:     codes.Unavailable,
 		},
 		{
@@ -759,12 +759,12 @@ func TestStoragePlugin_OnUpdateStorageBucket(t *testing.T) {
 					newTestMockS3(
 						nil,
 						testMockS3WithPutObjectOutput(&s3.PutObjectOutput{}),
-						testMockS3WithGetObjectError(errors.New(testGetObjectErr)),
+						testMockS3WithGetObjectError(TestAwsS3Error("AccessDenied", "not authorized to perform GetObject action")),
 					),
 				),
 			},
-			expectedErrContains: "error failed to get object: test error for GetObject",
-			expectedErrCode:     codes.Internal,
+			expectedErrContains: "aws service s3: invalid credentials error: failed to get object",
+			expectedErrCode:     codes.PermissionDenied,
 		},
 		{
 			name:     "dryRunValidation failed getObject throttle",
@@ -775,11 +775,11 @@ func TestStoragePlugin_OnUpdateStorageBucket(t *testing.T) {
 					newTestMockS3(
 						nil,
 						testMockS3WithPutObjectOutput(&s3.PutObjectOutput{}),
-						testMockS3WithGetObjectError(new(throttleErr)),
+						testMockS3WithGetObjectError(TestAwsS3Error("ThrottlingException", "throttling exception")),
 					),
 				),
 			},
-			expectedErrContains: "error failed to get object: ThrottlingException",
+			expectedErrContains: "aws service s3: throttling error: failed to get object",
 			expectedErrCode:     codes.Unavailable,
 		},
 		{
@@ -792,12 +792,12 @@ func TestStoragePlugin_OnUpdateStorageBucket(t *testing.T) {
 						nil,
 						testMockS3WithPutObjectOutput(&s3.PutObjectOutput{}),
 						testMockS3WithGetObjectOutput(&s3.GetObjectOutput{}),
-						testMockS3WithHeadObjectError(errors.New(testHeadObjectErr)),
+						testMockS3WithHeadObjectError(TestAwsS3Error("AccessDenied", "not authorized to perform HeadObject action")),
 					),
 				),
 			},
-			expectedErrContains: "error failed to get head object: test error for HeadObject",
-			expectedErrCode:     codes.Internal,
+			expectedErrContains: "aws service s3: invalid credentials error: failed to head object",
+			expectedErrCode:     codes.PermissionDenied,
 		},
 		{
 			name:     "dryRunValidation failed headObject throttle",
@@ -809,11 +809,11 @@ func TestStoragePlugin_OnUpdateStorageBucket(t *testing.T) {
 						nil,
 						testMockS3WithPutObjectOutput(&s3.PutObjectOutput{}),
 						testMockS3WithGetObjectOutput(&s3.GetObjectOutput{}),
-						testMockS3WithHeadObjectError(new(throttleErr)),
+						testMockS3WithHeadObjectError(TestAwsS3Error("ThrottlingException", "throttling exception")),
 					),
 				),
 			},
-			expectedErrContains: "error failed to get head object: ThrottlingException",
+			expectedErrContains: "aws service s3: throttling error: failed to head object",
 			expectedErrCode:     codes.Unavailable,
 		},
 		{
@@ -954,14 +954,14 @@ func TestStoragePlugin_OnUpdateStorageBucket(t *testing.T) {
 				withTestS3APIFunc(
 					newTestMockS3(
 						nil,
-						testMockS3WithHeadObjectError(fmt.Errorf("head object failed oops")),
+						testMockS3WithHeadObjectError(TestAwsS3Error("AccessDenied", "not authorized to perform HeadObject action")),
 						testMockS3WithGetObjectOutput(&s3.GetObjectOutput{}),
 						testMockS3WithPutObjectOutput(&s3.PutObjectOutput{}),
 					),
 				),
 			},
-			expectedErrContains: "head object failed oops",
-			expectedErrCode:     codes.InvalidArgument,
+			expectedErrContains: "aws service s3: invalid credentials error: failed to head object",
+			expectedErrCode:     codes.PermissionDenied,
 		},
 		{
 			name: "dynamic to dynamic credentials success",
@@ -1044,14 +1044,14 @@ func TestStoragePlugin_OnUpdateStorageBucket(t *testing.T) {
 				withTestS3APIFunc(
 					newTestMockS3(
 						nil,
-						testMockS3WithPutObjectError(fmt.Errorf("put object failed oops")),
+						testMockS3WithPutObjectError(TestAwsS3Error("AccessDenied", "not authorized to perform PutObject action")),
 						testMockS3WithGetObjectOutput(&s3.GetObjectOutput{}),
 						testMockS3WithHeadObjectOutput(&s3.HeadObjectOutput{}),
 					),
 				),
 			},
-			expectedErrContains: "put object failed oops",
-			expectedErrCode:     codes.InvalidArgument,
+			expectedErrContains: "aws service s3: invalid credentials error: failed to put object",
+			expectedErrCode:     codes.PermissionDenied,
 		},
 		{
 			name: "success static non rotated to dynamic credentials",
@@ -1262,7 +1262,7 @@ func TestStoragePlugin_OnUpdateStorageBucket(t *testing.T) {
 				withTestS3APIFunc(
 					newTestMockS3(
 						nil,
-						testMockS3WithPutObjectError(fmt.Errorf("put object fail oops")),
+						testMockS3WithPutObjectError(TestAwsS3Error("AccessDenied", "not authorized to perform PutObject action")),
 						testMockS3WithGetObjectOutput(&s3.GetObjectOutput{}),
 						testMockS3WithHeadObjectOutput(&s3.HeadObjectOutput{}),
 						testMockS3WithListObjectsV2OutputFunc(func(i *s3.ListObjectsV2Input) *s3.ListObjectsV2Output {
@@ -1277,8 +1277,8 @@ func TestStoragePlugin_OnUpdateStorageBucket(t *testing.T) {
 					),
 				),
 			},
-			expectedErrContains: "put object fail oops",
-			expectedErrCode:     codes.InvalidArgument,
+			expectedErrContains: "aws service s3: invalid credentials error: failed to put object",
+			expectedErrCode:     codes.PermissionDenied,
 		},
 		{
 			name: "success dynamic to static non-rotated credentials",
@@ -1509,7 +1509,7 @@ func TestStoragePlugin_OnUpdateStorageBucket(t *testing.T) {
 			if tc.expectedErrContains != "" {
 				require.NotNil(err)
 				require.Contains(err.Error(), tc.expectedErrContains)
-				require.Equal(status.Code(err).String(), tc.expectedErrCode.String())
+				require.Equal(tc.expectedErrCode.String(), status.Code(err).String())
 				return
 			}
 			require.NoError(err)
@@ -1799,12 +1799,12 @@ func TestStoragePlugin_HeadObject(t *testing.T) {
 				withTestS3APIFunc(
 					newTestMockS3(
 						nil,
-						testMockS3WithHeadObjectError(errors.New(testHeadObjectErr)),
+						testMockS3WithHeadObjectError(TestAwsS3Error("AccessDenied", "not authorized to perform HeadObject action")),
 					),
 				),
 			},
-			expectedErrContains: "error getting head object from s3: test error for HeadObject",
-			expectedErrCode:     codes.Internal,
+			expectedErrContains: "aws service s3: invalid credentials error: failed to head object",
+			expectedErrCode:     codes.PermissionDenied,
 		},
 		{
 			name:     "headObject throttle error",
@@ -1814,12 +1814,29 @@ func TestStoragePlugin_HeadObject(t *testing.T) {
 				withTestS3APIFunc(
 					newTestMockS3(
 						nil,
-						testMockS3WithHeadObjectError(new(throttleErr)),
+						testMockS3WithHeadObjectError(TestAwsS3Error("ThrottlingException", "throttling exception")),
 					),
 				),
 			},
-			expectedErrContains: "error getting head object from s3: ThrottlingException",
+			expectedErrContains: "aws service s3: throttling error: failed to head object",
 			expectedErrCode:     codes.Unavailable,
+		},
+		{
+			name:     "headObject not found error",
+			req:      validRequest(),
+			credOpts: validSTSMock(),
+			storageOpts: []awsStoragePersistedStateOption{
+				withTestS3APIFunc(
+					newTestMockS3(
+						nil,
+						testMockS3WithHeadObjectError(&s3types.NotFound{
+							Message: aws.String("resource not found"),
+						}),
+					),
+				),
+			},
+			expectedErrContains: "aws s3 error: failed to head object",
+			expectedErrCode:     codes.NotFound,
 		},
 		{
 			name:          "success",
@@ -1984,11 +2001,11 @@ func TestStoragePlugin_ValidatePermissions(t *testing.T) {
 			storageOpts: []awsStoragePersistedStateOption{
 				withTestS3APIFunc(newTestMockS3(
 					nil,
-					testMockS3WithPutObjectError(errors.New(testPutObjectErr)),
+					testMockS3WithPutObjectError(TestAwsS3Error("AccessDenied", "not authorized to perform PutObject action")),
 				)),
 			},
-			expectedErrContains: "error failed to put object: test error for PutObject",
-			expectedErrCode:     codes.Internal,
+			expectedErrContains: "aws service s3: invalid credentials error: failed to put object",
+			expectedErrCode:     codes.PermissionDenied,
 		},
 		{
 			name:     "dryRunValidation failed putObject throttle",
@@ -1997,10 +2014,10 @@ func TestStoragePlugin_ValidatePermissions(t *testing.T) {
 			storageOpts: []awsStoragePersistedStateOption{
 				withTestS3APIFunc(newTestMockS3(
 					nil,
-					testMockS3WithPutObjectError(new(throttleErr)),
+					testMockS3WithPutObjectError(TestAwsS3Error("ThrottlingException", "throttling exception")),
 				)),
 			},
-			expectedErrContains: "error failed to put object: ThrottlingException",
+			expectedErrContains: "aws service s3: throttling error: failed to put object",
 			expectedErrCode:     codes.Unavailable,
 		},
 		{
@@ -2012,12 +2029,12 @@ func TestStoragePlugin_ValidatePermissions(t *testing.T) {
 					newTestMockS3(
 						nil,
 						testMockS3WithPutObjectOutput(&s3.PutObjectOutput{}),
-						testMockS3WithGetObjectError(errors.New(testGetObjectErr)),
+						testMockS3WithGetObjectError(TestAwsS3Error("AccessDenied", "not authorized to perform GetObject action")),
 					),
 				),
 			},
-			expectedErrContains: "error failed to get object: test error for GetObject",
-			expectedErrCode:     codes.Internal,
+			expectedErrContains: "aws service s3: invalid credentials error: failed to get object",
+			expectedErrCode:     codes.PermissionDenied,
 		},
 		{
 			name:     "dryRunValidation failed getObject throttle",
@@ -2028,11 +2045,11 @@ func TestStoragePlugin_ValidatePermissions(t *testing.T) {
 					newTestMockS3(
 						nil,
 						testMockS3WithPutObjectOutput(&s3.PutObjectOutput{}),
-						testMockS3WithGetObjectError(new(throttleErr)),
+						testMockS3WithGetObjectError(TestAwsS3Error("ThrottlingException", "throttling exception")),
 					),
 				),
 			},
-			expectedErrContains: "error failed to get object: ThrottlingException",
+			expectedErrContains: "aws service s3: throttling error: failed to get object",
 			expectedErrCode:     codes.Unavailable,
 		},
 		{
@@ -2045,12 +2062,12 @@ func TestStoragePlugin_ValidatePermissions(t *testing.T) {
 						nil,
 						testMockS3WithPutObjectOutput(&s3.PutObjectOutput{}),
 						testMockS3WithGetObjectOutput(&s3.GetObjectOutput{}),
-						testMockS3WithHeadObjectError(errors.New(testHeadObjectErr)),
+						testMockS3WithHeadObjectError(TestAwsS3Error("AccessDenied", "not authorized to perform HeadObject action")),
 					),
 				),
 			},
-			expectedErrContains: "error failed to get head object: test error for HeadObject",
-			expectedErrCode:     codes.Internal,
+			expectedErrContains: "aws service s3: invalid credentials error: failed to head object",
+			expectedErrCode:     codes.PermissionDenied,
 		},
 		{
 			name:     "dryRunValidation failed headObject throttle",
@@ -2062,11 +2079,11 @@ func TestStoragePlugin_ValidatePermissions(t *testing.T) {
 						nil,
 						testMockS3WithPutObjectOutput(&s3.PutObjectOutput{}),
 						testMockS3WithGetObjectOutput(&s3.GetObjectOutput{}),
-						testMockS3WithHeadObjectError(new(throttleErr)),
+						testMockS3WithHeadObjectError(TestAwsS3Error("ThrottlingException", "throttling exception")),
 					),
 				),
 			},
-			expectedErrContains: "error failed to get head object: ThrottlingException",
+			expectedErrContains: "aws service s3: throttling error: failed to head object",
 			expectedErrCode:     codes.Unavailable,
 		},
 		{
@@ -2254,12 +2271,63 @@ func TestStoragePlugin_GetObject(t *testing.T) {
 				withTestS3APIFunc(
 					newTestMockS3(
 						nil,
-						testMockS3WithGetObjectError(errors.New(testGetObjectErr)),
+						testMockS3WithGetObjectError(TestAwsS3Error("AccessDenied", "not authorized to perform HeadObject action")),
 					),
 				),
 			},
-			expectedErrContains: "error getting object from s3: test error for GetObject",
-			expectedErrCode:     codes.Internal,
+			expectedErrContains: "aws service s3: invalid credentials error: failed to get object",
+			expectedErrCode:     codes.PermissionDenied,
+		},
+		{
+			name:     "getObject no such key",
+			req:      validRequest(),
+			credOpts: validSTSMock(),
+			storageOpts: []awsStoragePersistedStateOption{
+				withTestS3APIFunc(
+					newTestMockS3(
+						nil,
+						testMockS3WithGetObjectError(&s3types.NoSuchKey{
+							Message: aws.String("resource does not exist"),
+						}),
+					),
+				),
+			},
+			expectedErrContains: "aws s3 error: failed to get object",
+			expectedErrCode:     codes.NotFound,
+		},
+		{
+			name:     "getObject invalid state",
+			req:      validRequest(),
+			credOpts: validSTSMock(),
+			storageOpts: []awsStoragePersistedStateOption{
+				withTestS3APIFunc(
+					newTestMockS3(
+						nil,
+						testMockS3WithGetObjectError(&s3types.InvalidObjectState{
+							Message: aws.String("resource is in cold storage"),
+						}),
+					),
+				),
+			},
+			expectedErrContains: "aws s3 error: failed to get object",
+			expectedErrCode:     codes.NotFound,
+		},
+		{
+			name:     "getObject no such bucket",
+			req:      validRequest(),
+			credOpts: validSTSMock(),
+			storageOpts: []awsStoragePersistedStateOption{
+				withTestS3APIFunc(
+					newTestMockS3(
+						nil,
+						testMockS3WithGetObjectError(&s3types.NoSuchBucket{
+							Message: aws.String("bucket does not exist"),
+						}),
+					),
+				),
+			},
+			expectedErrContains: "aws s3 error: failed to get object",
+			expectedErrCode:     codes.NotFound,
 		},
 		{
 			name:     "getObject throttle error",
@@ -2269,11 +2337,11 @@ func TestStoragePlugin_GetObject(t *testing.T) {
 				withTestS3APIFunc(
 					newTestMockS3(
 						nil,
-						testMockS3WithGetObjectError(new(throttleErr)),
+						testMockS3WithGetObjectError(TestAwsS3Error("ThrottlingException", "throttling exception")),
 					),
 				),
 			},
-			expectedErrContains: "error getting object from s3: ThrottlingException",
+			expectedErrContains: "aws service s3: throttling error: failed to get object",
 			expectedErrCode:     codes.Unavailable,
 		},
 		{
@@ -2596,12 +2664,29 @@ func TestStoragePlugin_PutObject(t *testing.T) {
 				withTestS3APIFunc(
 					newTestMockS3(
 						nil,
-						testMockS3WithPutObjectError(errors.New(testPutObjectErr)),
+						testMockS3WithPutObjectError(TestAwsS3Error("AccessDenied", "not authorized to perform HeadObject action")),
 					),
 				),
 			},
-			expectedErrContains: "error putting object into s3: test error for PutObject",
-			expectedErrCode:     codes.Internal,
+			expectedErrContains: "aws service s3: invalid credentials error: failed to put object",
+			expectedErrCode:     codes.PermissionDenied,
+		},
+		{
+			name:     "putObject no such bucket",
+			request:  validRequest(),
+			credOpts: validSTSMock(),
+			storageOpts: []awsStoragePersistedStateOption{
+				withTestS3APIFunc(
+					newTestMockS3(
+						nil,
+						testMockS3WithPutObjectError(&s3types.NoSuchBucket{
+							Message: aws.String("bucket does not exist"),
+						}),
+					),
+				),
+			},
+			expectedErrContains: "aws s3 error: failed to put object",
+			expectedErrCode:     codes.NotFound,
 		},
 		{
 			name:     "throttle error",
@@ -2611,11 +2696,11 @@ func TestStoragePlugin_PutObject(t *testing.T) {
 				withTestS3APIFunc(
 					newTestMockS3(
 						nil,
-						testMockS3WithPutObjectError(new(throttleErr)),
+						testMockS3WithPutObjectError(TestAwsS3Error("ThrottlingException", "throttling exception")),
 					),
 				),
 			},
-			expectedErrContains: "error putting object into s3: ThrottlingException",
+			expectedErrContains: "aws service s3: throttling error: failed to put object",
 			expectedErrCode:     codes.Unavailable,
 		},
 		{
@@ -2874,12 +2959,12 @@ func TestStoragePlugin_DeleteObjects(t *testing.T) {
 				withTestS3APIFunc(
 					newTestMockS3(
 						nil,
-						testMockS3WithDeleteObjectError(errors.New(testDeleteObjectErr)),
+						testMockS3WithDeleteObjectError(TestAwsS3Error("AccessDenied", "not authorized to perform HeadObject action")),
 					),
 				),
 			},
-			expectedErrContains: "error deleting S3 object: test error for DeleteObject",
-			expectedErrCode:     codes.Internal,
+			expectedErrContains: "aws service s3: invalid credentials error: failed to delete object",
+			expectedErrCode:     codes.PermissionDenied,
 		},
 		{
 			name:     "ListObjectV2 error",
@@ -2889,12 +2974,12 @@ func TestStoragePlugin_DeleteObjects(t *testing.T) {
 				withTestS3APIFunc(
 					newTestMockS3(
 						nil,
-						testMockS3WithListObjectsV2Error(errors.New(testListObjectV2Err)),
+						testMockS3WithListObjectsV2Error(TestAwsS3Error("AccessDenied", "not authorized to perform HeadObject action")),
 					),
 				),
 			},
-			expectedErrContains: "error iterating S3 bucket contents: test error for ListObjectV2",
-			expectedErrCode:     codes.Internal,
+			expectedErrContains: "aws service s3: invalid credentials error: failed to list objects",
+			expectedErrCode:     codes.PermissionDenied,
 		},
 		{
 			name:     "DeleteObjects error",
@@ -2907,17 +2992,17 @@ func TestStoragePlugin_DeleteObjects(t *testing.T) {
 						testMockS3WithListObjectsV2Output(&s3.ListObjectsV2Output{
 							IsTruncated: false,
 							Contents: []s3types.Object{
-								s3types.Object{
+								{
 									Key: aws.String("abc/abc"),
 								},
 							},
 						}),
-						testMockS3WithDeleteObjectsError(errors.New(testDeleteObjectsErr)),
+						testMockS3WithDeleteObjectsError(TestAwsS3Error("AccessDenied", "not authorized to perform HeadObject action")),
 					),
 				),
 			},
-			expectedErrContains: "error deleting S3 object(s): test error for DeleteObjects",
-			expectedErrCode:     codes.Internal,
+			expectedErrContains: "aws service s3: invalid credentials error: failed to delete objects",
+			expectedErrCode:     codes.PermissionDenied,
 		},
 		{
 			name:     "DeleteObject throttle error",
@@ -2927,11 +3012,11 @@ func TestStoragePlugin_DeleteObjects(t *testing.T) {
 				withTestS3APIFunc(
 					newTestMockS3(
 						nil,
-						testMockS3WithDeleteObjectError(new(throttleErr)),
+						testMockS3WithDeleteObjectError(TestAwsS3Error("ThrottlingException", "throttling exception")),
 					),
 				),
 			},
-			expectedErrContains: "error deleting S3 object: ThrottlingException",
+			expectedErrContains: "aws service s3: throttling error: failed to delete object",
 			expectedErrCode:     codes.Unavailable,
 		},
 		{
@@ -2942,11 +3027,11 @@ func TestStoragePlugin_DeleteObjects(t *testing.T) {
 				withTestS3APIFunc(
 					newTestMockS3(
 						nil,
-						testMockS3WithListObjectsV2Error(new(throttleErr)),
+						testMockS3WithListObjectsV2Error(TestAwsS3Error("ThrottlingException", "throttling exception")),
 					),
 				),
 			},
-			expectedErrContains: "error iterating S3 bucket contents: ThrottlingException",
+			expectedErrContains: "aws service s3: throttling error: failed to list objects",
 			expectedErrCode:     codes.Unavailable,
 		},
 		{
@@ -2965,11 +3050,11 @@ func TestStoragePlugin_DeleteObjects(t *testing.T) {
 								},
 							},
 						}),
-						testMockS3WithDeleteObjectsError(new(throttleErr)),
+						testMockS3WithDeleteObjectsError(TestAwsS3Error("ThrottlingException", "throttling exception")),
 					),
 				),
 			},
-			expectedErrContains: "error deleting S3 object(s): ThrottlingException",
+			expectedErrContains: "aws service s3: throttling error: failed to delete objects",
 			expectedErrCode:     codes.Unavailable,
 		},
 		{

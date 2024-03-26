@@ -14,6 +14,7 @@ import (
 	"github.com/aws/aws-sdk-go-v2/aws"
 	"github.com/aws/aws-sdk-go-v2/service/s3"
 	"github.com/aws/aws-sdk-go-v2/service/sts"
+	"github.com/aws/smithy-go"
 	"github.com/hashicorp/boundary-plugin-aws/internal/credential"
 	"github.com/hashicorp/boundary/sdk/pbs/controller/api/resources/storagebuckets"
 	pb "github.com/hashicorp/boundary/sdk/pbs/plugin"
@@ -28,24 +29,7 @@ const (
 	testGetUserErr           = "test error for GetUser"
 	testGetCallerIdentityErr = "test error for GetCallerIdentity"
 	testDeleteAccessKeyErr   = "test error for DeleteAccessKey"
-	testGetObjectErr         = "test error for GetObject"
-	testPutObjectErr         = "test error for PutObject"
-	testHeadObjectErr        = "test error for HeadObject"
-	testListObjectV2Err      = "test error for ListObjectV2"
-	testDeleteObjectErr      = "test error for DeleteObject"
-	testDeleteObjectsErr     = "test error for DeleteObjects"
 )
-
-// throttleErr is a mocked error used for testing the aws s3 client
-type throttleErr struct{}
-
-func (e *throttleErr) ErrorCode() string {
-	return "ThrottlingException"
-}
-
-func (e *throttleErr) Error() string {
-	return "ThrottlingException"
-}
 
 type testMockS3State struct {
 	GetObjectCalled      bool
@@ -412,5 +396,17 @@ func validSTSMock() []credential.AwsCredentialPersistedStateOption {
 				),
 			),
 		}),
+	}
+}
+
+// TestAwsS3Error returns an s3 api error
+func TestAwsS3Error(code, msg string) error {
+	return &smithy.OperationError{
+		ServiceID: "s3",
+		Err: &smithy.GenericAPIError{
+			Code:    code,
+			Message: msg,
+			Fault:   smithy.FaultServer,
+		},
 	}
 }
