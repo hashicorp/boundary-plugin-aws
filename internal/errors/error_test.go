@@ -7,19 +7,21 @@ import (
 	"net/http"
 
 	pb "github.com/hashicorp/boundary/sdk/pbs/plugin"
+	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"google.golang.org/grpc/codes"
+	"google.golang.org/protobuf/types/known/timestamppb"
 )
 
 func Test_ParseAWSError(t *testing.T) {
 	t.Parallel()
 
 	cases := []struct {
-		name                string
-		err                 error
-		expectedStatusCode  codes.Code
-		expectedStatusMsg   string
-		expectedPluginError *pb.PluginError
+		name               string
+		err                error
+		expectedStatusCode codes.Code
+		expectedStatusMsg  string
+		expectedPermission *pb.Permission
 	}{
 		{
 			name:               "nil-error",
@@ -30,10 +32,8 @@ func Test_ParseAWSError(t *testing.T) {
 			err:                fmt.Errorf("what can this error be?"),
 			expectedStatusCode: codes.Unknown,
 			expectedStatusMsg:  "aws service unknown: unknown error: test",
-			expectedPluginError: &pb.PluginError{
-				Code:         pb.ERROR_ERROR_UNKNOWN,
-				Message:      "what can this error be?",
-				Nonretryable: false,
+			expectedPermission: &pb.Permission{
+				State: pb.StateType_STATE_TYPE_UNKNOWN,
 			},
 		},
 		{
@@ -41,10 +41,8 @@ func Test_ParseAWSError(t *testing.T) {
 			err:                TestAwsHttpResponseError(http.StatusBadRequest, "bad request"),
 			expectedStatusCode: codes.InvalidArgument,
 			expectedStatusMsg:  "aws service unknown: bad request error: test",
-			expectedPluginError: &pb.PluginError{
-				Code:         pb.ERROR_ERROR_BAD_REQUEST,
-				Message:      "bad request",
-				Nonretryable: true,
+			expectedPermission: &pb.Permission{
+				State: pb.StateType_STATE_TYPE_UNKNOWN,
 			},
 		},
 		{
@@ -52,10 +50,10 @@ func Test_ParseAWSError(t *testing.T) {
 			err:                TestAwsHttpResponseError(http.StatusUnauthorized, "unauthorized request"),
 			expectedStatusCode: codes.PermissionDenied,
 			expectedStatusMsg:  "aws service unknown: invalid credentials error: test",
-			expectedPluginError: &pb.PluginError{
-				Code:         pb.ERROR_ERROR_INVALID_CREDENTIAL,
-				Message:      "unauthorized request",
-				Nonretryable: false,
+			expectedPermission: &pb.Permission{
+				State:        pb.StateType_STATE_TYPE_ERROR,
+				ErrorDetails: "unauthorized request",
+				CheckedAt:    timestamppb.Now(),
 			},
 		},
 		{
@@ -63,10 +61,10 @@ func Test_ParseAWSError(t *testing.T) {
 			err:                TestAwsHttpResponseError(http.StatusForbidden, "forbidden request"),
 			expectedStatusCode: codes.PermissionDenied,
 			expectedStatusMsg:  "aws service unknown: invalid credentials error: test",
-			expectedPluginError: &pb.PluginError{
-				Code:         pb.ERROR_ERROR_INVALID_CREDENTIAL,
-				Message:      "forbidden request",
-				Nonretryable: true,
+			expectedPermission: &pb.Permission{
+				State:        pb.StateType_STATE_TYPE_ERROR,
+				ErrorDetails: "forbidden request",
+				CheckedAt:    timestamppb.Now(),
 			},
 		},
 		{
@@ -74,10 +72,8 @@ func Test_ParseAWSError(t *testing.T) {
 			err:                TestAwsHttpResponseError(http.StatusNotFound, "not found request"),
 			expectedStatusCode: codes.NotFound,
 			expectedStatusMsg:  "aws service unknown: resource not found error: test",
-			expectedPluginError: &pb.PluginError{
-				Code:         pb.ERROR_ERROR_BAD_REQUEST,
-				Message:      "not found request",
-				Nonretryable: true,
+			expectedPermission: &pb.Permission{
+				State: pb.StateType_STATE_TYPE_UNKNOWN,
 			},
 		},
 		{
@@ -85,10 +81,8 @@ func Test_ParseAWSError(t *testing.T) {
 			err:                TestAwsHttpResponseError(http.StatusTooManyRequests, "too many requests"),
 			expectedStatusCode: codes.Unavailable,
 			expectedStatusMsg:  "aws service unknown: throttling error: test",
-			expectedPluginError: &pb.PluginError{
-				Code:         pb.ERROR_ERROR_THROTTLING,
-				Message:      "too many requests",
-				Nonretryable: false,
+			expectedPermission: &pb.Permission{
+				State: pb.StateType_STATE_TYPE_UNKNOWN,
 			},
 		},
 		{
@@ -96,10 +90,8 @@ func Test_ParseAWSError(t *testing.T) {
 			err:                TestAwsHttpResponseError(http.StatusRequestTimeout, "request timeout"),
 			expectedStatusCode: codes.DeadlineExceeded,
 			expectedStatusMsg:  "aws service unknown: connectivity error: test",
-			expectedPluginError: &pb.PluginError{
-				Code:         pb.ERROR_ERROR_TIMEOUT,
-				Message:      "request timeout",
-				Nonretryable: false,
+			expectedPermission: &pb.Permission{
+				State: pb.StateType_STATE_TYPE_UNKNOWN,
 			},
 		},
 		{
@@ -107,10 +99,8 @@ func Test_ParseAWSError(t *testing.T) {
 			err:                TestAwsHttpResponseError(http.StatusInternalServerError, "internal server error"),
 			expectedStatusCode: codes.DeadlineExceeded,
 			expectedStatusMsg:  "aws service unknown: connectivity error: test",
-			expectedPluginError: &pb.PluginError{
-				Code:         pb.ERROR_ERROR_TIMEOUT,
-				Message:      "https response error StatusCode: 500",
-				Nonretryable: false,
+			expectedPermission: &pb.Permission{
+				State: pb.StateType_STATE_TYPE_UNKNOWN,
 			},
 		},
 		{
@@ -118,10 +108,8 @@ func Test_ParseAWSError(t *testing.T) {
 			err:                TestAwsHttpResponseError(http.StatusBadGateway, "bad gateway"),
 			expectedStatusCode: codes.DeadlineExceeded,
 			expectedStatusMsg:  "aws service unknown: connectivity error: test",
-			expectedPluginError: &pb.PluginError{
-				Code:         pb.ERROR_ERROR_TIMEOUT,
-				Message:      "https response error StatusCode: 502",
-				Nonretryable: false,
+			expectedPermission: &pb.Permission{
+				State: pb.StateType_STATE_TYPE_UNKNOWN,
 			},
 		},
 		{
@@ -129,10 +117,8 @@ func Test_ParseAWSError(t *testing.T) {
 			err:                TestAwsHttpResponseError(http.StatusServiceUnavailable, "service unavailable"),
 			expectedStatusCode: codes.DeadlineExceeded,
 			expectedStatusMsg:  "aws service unknown: connectivity error: test",
-			expectedPluginError: &pb.PluginError{
-				Code:         pb.ERROR_ERROR_TIMEOUT,
-				Message:      "https response error StatusCode: 503",
-				Nonretryable: false,
+			expectedPermission: &pb.Permission{
+				State: pb.StateType_STATE_TYPE_UNKNOWN,
 			},
 		},
 		{
@@ -140,10 +126,8 @@ func Test_ParseAWSError(t *testing.T) {
 			err:                TestAwsHttpResponseError(http.StatusGatewayTimeout, "gateway timeout"),
 			expectedStatusCode: codes.DeadlineExceeded,
 			expectedStatusMsg:  "aws service unknown: connectivity error: test",
-			expectedPluginError: &pb.PluginError{
-				Code:         pb.ERROR_ERROR_TIMEOUT,
-				Message:      "https response error StatusCode: 504",
-				Nonretryable: false,
+			expectedPermission: &pb.Permission{
+				State: pb.StateType_STATE_TYPE_UNKNOWN,
 			},
 		},
 		{
@@ -151,10 +135,8 @@ func Test_ParseAWSError(t *testing.T) {
 			err:                TestAwsError("Throttling", "throttling error"),
 			expectedStatusCode: codes.Unavailable,
 			expectedStatusMsg:  "aws service unknown: throttling error: test",
-			expectedPluginError: &pb.PluginError{
-				Code:         pb.ERROR_ERROR_THROTTLING,
-				Message:      "throttling error",
-				Nonretryable: false,
+			expectedPermission: &pb.Permission{
+				State: pb.StateType_STATE_TYPE_UNKNOWN,
 			},
 		},
 		{
@@ -162,10 +144,8 @@ func Test_ParseAWSError(t *testing.T) {
 			err:                TestAwsError("ThrottlingException", "throttling exception"),
 			expectedStatusCode: codes.Unavailable,
 			expectedStatusMsg:  "aws service unknown: throttling error: test",
-			expectedPluginError: &pb.PluginError{
-				Code:         pb.ERROR_ERROR_THROTTLING,
-				Message:      "throttling exception",
-				Nonretryable: false,
+			expectedPermission: &pb.Permission{
+				State: pb.StateType_STATE_TYPE_UNKNOWN,
 			},
 		},
 		{
@@ -173,10 +153,8 @@ func Test_ParseAWSError(t *testing.T) {
 			err:                TestAwsError("ThrottledException", "throttled exception"),
 			expectedStatusCode: codes.Unavailable,
 			expectedStatusMsg:  "aws service unknown: throttling error: test",
-			expectedPluginError: &pb.PluginError{
-				Code:         pb.ERROR_ERROR_THROTTLING,
-				Message:      "throttled exception",
-				Nonretryable: false,
+			expectedPermission: &pb.Permission{
+				State: pb.StateType_STATE_TYPE_UNKNOWN,
 			},
 		},
 		{
@@ -184,10 +162,8 @@ func Test_ParseAWSError(t *testing.T) {
 			err:                TestAwsError("RequestThrottledException", "request throttled exception"),
 			expectedStatusCode: codes.Unavailable,
 			expectedStatusMsg:  "aws service unknown: throttling error: test",
-			expectedPluginError: &pb.PluginError{
-				Code:         pb.ERROR_ERROR_THROTTLING,
-				Message:      "request throttled exception",
-				Nonretryable: false,
+			expectedPermission: &pb.Permission{
+				State: pb.StateType_STATE_TYPE_UNKNOWN,
 			},
 		},
 		{
@@ -195,10 +171,8 @@ func Test_ParseAWSError(t *testing.T) {
 			err:                TestAwsError("TooManyRequestsException", "too many requests exception"),
 			expectedStatusCode: codes.Unavailable,
 			expectedStatusMsg:  "aws service unknown: throttling error: test",
-			expectedPluginError: &pb.PluginError{
-				Code:         pb.ERROR_ERROR_THROTTLING,
-				Message:      "too many requests exception",
-				Nonretryable: false,
+			expectedPermission: &pb.Permission{
+				State: pb.StateType_STATE_TYPE_UNKNOWN,
 			},
 		},
 		{
@@ -206,10 +180,8 @@ func Test_ParseAWSError(t *testing.T) {
 			err:                TestAwsError("ProvisionedThroughputExceededException", "provisioned throughput exceeded exception"),
 			expectedStatusCode: codes.Unavailable,
 			expectedStatusMsg:  "aws service unknown: throttling error: test",
-			expectedPluginError: &pb.PluginError{
-				Code:         pb.ERROR_ERROR_THROTTLING,
-				Message:      "provisioned throughput exceeded exception",
-				Nonretryable: false,
+			expectedPermission: &pb.Permission{
+				State: pb.StateType_STATE_TYPE_UNKNOWN,
 			},
 		},
 		{
@@ -217,10 +189,8 @@ func Test_ParseAWSError(t *testing.T) {
 			err:                TestAwsError("TransactionInProgressException", "transaction in progress exception"),
 			expectedStatusCode: codes.Unavailable,
 			expectedStatusMsg:  "aws service unknown: throttling error: test",
-			expectedPluginError: &pb.PluginError{
-				Code:         pb.ERROR_ERROR_THROTTLING,
-				Message:      "transaction in progress exception",
-				Nonretryable: false,
+			expectedPermission: &pb.Permission{
+				State: pb.StateType_STATE_TYPE_UNKNOWN,
 			},
 		},
 		{
@@ -228,10 +198,8 @@ func Test_ParseAWSError(t *testing.T) {
 			err:                TestAwsError("RequestLimitExceeded", "request limit exceeded"),
 			expectedStatusCode: codes.Unavailable,
 			expectedStatusMsg:  "aws service unknown: throttling error: test",
-			expectedPluginError: &pb.PluginError{
-				Code:         pb.ERROR_ERROR_THROTTLING,
-				Message:      "request limit exceeded",
-				Nonretryable: false,
+			expectedPermission: &pb.Permission{
+				State: pb.StateType_STATE_TYPE_UNKNOWN,
 			},
 		},
 		{
@@ -239,10 +207,8 @@ func Test_ParseAWSError(t *testing.T) {
 			err:                TestAwsError("BandwidthLimitExceeded", "bandwidth limit exceeded"),
 			expectedStatusCode: codes.Unavailable,
 			expectedStatusMsg:  "aws service unknown: throttling error: test",
-			expectedPluginError: &pb.PluginError{
-				Code:         pb.ERROR_ERROR_THROTTLING,
-				Message:      "bandwidth limit exceeded",
-				Nonretryable: false,
+			expectedPermission: &pb.Permission{
+				State: pb.StateType_STATE_TYPE_UNKNOWN,
 			},
 		},
 		{
@@ -250,10 +216,8 @@ func Test_ParseAWSError(t *testing.T) {
 			err:                TestAwsError("LimitExceededException", "limit exceeded exception"),
 			expectedStatusCode: codes.Unavailable,
 			expectedStatusMsg:  "aws service unknown: throttling error: test",
-			expectedPluginError: &pb.PluginError{
-				Code:         pb.ERROR_ERROR_THROTTLING,
-				Message:      "limit exceeded exception",
-				Nonretryable: false,
+			expectedPermission: &pb.Permission{
+				State: pb.StateType_STATE_TYPE_UNKNOWN,
 			},
 		},
 		{
@@ -261,10 +225,8 @@ func Test_ParseAWSError(t *testing.T) {
 			err:                TestAwsError("RequestThrottled", "request throttled"),
 			expectedStatusCode: codes.Unavailable,
 			expectedStatusMsg:  "aws service unknown: throttling error: test",
-			expectedPluginError: &pb.PluginError{
-				Code:         pb.ERROR_ERROR_THROTTLING,
-				Message:      "request throttled",
-				Nonretryable: false,
+			expectedPermission: &pb.Permission{
+				State: pb.StateType_STATE_TYPE_UNKNOWN,
 			},
 		},
 		{
@@ -272,10 +234,8 @@ func Test_ParseAWSError(t *testing.T) {
 			err:                TestAwsError("SlowDown", "slow down"),
 			expectedStatusCode: codes.Unavailable,
 			expectedStatusMsg:  "aws service unknown: throttling error: test",
-			expectedPluginError: &pb.PluginError{
-				Code:         pb.ERROR_ERROR_THROTTLING,
-				Message:      "slow down",
-				Nonretryable: false,
+			expectedPermission: &pb.Permission{
+				State: pb.StateType_STATE_TYPE_UNKNOWN,
 			},
 		},
 		{
@@ -283,10 +243,8 @@ func Test_ParseAWSError(t *testing.T) {
 			err:                TestAwsError("PriorRequestNotComplete", "prior request not complete"),
 			expectedStatusCode: codes.Unavailable,
 			expectedStatusMsg:  "aws service unknown: throttling error: test",
-			expectedPluginError: &pb.PluginError{
-				Code:         pb.ERROR_ERROR_THROTTLING,
-				Message:      "prior request not complete",
-				Nonretryable: false,
+			expectedPermission: &pb.Permission{
+				State: pb.StateType_STATE_TYPE_UNKNOWN,
 			},
 		},
 		{
@@ -294,10 +252,8 @@ func Test_ParseAWSError(t *testing.T) {
 			err:                TestAwsError("EC2ThrottledException", "ec2 throttled exception"),
 			expectedStatusCode: codes.Unavailable,
 			expectedStatusMsg:  "aws service unknown: throttling error: test",
-			expectedPluginError: &pb.PluginError{
-				Code:         pb.ERROR_ERROR_THROTTLING,
-				Message:      "ec2 throttled exception",
-				Nonretryable: false,
+			expectedPermission: &pb.Permission{
+				State: pb.StateType_STATE_TYPE_UNKNOWN,
 			},
 		},
 		{
@@ -305,10 +261,8 @@ func Test_ParseAWSError(t *testing.T) {
 			err:                TestAwsError("RequestTimeout", "request timeout"),
 			expectedStatusCode: codes.DeadlineExceeded,
 			expectedStatusMsg:  "aws service unknown: connectivity error: test",
-			expectedPluginError: &pb.PluginError{
-				Code:         pb.ERROR_ERROR_TIMEOUT,
-				Message:      "request timeout",
-				Nonretryable: false,
+			expectedPermission: &pb.Permission{
+				State: pb.StateType_STATE_TYPE_UNKNOWN,
 			},
 		},
 		{
@@ -316,10 +270,8 @@ func Test_ParseAWSError(t *testing.T) {
 			err:                TestAwsError("RequestTimeoutException", "request timeout exception"),
 			expectedStatusCode: codes.DeadlineExceeded,
 			expectedStatusMsg:  "aws service unknown: connectivity error: test",
-			expectedPluginError: &pb.PluginError{
-				Code:         pb.ERROR_ERROR_TIMEOUT,
-				Message:      "request timeout exception",
-				Nonretryable: false,
+			expectedPermission: &pb.Permission{
+				State: pb.StateType_STATE_TYPE_UNKNOWN,
 			},
 		},
 		{
@@ -327,10 +279,10 @@ func Test_ParseAWSError(t *testing.T) {
 			err:                TestAwsError(awsErrorAccessDenied, "not authorized to perform action"),
 			expectedStatusCode: codes.PermissionDenied,
 			expectedStatusMsg:  "aws service unknown: invalid credentials error: test",
-			expectedPluginError: &pb.PluginError{
-				Code:         pb.ERROR_ERROR_INVALID_CREDENTIAL,
-				Message:      "not authorized to perform action",
-				Nonretryable: true,
+			expectedPermission: &pb.Permission{
+				State:        pb.StateType_STATE_TYPE_ERROR,
+				ErrorDetails: "not authorized to perform action",
+				CheckedAt:    timestamppb.Now(),
 			},
 		},
 		{
@@ -338,10 +290,10 @@ func Test_ParseAWSError(t *testing.T) {
 			err:                TestAwsError(awsErrorInvalidAccessKeyId, "The AWS Access Key Id you provided does not exist in our records."),
 			expectedStatusCode: codes.PermissionDenied,
 			expectedStatusMsg:  "aws service unknown: invalid credentials error: test",
-			expectedPluginError: &pb.PluginError{
-				Code:         pb.ERROR_ERROR_INVALID_CREDENTIAL,
-				Message:      "The AWS Access Key Id you provided does not exist in our records.",
-				Nonretryable: true,
+			expectedPermission: &pb.Permission{
+				State:        pb.StateType_STATE_TYPE_ERROR,
+				ErrorDetails: "The AWS Access Key Id you provided does not exist in our records.",
+				CheckedAt:    timestamppb.Now(),
 			},
 		},
 		{
@@ -349,18 +301,18 @@ func Test_ParseAWSError(t *testing.T) {
 			err:                TestAwsError(awsErrorExpiredToken, "The security token included in the request is expired."),
 			expectedStatusCode: codes.PermissionDenied,
 			expectedStatusMsg:  "aws service unknown: invalid credentials error: test",
-			expectedPluginError: &pb.PluginError{
-				Code:         pb.ERROR_ERROR_INVALID_CREDENTIAL,
-				Message:      "The security token included in the request is expired.",
-				Nonretryable: false,
+			expectedPermission: &pb.Permission{
+				State:        pb.StateType_STATE_TYPE_ERROR,
+				ErrorDetails: "The security token included in the request is expired.",
+				CheckedAt:    timestamppb.Now(),
 			},
 		},
 	}
 	for _, tt := range cases {
 		t.Run(tt.name, func(t *testing.T) {
-			require := require.New(t)
+			require, assert := require.New(t), assert.New(t)
 
-			actualStatus := ParseAWSError(tt.err, "test")
+			actualStatus, permission := ParseAWSError(tt.err, "test")
 			if tt.expectedStatusCode == codes.OK {
 				require.Nil(actualStatus)
 				return
@@ -368,15 +320,48 @@ func Test_ParseAWSError(t *testing.T) {
 
 			require.Equal(tt.expectedStatusCode, actualStatus.Code())
 			require.Equal(tt.expectedStatusMsg, actualStatus.Message())
-			require.Len(actualStatus.Details(), 1)
-			for _, detail := range actualStatus.Details() {
-				switch errDetail := detail.(type) {
-				case *pb.PluginError:
-					require.Equal(tt.expectedPluginError.Code, errDetail.Code)
-					require.Contains(errDetail.Message, tt.expectedPluginError.Message)
-					require.Equal(tt.expectedPluginError.Nonretryable, errDetail.Nonretryable)
-				}
-			}
+			require.Len(actualStatus.Details(), 0)
+			CheckSimilarPermission(assert, tt.expectedPermission, permission, true)
 		})
 	}
 }
+
+// func Test_BadRequestStatus(t *testing.T) {
+// 	require, assert := require.New(t), assert.New(t)
+// 	err := BadRequestStatus("test: %s", "hello world")
+// 	assert.ErrorContains(err, "test: hello world")
+// 	assert.Equal(status.Code(err), codes.InvalidArgument)
+// 	st, ok := status.FromError(err)
+// 	require.True(ok)
+// 	var plgErr *pb.PluginError
+// 	for _, detail := range st.Details() {
+// 		if errDetail, ok := detail.(*pb.PluginError); ok {
+// 			plgErr = errDetail
+// 			break
+// 		}
+// 	}
+// 	require.NotNil(plgErr)
+// 	assert.Equal(pb.ERROR_ERROR_BAD_REQUEST, plgErr.Code)
+// 	assert.Equal("bad request", plgErr.Message)
+// 	assert.True(plgErr.Nonretryable)
+// }
+
+// func Test_UnknownStatus(t *testing.T) {
+// 	require, assert := require.New(t), assert.New(t)
+// 	err := UnknownStatus("test: %s", "hello world")
+// 	assert.ErrorContains(err, "test: hello world")
+// 	assert.Equal(status.Code(err), codes.Internal)
+// 	st, ok := status.FromError(err)
+// 	require.True(ok)
+// 	var plgErr *pb.PluginError
+// 	for _, detail := range st.Details() {
+// 		if errDetail, ok := detail.(*pb.PluginError); ok {
+// 			plgErr = errDetail
+// 			break
+// 		}
+// 	}
+// 	require.NotNil(plgErr)
+// 	assert.Equal(pb.ERROR_ERROR_UNKNOWN, plgErr.Code)
+// 	assert.Equal("unknown internal error", plgErr.Message)
+// 	assert.False(plgErr.Nonretryable)
+// }

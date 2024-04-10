@@ -5,13 +5,14 @@ package credential
 
 import (
 	"context"
-	"errors"
+	stderr "errors"
 	"fmt"
 	"strings"
 	"time"
 
 	"github.com/aws/aws-sdk-go-v2/aws"
 	iamTypes "github.com/aws/aws-sdk-go-v2/service/iam/types"
+	"github.com/hashicorp/boundary-plugin-aws/internal/errors"
 	"github.com/hashicorp/boundary-plugin-aws/internal/values"
 	"github.com/hashicorp/go-secure-stdlib/awsutil/v2"
 	"google.golang.org/protobuf/types/known/structpb"
@@ -71,7 +72,7 @@ func WithStateTestOpts(opts []awsutil.Option) AwsCredentialPersistedStateOption 
 func WithCredentialsConfig(x *awsutil.CredentialsConfig) AwsCredentialPersistedStateOption {
 	return func(s *AwsCredentialPersistedState) error {
 		if s.CredentialsConfig != nil {
-			return errors.New("credentials config already set")
+			return stderr.New("credentials config already set")
 		}
 
 		s.CredentialsConfig = x
@@ -83,7 +84,7 @@ func WithCredentialsConfig(x *awsutil.CredentialsConfig) AwsCredentialPersistedS
 func WithCredsLastRotatedTime(t time.Time) AwsCredentialPersistedStateOption {
 	return func(s *AwsCredentialPersistedState) error {
 		if !s.CredsLastRotatedTime.IsZero() {
-			return errors.New("last rotation time already set")
+			return stderr.New("last rotation time already set")
 		}
 
 		s.CredsLastRotatedTime = t
@@ -106,13 +107,15 @@ func NewAwsCredentialPersistedState(opts ...AwsCredentialPersistedStateOption) (
 
 // ValidateCreds takes the credentials configuration from the persisted state
 // and runs sts.GetCallerIdentity for the current credentials, which is done
-// to check that the credentials are valid.
+// to check that the credentials are valid. This method returns a status error
+// with PluginError details.
 func (s *AwsCredentialPersistedState) ValidateCreds(ctx context.Context) error {
 	if s.CredentialsConfig == nil {
-		return errors.New("missing credentials config")
+		return errors.BadRequestStatus("missing credentials config")
 	}
 	if _, err := s.CredentialsConfig.GetCallerIdentity(ctx, s.testOpts...); err != nil {
-		return fmt.Errorf("error validating credentials: %w", err)
+		st, _ := errors.ParseAWSError(err, "validating credentials")
+		return st.Err()
 	}
 	return nil
 }
@@ -121,18 +124,19 @@ func (s *AwsCredentialPersistedState) ValidateCreds(ctx context.Context) error {
 // then deletes the old access key. If deletion of the old access key is successful, the new access key/secret key are
 // written into the credentials config and the persisted state. On any error, the old credentials are not overwritten.
 // This ensures that any generated new secret key never leaves this function in case of an error, even though it will
-// still result in an extraneous access key existing.
+// still result in an extraneous access key existing. This method returns a status error with PluginError details.
 func (s *AwsCredentialPersistedState) RotateCreds(ctx context.Context) error {
 	if s.CredentialsConfig == nil {
-		return errors.New("missing credentials config")
+		return errors.BadRequestStatus("missing credentials config")
 	}
 	if GetCredentialType(s.CredentialsConfig) != StaticAWS {
-		return errors.New("invalid credential type")
+		return errors.BadRequestStatus("invalid credential type")
 	}
 	if err := s.CredentialsConfig.RotateKeys(ctx, append([]awsutil.Option{
 		awsutil.WithValidityCheckTimeout(rotationWaitTimeout),
 	}, s.testOpts...)...); err != nil {
-		return fmt.Errorf("error rotating credentials: %w", err)
+		st, _ := errors.ParseAWSError(err, "error rotating credentials")
+		return st.Err()
 	}
 	s.CredsLastRotatedTime = time.Now()
 	return nil
@@ -140,13 +144,14 @@ func (s *AwsCredentialPersistedState) RotateCreds(ctx context.Context) error {
 
 // ReplaceCreds replaces the access key in the state with a new key.
 // If the existing key was rotated at any point in time, it is
-// deleted first, otherwise it's left alone.
+// deleted first, otherwise it's left alone. This method returns a
+// status error with PluginError details.
 func (s *AwsCredentialPersistedState) ReplaceCreds(ctx context.Context, credentialsConfig *awsutil.CredentialsConfig) error {
 	if credentialsConfig == nil {
-		return errors.New("missing new credentials config")
+		return errors.BadRequestStatus("missing new credentials config")
 	}
 	if s.CredentialsConfig == nil {
-		return errors.New("missing credentials config")
+		return errors.BadRequestStatus("missing credentials config")
 	}
 
 	// Delete old/existing credentials. This action is only possible for static credential types.
@@ -166,27 +171,29 @@ func (s *AwsCredentialPersistedState) ReplaceCreds(ctx context.Context, credenti
 
 // DeleteCreds deletes the credentials in the state. The access key
 // ID, secret access key, and rotation time fields are zeroed out in
-// the state just to ensure that they cannot be re-used after.
+// the state just to ensure that they cannot be re-used after. This
+// method returns a status error with PluginError details.
 func (s *AwsCredentialPersistedState) DeleteCreds(ctx context.Context) error {
 	if s.CredentialsConfig == nil {
-		return errors.New("missing credentials config")
+		return errors.BadRequestStatus("missing credentials config")
 	}
 	if GetCredentialType(s.CredentialsConfig) != StaticAWS {
-		return errors.New("invalid credential type")
+		return errors.BadRequestStatus("invalid credential type")
 	}
 
 	if err := s.CredentialsConfig.DeleteAccessKey(ctx, s.CredentialsConfig.AccessKey, s.testOpts...); err != nil {
 		// Determine if the deletion error was due to a missing
 		// resource. If it was, just pass it.
 		var awsErr *iamTypes.NoSuchEntityException
-		if errors.As(err, &awsErr) && awsErr.ErrorCode() == "NoSuchEntity" {
+		if stderr.As(err, &awsErr) && awsErr.ErrorCode() == "NoSuchEntity" {
 			s.CredentialsConfig = nil
 			s.CredsLastRotatedTime = time.Time{}
 			return nil
 		}
 
 		// Otherwise treat it as an actual error.
-		return err
+		st, _ := errors.ParseAWSError(err, "failed to delete access key")
+		return st.Err()
 	}
 
 	s.CredentialsConfig = nil

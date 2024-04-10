@@ -10,7 +10,7 @@ import (
 	"encoding/base64"
 	"errors"
 	"fmt"
-	"io/ioutil"
+	"io"
 	"os"
 	"path"
 	"testing"
@@ -24,13 +24,16 @@ import (
 	"github.com/aws/aws-sdk-go-v2/service/sts"
 	"github.com/aws/aws-sdk-go-v2/service/sts/types"
 	"github.com/hashicorp/boundary-plugin-aws/internal/credential"
+	internal "github.com/hashicorp/boundary-plugin-aws/internal/errors"
 	"github.com/hashicorp/boundary/sdk/pbs/controller/api/resources/storagebuckets"
 	pb "github.com/hashicorp/boundary/sdk/pbs/plugin"
 	"github.com/hashicorp/go-secure-stdlib/awsutil/v2"
+	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 	"google.golang.org/protobuf/types/known/structpb"
+	"google.golang.org/protobuf/types/known/timestamppb"
 )
 
 func TestStoragePlugin_OnCreateStorageBucket(t *testing.T) {
@@ -55,6 +58,7 @@ func TestStoragePlugin_OnCreateStorageBucket(t *testing.T) {
 		storageOpts           []awsStoragePersistedStateOption
 		expectedErrContains   string
 		expectedErrCode       codes.Code
+		expectedDetails       *pb.StorageBucketCredentialState
 		expectedPersistedData map[string]any
 	}{
 		{
@@ -62,6 +66,7 @@ func TestStoragePlugin_OnCreateStorageBucket(t *testing.T) {
 			req:                 &pb.OnCreateStorageBucketRequest{},
 			expectedErrContains: "bucket is required",
 			expectedErrCode:     codes.InvalidArgument,
+			expectedDetails:     nil,
 		},
 		{
 			name: "empty bucket name",
@@ -70,6 +75,7 @@ func TestStoragePlugin_OnCreateStorageBucket(t *testing.T) {
 			},
 			expectedErrContains: "bucketName is required",
 			expectedErrCode:     codes.InvalidArgument,
+			expectedDetails:     nil,
 		},
 		{
 			name: "nil attributes",
@@ -80,6 +86,7 @@ func TestStoragePlugin_OnCreateStorageBucket(t *testing.T) {
 			},
 			expectedErrContains: "attributes is required",
 			expectedErrCode:     codes.InvalidArgument,
+			expectedDetails:     nil,
 		},
 		{
 			name: "error reading attributes",
@@ -91,6 +98,7 @@ func TestStoragePlugin_OnCreateStorageBucket(t *testing.T) {
 			},
 			expectedErrContains: "missing required value \"region\"",
 			expectedErrCode:     codes.InvalidArgument,
+			expectedDetails:     nil,
 		},
 		{
 			name: "dynamic credentials without disable credential rotation",
@@ -108,6 +116,7 @@ func TestStoragePlugin_OnCreateStorageBucket(t *testing.T) {
 			},
 			expectedErrContains: "disable_credential_rotation attribute is required when providing a role_arn",
 			expectedErrCode:     codes.InvalidArgument,
+			expectedDetails:     nil,
 		},
 		{
 			name:     "persisted state setup error",
@@ -120,6 +129,7 @@ func TestStoragePlugin_OnCreateStorageBucket(t *testing.T) {
 			},
 			expectedErrContains: fmt.Sprintf("error setting up persisted state: %s", testOptionErr),
 			expectedErrCode:     codes.InvalidArgument,
+			expectedDetails:     nil,
 		},
 		{
 			name: "rotation error",
@@ -143,21 +153,42 @@ func TestStoragePlugin_OnCreateStorageBucket(t *testing.T) {
 					),
 				}),
 			},
-			expectedErrContains: fmt.Sprintf("error during credential rotation: error rotating credentials: error calling CreateAccessKey: error calling iam.GetUser: %s", testGetUserErr),
-			expectedErrCode:     codes.InvalidArgument,
+			expectedErrContains: "aws service unknown: unknown error: error rotating credentials",
+			expectedErrCode:     codes.Unknown,
+			expectedDetails:     nil,
 		},
 		{
-			name:     "dryRunValidation failed putObject",
+			name:     "dryRunValidation-failed-putObject",
 			req:      validRequest(),
 			credOpts: validSTSMock(),
 			storageOpts: []awsStoragePersistedStateOption{
 				withTestS3APIFunc(newTestMockS3(
 					nil,
-					testMockS3WithPutObjectError(TestAwsS3Error("AccessDenied", "not authorized to perform PutObject action")),
+					testMockS3WithPutObjectError(TestAwsS3Error("AccessDenied", "PutObject", "not authorized")),
+					testMockS3WithGetObjectOutput(&s3.GetObjectOutput{}),
+					testMockS3WithHeadObjectOutput(&s3.HeadObjectOutput{}),
+					testMockS3WithListObjectsV2OutputFunc(func(i *s3.ListObjectsV2Input) *s3.ListObjectsV2Output {
+						return &s3.ListObjectsV2Output{
+							Contents: []s3types.Object{
+								{
+									Key: i.Prefix,
+								},
+							},
+						}
+					}),
 				)),
 			},
 			expectedErrContains: "aws service s3: invalid credentials error: failed to put object",
 			expectedErrCode:     codes.PermissionDenied,
+			expectedDetails: &pb.StorageBucketCredentialState{
+				State: &pb.Permissions{
+					Write: &pb.Permission{
+						State:        pb.StateType_STATE_TYPE_ERROR,
+						ErrorDetails: "not authorized",
+						CheckedAt:    timestamppb.Now(),
+					},
+				},
+			},
 		},
 		{
 			name:     "dryRunValidation putObject throttle",
@@ -166,11 +197,30 @@ func TestStoragePlugin_OnCreateStorageBucket(t *testing.T) {
 			storageOpts: []awsStoragePersistedStateOption{
 				withTestS3APIFunc(newTestMockS3(
 					nil,
-					testMockS3WithPutObjectError(TestAwsS3Error("ThrottlingException", "throttling exception")),
+					testMockS3WithPutObjectError(TestAwsS3Error("ThrottlingException", "PutObject", "throttling exception")),
+					testMockS3WithGetObjectOutput(&s3.GetObjectOutput{}),
+					testMockS3WithHeadObjectOutput(&s3.HeadObjectOutput{}),
+					testMockS3WithListObjectsV2OutputFunc(func(i *s3.ListObjectsV2Input) *s3.ListObjectsV2Output {
+						return &s3.ListObjectsV2Output{
+							Contents: []s3types.Object{
+								{
+									Key: i.Prefix,
+								},
+							},
+						}
+					}),
 				)),
 			},
 			expectedErrContains: "aws service s3: throttling error: failed to put object",
 			expectedErrCode:     codes.Unavailable,
+			expectedDetails: &pb.StorageBucketCredentialState{
+				State: &pb.Permissions{
+					Write: &pb.Permission{
+						State:     pb.StateType_STATE_TYPE_UNKNOWN,
+						CheckedAt: timestamppb.Now(),
+					},
+				},
+			},
 		},
 		{
 			name:     "dryRunValidation failed getObject",
@@ -181,12 +231,31 @@ func TestStoragePlugin_OnCreateStorageBucket(t *testing.T) {
 					newTestMockS3(
 						nil,
 						testMockS3WithPutObjectOutput(&s3.PutObjectOutput{}),
-						testMockS3WithGetObjectError(TestAwsS3Error("AccessDenied", "not authorized to perform GetObject action")),
+						testMockS3WithGetObjectError(TestAwsS3Error("AccessDenied", "GetObject", "not authorized")),
+						testMockS3WithHeadObjectOutput(&s3.HeadObjectOutput{}),
+						testMockS3WithListObjectsV2OutputFunc(func(i *s3.ListObjectsV2Input) *s3.ListObjectsV2Output {
+							return &s3.ListObjectsV2Output{
+								Contents: []s3types.Object{
+									{
+										Key: i.Prefix,
+									},
+								},
+							}
+						}),
 					),
 				),
 			},
 			expectedErrContains: "aws service s3: invalid credentials error: failed to get object",
 			expectedErrCode:     codes.PermissionDenied,
+			expectedDetails: &pb.StorageBucketCredentialState{
+				State: &pb.Permissions{
+					Read: &pb.Permission{
+						State:        pb.StateType_STATE_TYPE_ERROR,
+						ErrorDetails: "not authorized",
+						CheckedAt:    timestamppb.Now(),
+					},
+				},
+			},
 		},
 		{
 			name:     "dryRunValidation failed getObject throttle",
@@ -197,12 +266,30 @@ func TestStoragePlugin_OnCreateStorageBucket(t *testing.T) {
 					newTestMockS3(
 						nil,
 						testMockS3WithPutObjectOutput(&s3.PutObjectOutput{}),
-						testMockS3WithGetObjectError(TestAwsS3Error("ThrottlingException", "throttling exception")),
+						testMockS3WithHeadObjectOutput(&s3.HeadObjectOutput{}),
+						testMockS3WithListObjectsV2OutputFunc(func(i *s3.ListObjectsV2Input) *s3.ListObjectsV2Output {
+							return &s3.ListObjectsV2Output{
+								Contents: []s3types.Object{
+									{
+										Key: i.Prefix,
+									},
+								},
+							}
+						}),
+						testMockS3WithGetObjectError(TestAwsS3Error("ThrottlingException", "GetObject", "throttling exception")),
 					),
 				),
 			},
 			expectedErrContains: "aws service s3: throttling error: failed to get object",
 			expectedErrCode:     codes.Unavailable,
+			expectedDetails: &pb.StorageBucketCredentialState{
+				State: &pb.Permissions{
+					Read: &pb.Permission{
+						State:     pb.StateType_STATE_TYPE_UNKNOWN,
+						CheckedAt: timestamppb.Now(),
+					},
+				},
+			},
 		},
 		{
 			name:     "dryRunValidation failed headObject",
@@ -214,12 +301,30 @@ func TestStoragePlugin_OnCreateStorageBucket(t *testing.T) {
 						nil,
 						testMockS3WithPutObjectOutput(&s3.PutObjectOutput{}),
 						testMockS3WithGetObjectOutput(&s3.GetObjectOutput{}),
-						testMockS3WithHeadObjectError(TestAwsS3Error("AccessDenied", "not authorized to perform HeadObject action")),
+						testMockS3WithListObjectsV2OutputFunc(func(i *s3.ListObjectsV2Input) *s3.ListObjectsV2Output {
+							return &s3.ListObjectsV2Output{
+								Contents: []s3types.Object{
+									{
+										Key: i.Prefix,
+									},
+								},
+							}
+						}),
+						testMockS3WithHeadObjectError(TestAwsS3Error("AccessDenied", "HeadObject", "not authorized")),
 					),
 				),
 			},
 			expectedErrContains: "aws service s3: invalid credentials error: failed to head object",
 			expectedErrCode:     codes.PermissionDenied,
+			expectedDetails: &pb.StorageBucketCredentialState{
+				State: &pb.Permissions{
+					Read: &pb.Permission{
+						State:        pb.StateType_STATE_TYPE_ERROR,
+						ErrorDetails: "not authorized",
+						CheckedAt:    timestamppb.Now(),
+					},
+				},
+			},
 		},
 		{
 			name:     "dryRunValidation failed headObject throttle",
@@ -231,12 +336,65 @@ func TestStoragePlugin_OnCreateStorageBucket(t *testing.T) {
 						nil,
 						testMockS3WithPutObjectOutput(&s3.PutObjectOutput{}),
 						testMockS3WithGetObjectOutput(&s3.GetObjectOutput{}),
-						testMockS3WithHeadObjectError(TestAwsS3Error("ThrottlingException", "throttling exception")),
+						testMockS3WithListObjectsV2OutputFunc(func(i *s3.ListObjectsV2Input) *s3.ListObjectsV2Output {
+							return &s3.ListObjectsV2Output{
+								Contents: []s3types.Object{
+									{
+										Key: i.Prefix,
+									},
+								},
+							}
+						}),
+						testMockS3WithHeadObjectError(TestAwsS3Error("ThrottlingException", "HeadObject", "throttling exception")),
 					),
 				),
 			},
 			expectedErrContains: "aws service s3: throttling error: failed to head object",
 			expectedErrCode:     codes.Unavailable,
+			expectedDetails: &pb.StorageBucketCredentialState{
+				State: &pb.Permissions{
+					Read: &pb.Permission{
+						State:     pb.StateType_STATE_TYPE_UNKNOWN,
+						CheckedAt: timestamppb.Now(),
+					},
+				},
+			},
+		},
+		{
+			name:     "dryRunValidation failed deleteObject",
+			req:      validRequest(),
+			credOpts: validSTSMock(),
+			storageOpts: []awsStoragePersistedStateOption{
+				withTestS3APIFunc(
+					newTestMockS3(
+						nil,
+						testMockS3WithPutObjectOutput(&s3.PutObjectOutput{}),
+						testMockS3WithGetObjectOutput(&s3.GetObjectOutput{}),
+						testMockS3WithHeadObjectOutput(&s3.HeadObjectOutput{}),
+						testMockS3WithListObjectsV2OutputFunc(func(i *s3.ListObjectsV2Input) *s3.ListObjectsV2Output {
+							return &s3.ListObjectsV2Output{
+								Contents: []s3types.Object{
+									{
+										Key: i.Prefix,
+									},
+								},
+							}
+						}),
+						testMockS3WithDeleteObjectError(TestAwsS3Error("AccessDenied", "DeleteObject", "not authorized")),
+					),
+				),
+			},
+			expectedErrContains: "aws service s3: invalid credentials error: failed to delete object",
+			expectedErrCode:     codes.PermissionDenied,
+			expectedDetails: &pb.StorageBucketCredentialState{
+				State: &pb.Permissions{
+					Delete: &pb.Permission{
+						State:        pb.StateType_STATE_TYPE_ERROR,
+						ErrorDetails: "not authorized",
+						CheckedAt:    timestamppb.Now(),
+					},
+				},
+			},
 		},
 		{
 			name:     "success",
@@ -258,6 +416,7 @@ func TestStoragePlugin_OnCreateStorageBucket(t *testing.T) {
 								},
 							}
 						}),
+						testMockS3WithDeleteObjectsOutput(&s3.DeleteObjectsOutput{}),
 					),
 				),
 			},
@@ -384,15 +543,34 @@ func TestStoragePlugin_OnCreateStorageBucket(t *testing.T) {
 	for _, tc := range cases {
 		tc := tc
 		t.Run(tc.name, func(t *testing.T) {
-			require := require.New(t)
+			require, assert := require.New(t), assert.New(t)
 			p := &StoragePlugin{
 				testCredStateOpts:    tc.credOpts,
 				testStorageStateOpts: tc.storageOpts,
 			}
 			resp, err := p.OnCreateStorageBucket(context.Background(), tc.req)
 			if tc.expectedErrContains != "" {
-				require.Contains(err.Error(), tc.expectedErrContains)
-				require.Equal(status.Code(err).String(), tc.expectedErrCode.String())
+				require.Error(err)
+				assert.Contains(err.Error(), tc.expectedErrContains)
+				assert.Equal(tc.expectedErrCode, status.Code(err))
+
+				st, ok := status.FromError(err)
+				require.True(ok)
+				if tc.expectedDetails != nil {
+					var state *pb.StorageBucketCredentialState
+					for _, detail := range st.Details() {
+						if errDetail, ok := detail.(*pb.StorageBucketCredentialState); ok {
+							state = errDetail
+							break
+						}
+					}
+					require.NotNil(state)
+					internal.CheckSimilarPermission(assert, tc.expectedDetails.State.Read, state.State.Read, true)
+					internal.CheckSimilarPermission(assert, tc.expectedDetails.State.Write, state.State.Write, true)
+					internal.CheckSimilarPermission(assert, tc.expectedDetails.State.Delete, state.State.Delete, true)
+				} else {
+					assert.Len(st.Details(), 0)
+				}
 				return
 			}
 			require.NoError(err)
@@ -411,10 +589,6 @@ func TestStoragePlugin_OnCreateStorageBucket(t *testing.T) {
 	}
 }
 
-// TODO: add tests for changing:
-// roleARN values
-// access/secret keys
-// swithcing between static & dynamic credentials
 func TestStoragePlugin_OnUpdateStorageBucket(t *testing.T) {
 	validRequest := func() *pb.OnUpdateStorageBucketRequest {
 		return &pb.OnUpdateStorageBucketRequest{
@@ -448,6 +622,7 @@ func TestStoragePlugin_OnUpdateStorageBucket(t *testing.T) {
 		expectCredsLastRotatedTime bool
 		expectedErrContains        string
 		expectedErrCode            codes.Code
+		expectedDetails            *pb.StorageBucketCredentialState
 	}{
 		{
 			name:                "nil new bucket",
@@ -587,7 +762,7 @@ func TestStoragePlugin_OnUpdateStorageBucket(t *testing.T) {
 				},
 			},
 			expectedErrContains: "cannot disable rotation for already-rotated credentials",
-			expectedErrCode:     codes.FailedPrecondition,
+			expectedErrCode:     codes.InvalidArgument,
 		},
 		{
 			name: "attempt to enable credential rotation with dynamic credentials",
@@ -682,8 +857,8 @@ func TestStoragePlugin_OnUpdateStorageBucket(t *testing.T) {
 					),
 				}),
 			},
-			expectedErrContains: fmt.Sprintf("error attempting to replace credentials: error deleting old access key: %s", testDeleteAccessKeyErr),
-			expectedErrCode:     codes.InvalidArgument,
+			expectedErrContains: "aws service unknown: unknown error: failed to delete access key",
+			expectedErrCode:     codes.Unknown,
 		},
 		{
 			name: "rotation error",
@@ -721,8 +896,8 @@ func TestStoragePlugin_OnUpdateStorageBucket(t *testing.T) {
 					),
 				}),
 			},
-			expectedErrContains: fmt.Sprintf("error during credential rotation: error rotating credentials: error calling CreateAccessKey: error calling iam.GetUser: %s", testGetUserErr),
-			expectedErrCode:     codes.InvalidArgument,
+			expectedErrContains: "aws service unknown: unknown error: error rotating credentials",
+			expectedErrCode:     codes.Unknown,
 		},
 		{
 			name:     "dryRunValidation failed putObject",
@@ -731,11 +906,31 @@ func TestStoragePlugin_OnUpdateStorageBucket(t *testing.T) {
 			storageOpts: []awsStoragePersistedStateOption{
 				withTestS3APIFunc(newTestMockS3(
 					nil,
-					testMockS3WithPutObjectError(TestAwsS3Error("AccessDenied", "not authorized to perform PutObject action")),
+					testMockS3WithGetObjectOutput(&s3.GetObjectOutput{}),
+					testMockS3WithHeadObjectOutput(&s3.HeadObjectOutput{}),
+					testMockS3WithListObjectsV2OutputFunc(func(i *s3.ListObjectsV2Input) *s3.ListObjectsV2Output {
+						return &s3.ListObjectsV2Output{
+							Contents: []s3types.Object{
+								{
+									Key: i.Prefix,
+								},
+							},
+						}
+					}),
+					testMockS3WithPutObjectError(TestAwsS3Error("AccessDenied", "PutObject", "not authorized")),
 				)),
 			},
 			expectedErrContains: "aws service s3: invalid credentials error: failed to put object",
 			expectedErrCode:     codes.PermissionDenied,
+			expectedDetails: &pb.StorageBucketCredentialState{
+				State: &pb.Permissions{
+					Write: &pb.Permission{
+						State:        pb.StateType_STATE_TYPE_ERROR,
+						ErrorDetails: "not authorized",
+						CheckedAt:    timestamppb.Now(),
+					},
+				},
+			},
 		},
 		{
 			name:     "dryRunValidation failed putObject throttle",
@@ -744,11 +939,30 @@ func TestStoragePlugin_OnUpdateStorageBucket(t *testing.T) {
 			storageOpts: []awsStoragePersistedStateOption{
 				withTestS3APIFunc(newTestMockS3(
 					nil,
-					testMockS3WithPutObjectError(TestAwsS3Error("ThrottlingException", "throttling exception")),
+					testMockS3WithGetObjectOutput(&s3.GetObjectOutput{}),
+					testMockS3WithHeadObjectOutput(&s3.HeadObjectOutput{}),
+					testMockS3WithListObjectsV2OutputFunc(func(i *s3.ListObjectsV2Input) *s3.ListObjectsV2Output {
+						return &s3.ListObjectsV2Output{
+							Contents: []s3types.Object{
+								{
+									Key: i.Prefix,
+								},
+							},
+						}
+					}),
+					testMockS3WithPutObjectError(TestAwsS3Error("ThrottlingException", "PutObject", "throttling exception")),
 				)),
 			},
 			expectedErrContains: "aws service s3: throttling error: failed to put object",
 			expectedErrCode:     codes.Unavailable,
+			expectedDetails: &pb.StorageBucketCredentialState{
+				State: &pb.Permissions{
+					Write: &pb.Permission{
+						State:     pb.StateType_STATE_TYPE_UNKNOWN,
+						CheckedAt: timestamppb.Now(),
+					},
+				},
+			},
 		},
 		{
 			name:     "dryRunValidation failed getObject",
@@ -759,12 +973,31 @@ func TestStoragePlugin_OnUpdateStorageBucket(t *testing.T) {
 					newTestMockS3(
 						nil,
 						testMockS3WithPutObjectOutput(&s3.PutObjectOutput{}),
-						testMockS3WithGetObjectError(TestAwsS3Error("AccessDenied", "not authorized to perform GetObject action")),
+						testMockS3WithGetObjectError(TestAwsS3Error("AccessDenied", "GetObject", "not authorized")),
+						testMockS3WithHeadObjectOutput(&s3.HeadObjectOutput{}),
+						testMockS3WithListObjectsV2OutputFunc(func(i *s3.ListObjectsV2Input) *s3.ListObjectsV2Output {
+							return &s3.ListObjectsV2Output{
+								Contents: []s3types.Object{
+									{
+										Key: i.Prefix,
+									},
+								},
+							}
+						}),
 					),
 				),
 			},
 			expectedErrContains: "aws service s3: invalid credentials error: failed to get object",
 			expectedErrCode:     codes.PermissionDenied,
+			expectedDetails: &pb.StorageBucketCredentialState{
+				State: &pb.Permissions{
+					Read: &pb.Permission{
+						State:        pb.StateType_STATE_TYPE_ERROR,
+						ErrorDetails: "not authorized",
+						CheckedAt:    timestamppb.Now(),
+					},
+				},
+			},
 		},
 		{
 			name:     "dryRunValidation failed getObject throttle",
@@ -775,12 +1008,30 @@ func TestStoragePlugin_OnUpdateStorageBucket(t *testing.T) {
 					newTestMockS3(
 						nil,
 						testMockS3WithPutObjectOutput(&s3.PutObjectOutput{}),
-						testMockS3WithGetObjectError(TestAwsS3Error("ThrottlingException", "throttling exception")),
+						testMockS3WithGetObjectError(TestAwsS3Error("ThrottlingException", "GetObject", "throttling exception")),
+						testMockS3WithHeadObjectOutput(&s3.HeadObjectOutput{}),
+						testMockS3WithListObjectsV2OutputFunc(func(i *s3.ListObjectsV2Input) *s3.ListObjectsV2Output {
+							return &s3.ListObjectsV2Output{
+								Contents: []s3types.Object{
+									{
+										Key: i.Prefix,
+									},
+								},
+							}
+						}),
 					),
 				),
 			},
 			expectedErrContains: "aws service s3: throttling error: failed to get object",
 			expectedErrCode:     codes.Unavailable,
+			expectedDetails: &pb.StorageBucketCredentialState{
+				State: &pb.Permissions{
+					Read: &pb.Permission{
+						State:     pb.StateType_STATE_TYPE_UNKNOWN,
+						CheckedAt: timestamppb.Now(),
+					},
+				},
+			},
 		},
 		{
 			name:     "dryRunValidation failed headObject",
@@ -792,12 +1043,30 @@ func TestStoragePlugin_OnUpdateStorageBucket(t *testing.T) {
 						nil,
 						testMockS3WithPutObjectOutput(&s3.PutObjectOutput{}),
 						testMockS3WithGetObjectOutput(&s3.GetObjectOutput{}),
-						testMockS3WithHeadObjectError(TestAwsS3Error("AccessDenied", "not authorized to perform HeadObject action")),
+						testMockS3WithHeadObjectError(TestAwsS3Error("AccessDenied", "HeadObject", "not authorized")),
+						testMockS3WithListObjectsV2OutputFunc(func(i *s3.ListObjectsV2Input) *s3.ListObjectsV2Output {
+							return &s3.ListObjectsV2Output{
+								Contents: []s3types.Object{
+									{
+										Key: i.Prefix,
+									},
+								},
+							}
+						}),
 					),
 				),
 			},
 			expectedErrContains: "aws service s3: invalid credentials error: failed to head object",
 			expectedErrCode:     codes.PermissionDenied,
+			expectedDetails: &pb.StorageBucketCredentialState{
+				State: &pb.Permissions{
+					Read: &pb.Permission{
+						State:        pb.StateType_STATE_TYPE_ERROR,
+						ErrorDetails: "not authorized",
+						CheckedAt:    timestamppb.Now(),
+					},
+				},
+			},
 		},
 		{
 			name:     "dryRunValidation failed headObject throttle",
@@ -809,12 +1078,29 @@ func TestStoragePlugin_OnUpdateStorageBucket(t *testing.T) {
 						nil,
 						testMockS3WithPutObjectOutput(&s3.PutObjectOutput{}),
 						testMockS3WithGetObjectOutput(&s3.GetObjectOutput{}),
-						testMockS3WithHeadObjectError(TestAwsS3Error("ThrottlingException", "throttling exception")),
+						testMockS3WithHeadObjectError(TestAwsS3Error("ThrottlingException", "HeadObject", "throttling exception")),
+						testMockS3WithListObjectsV2OutputFunc(func(i *s3.ListObjectsV2Input) *s3.ListObjectsV2Output {
+							return &s3.ListObjectsV2Output{
+								Contents: []s3types.Object{
+									{
+										Key: i.Prefix,
+									},
+								},
+							}
+						}),
 					),
 				),
 			},
 			expectedErrContains: "aws service s3: throttling error: failed to head object",
 			expectedErrCode:     codes.Unavailable,
+			expectedDetails: &pb.StorageBucketCredentialState{
+				State: &pb.Permissions{
+					Read: &pb.Permission{
+						State:     pb.StateType_STATE_TYPE_UNKNOWN,
+						CheckedAt: timestamppb.Now(),
+					},
+				},
+			},
 		},
 		{
 			name: "success with credential rotation",
@@ -954,14 +1240,32 @@ func TestStoragePlugin_OnUpdateStorageBucket(t *testing.T) {
 				withTestS3APIFunc(
 					newTestMockS3(
 						nil,
-						testMockS3WithHeadObjectError(TestAwsS3Error("AccessDenied", "not authorized to perform HeadObject action")),
+						testMockS3WithHeadObjectError(TestAwsS3Error("AccessDenied", "HeadObject", "not authorized")),
 						testMockS3WithGetObjectOutput(&s3.GetObjectOutput{}),
 						testMockS3WithPutObjectOutput(&s3.PutObjectOutput{}),
+						testMockS3WithListObjectsV2OutputFunc(func(i *s3.ListObjectsV2Input) *s3.ListObjectsV2Output {
+							return &s3.ListObjectsV2Output{
+								Contents: []s3types.Object{
+									{
+										Key: i.Prefix,
+									},
+								},
+							}
+						}),
 					),
 				),
 			},
 			expectedErrContains: "aws service s3: invalid credentials error: failed to head object",
 			expectedErrCode:     codes.PermissionDenied,
+			expectedDetails: &pb.StorageBucketCredentialState{
+				State: &pb.Permissions{
+					Read: &pb.Permission{
+						State:        pb.StateType_STATE_TYPE_ERROR,
+						ErrorDetails: "not authorized",
+						CheckedAt:    timestamppb.Now(),
+					},
+				},
+			},
 		},
 		{
 			name: "dynamic to dynamic credentials success",
@@ -1044,14 +1348,32 @@ func TestStoragePlugin_OnUpdateStorageBucket(t *testing.T) {
 				withTestS3APIFunc(
 					newTestMockS3(
 						nil,
-						testMockS3WithPutObjectError(TestAwsS3Error("AccessDenied", "not authorized to perform PutObject action")),
+						testMockS3WithPutObjectError(TestAwsS3Error("AccessDenied", "PutObject", "not authorized")),
 						testMockS3WithGetObjectOutput(&s3.GetObjectOutput{}),
 						testMockS3WithHeadObjectOutput(&s3.HeadObjectOutput{}),
+						testMockS3WithListObjectsV2OutputFunc(func(i *s3.ListObjectsV2Input) *s3.ListObjectsV2Output {
+							return &s3.ListObjectsV2Output{
+								Contents: []s3types.Object{
+									{
+										Key: i.Prefix,
+									},
+								},
+							}
+						}),
 					),
 				),
 			},
 			expectedErrContains: "aws service s3: invalid credentials error: failed to put object",
 			expectedErrCode:     codes.PermissionDenied,
+			expectedDetails: &pb.StorageBucketCredentialState{
+				State: &pb.Permissions{
+					Write: &pb.Permission{
+						State:        pb.StateType_STATE_TYPE_ERROR,
+						ErrorDetails: "not authorized",
+						CheckedAt:    timestamppb.Now(),
+					},
+				},
+			},
 		},
 		{
 			name: "success static non rotated to dynamic credentials",
@@ -1164,8 +1486,8 @@ func TestStoragePlugin_OnUpdateStorageBucket(t *testing.T) {
 					),
 				}),
 			},
-			expectedErrContains: "delete access key fail oops",
-			expectedErrCode:     codes.InvalidArgument,
+			expectedErrContains: "aws service unknown: unknown error: failed to delete access key",
+			expectedErrCode:     codes.Unknown,
 		},
 		{
 			name: "success static rotated to dynamic credentials",
@@ -1262,7 +1584,7 @@ func TestStoragePlugin_OnUpdateStorageBucket(t *testing.T) {
 				withTestS3APIFunc(
 					newTestMockS3(
 						nil,
-						testMockS3WithPutObjectError(TestAwsS3Error("AccessDenied", "not authorized to perform PutObject action")),
+						testMockS3WithPutObjectError(TestAwsS3Error("AccessDenied", "PutObject", "not authorized")),
 						testMockS3WithGetObjectOutput(&s3.GetObjectOutput{}),
 						testMockS3WithHeadObjectOutput(&s3.HeadObjectOutput{}),
 						testMockS3WithListObjectsV2OutputFunc(func(i *s3.ListObjectsV2Input) *s3.ListObjectsV2Output {
@@ -1279,6 +1601,15 @@ func TestStoragePlugin_OnUpdateStorageBucket(t *testing.T) {
 			},
 			expectedErrContains: "aws service s3: invalid credentials error: failed to put object",
 			expectedErrCode:     codes.PermissionDenied,
+			expectedDetails: &pb.StorageBucketCredentialState{
+				State: &pb.Permissions{
+					Write: &pb.Permission{
+						State:        pb.StateType_STATE_TYPE_ERROR,
+						ErrorDetails: "not authorized",
+						CheckedAt:    timestamppb.Now(),
+					},
+				},
+			},
 		},
 		{
 			name: "success dynamic to static non-rotated credentials",
@@ -1407,8 +1738,8 @@ func TestStoragePlugin_OnUpdateStorageBucket(t *testing.T) {
 					),
 				}),
 			},
-			expectedErrContains: "create access key fail oops",
-			expectedErrCode:     codes.InvalidArgument,
+			expectedErrContains: "aws service unknown: unknown error: error rotating credentials",
+			expectedErrCode:     codes.Unknown,
 		},
 		{
 			name: "success dynamic to static rotated credentials",
@@ -1500,16 +1831,34 @@ func TestStoragePlugin_OnUpdateStorageBucket(t *testing.T) {
 	for _, tc := range cases {
 		tc := tc
 		t.Run(tc.name, func(t *testing.T) {
-			require := require.New(t)
+			require, assert := require.New(t), assert.New(t)
 			p := &StoragePlugin{
 				testCredStateOpts:    tc.credOpts,
 				testStorageStateOpts: tc.storageOpts,
 			}
 			resp, err := p.OnUpdateStorageBucket(context.Background(), tc.req)
 			if tc.expectedErrContains != "" {
-				require.NotNil(err)
-				require.Contains(err.Error(), tc.expectedErrContains)
-				require.Equal(tc.expectedErrCode.String(), status.Code(err).String())
+				require.Error(err)
+				assert.Contains(err.Error(), tc.expectedErrContains)
+				assert.Equal(tc.expectedErrCode, status.Code(err))
+
+				st, ok := status.FromError(err)
+				require.True(ok)
+				if tc.expectedDetails != nil {
+					var state *pb.StorageBucketCredentialState
+					for _, detail := range st.Details() {
+						if errDetail, ok := detail.(*pb.StorageBucketCredentialState); ok {
+							state = errDetail
+							break
+						}
+					}
+					require.NotNil(state)
+					internal.CheckSimilarPermission(assert, tc.expectedDetails.State.Read, state.State.Read, true)
+					internal.CheckSimilarPermission(assert, tc.expectedDetails.State.Write, state.State.Write, true)
+					internal.CheckSimilarPermission(assert, tc.expectedDetails.State.Delete, state.State.Delete, true)
+				} else {
+					assert.Len(st.Details(), 0)
+				}
 				return
 			}
 			require.NoError(err)
@@ -1541,6 +1890,7 @@ func TestStoragePlugin_OnDeleteStorageBucket(t *testing.T) {
 		storageOpts         []awsStoragePersistedStateOption
 		expectedErrContains string
 		expectedErrCode     codes.Code
+		expectedDetails     *pb.StorageBucketCredentialState
 	}{
 		{
 			name:                "nil bucket",
@@ -1623,8 +1973,8 @@ func TestStoragePlugin_OnDeleteStorageBucket(t *testing.T) {
 					),
 				}),
 			},
-			expectedErrContains: fmt.Sprintf("error removing rotated credentials during storage bucket deletion: error deleting old access key: %s", testDeleteAccessKeyErr),
-			expectedErrCode:     codes.Aborted,
+			expectedErrContains: "aws service unknown: unknown error: failed to delete access key",
+			expectedErrCode:     codes.Unknown,
 		},
 		{
 			name: "success",
@@ -1678,16 +2028,34 @@ func TestStoragePlugin_OnDeleteStorageBucket(t *testing.T) {
 	for _, tc := range cases {
 		tc := tc
 		t.Run(tc.name, func(t *testing.T) {
-			require := require.New(t)
+			require, assert := require.New(t), assert.New(t)
 			p := &StoragePlugin{
 				testCredStateOpts:    tc.credOpts,
 				testStorageStateOpts: tc.storageOpts,
 			}
 			resp, err := p.OnDeleteStorageBucket(context.Background(), tc.req)
 			if tc.expectedErrContains != "" {
-				require.NotNil(err)
-				require.Contains(err.Error(), tc.expectedErrContains)
-				require.Equal(status.Code(err).String(), tc.expectedErrCode.String())
+				require.Error(err)
+				assert.Contains(err.Error(), tc.expectedErrContains)
+				assert.Equal(tc.expectedErrCode, status.Code(err))
+
+				st, ok := status.FromError(err)
+				require.True(ok)
+				if tc.expectedDetails != nil {
+					var state *pb.StorageBucketCredentialState
+					for _, detail := range st.Details() {
+						if errDetail, ok := detail.(*pb.StorageBucketCredentialState); ok {
+							state = errDetail
+							break
+						}
+					}
+					require.NotNil(state)
+					internal.CheckSimilarPermission(assert, tc.expectedDetails.State.Read, state.State.Read, true)
+					internal.CheckSimilarPermission(assert, tc.expectedDetails.State.Write, state.State.Write, true)
+					internal.CheckSimilarPermission(assert, tc.expectedDetails.State.Delete, state.State.Delete, true)
+				} else {
+					assert.Len(st.Details(), 0)
+				}
 				return
 			}
 			require.NoError(err)
@@ -1720,6 +2088,7 @@ func TestStoragePlugin_HeadObject(t *testing.T) {
 		storageOpts         []awsStoragePersistedStateOption
 		expectedErrContains string
 		expectedErrCode     codes.Code
+		expectedDetails     *pb.StorageBucketCredentialState
 	}{
 		{
 			name:                "empty object key",
@@ -1799,12 +2168,21 @@ func TestStoragePlugin_HeadObject(t *testing.T) {
 				withTestS3APIFunc(
 					newTestMockS3(
 						nil,
-						testMockS3WithHeadObjectError(TestAwsS3Error("AccessDenied", "not authorized to perform HeadObject action")),
+						testMockS3WithHeadObjectError(TestAwsS3Error("AccessDenied", "HeadObject", "not authorized")),
 					),
 				),
 			},
 			expectedErrContains: "aws service s3: invalid credentials error: failed to head object",
 			expectedErrCode:     codes.PermissionDenied,
+			expectedDetails: &pb.StorageBucketCredentialState{
+				State: &pb.Permissions{
+					Read: &pb.Permission{
+						State:        pb.StateType_STATE_TYPE_ERROR,
+						ErrorDetails: "not authorized",
+						CheckedAt:    timestamppb.Now(),
+					},
+				},
+			},
 		},
 		{
 			name:     "headObject throttle error",
@@ -1814,12 +2192,20 @@ func TestStoragePlugin_HeadObject(t *testing.T) {
 				withTestS3APIFunc(
 					newTestMockS3(
 						nil,
-						testMockS3WithHeadObjectError(TestAwsS3Error("ThrottlingException", "throttling exception")),
+						testMockS3WithHeadObjectError(TestAwsS3Error("ThrottlingException", "HeadObject", "throttling exception")),
 					),
 				),
 			},
 			expectedErrContains: "aws service s3: throttling error: failed to head object",
 			expectedErrCode:     codes.Unavailable,
+			expectedDetails: &pb.StorageBucketCredentialState{
+				State: &pb.Permissions{
+					Read: &pb.Permission{
+						State:     pb.StateType_STATE_TYPE_UNKNOWN,
+						CheckedAt: timestamppb.Now(),
+					},
+				},
+			},
 		},
 		{
 			name:     "headObject not found error",
@@ -1829,14 +2215,20 @@ func TestStoragePlugin_HeadObject(t *testing.T) {
 				withTestS3APIFunc(
 					newTestMockS3(
 						nil,
-						testMockS3WithHeadObjectError(&s3types.NotFound{
-							Message: aws.String("resource not found"),
-						}),
+						testMockS3WithHeadObjectError(TestAwsS3Error("NoSuchKey", "HeadObject", "resource not found")),
 					),
 				),
 			},
 			expectedErrContains: "aws s3 error: failed to head object",
 			expectedErrCode:     codes.NotFound,
+			expectedDetails: &pb.StorageBucketCredentialState{
+				State: &pb.Permissions{
+					Read: &pb.Permission{
+						State:     pb.StateType_STATE_TYPE_UNKNOWN,
+						CheckedAt: timestamppb.Now(),
+					},
+				},
+			},
 		},
 		{
 			name:          "success",
@@ -1892,7 +2284,7 @@ func TestStoragePlugin_HeadObject(t *testing.T) {
 	for _, tc := range cases {
 		tc := tc
 		t.Run(tc.name, func(t *testing.T) {
-			require := require.New(t)
+			require, assert := require.New(t), assert.New(t)
 			p := &StoragePlugin{
 				testCredStateOpts:    tc.credOpts,
 				testStorageStateOpts: tc.storageOpts,
@@ -1900,9 +2292,26 @@ func TestStoragePlugin_HeadObject(t *testing.T) {
 			resp, err := p.HeadObject(context.Background(), tc.req)
 			if tc.expectedErrContains != "" {
 				require.Error(err)
-				require.Nil(resp)
-				require.Contains(err.Error(), tc.expectedErrContains)
-				require.Equal(status.Code(err).String(), tc.expectedErrCode.String())
+				assert.Contains(err.Error(), tc.expectedErrContains)
+				assert.Equal(tc.expectedErrCode, status.Code(err))
+
+				st, ok := status.FromError(err)
+				require.True(ok)
+				if tc.expectedDetails != nil {
+					var state *pb.StorageBucketCredentialState
+					for _, detail := range st.Details() {
+						if errDetail, ok := detail.(*pb.StorageBucketCredentialState); ok {
+							state = errDetail
+							break
+						}
+					}
+					require.NotNil(state)
+					internal.CheckSimilarPermission(assert, tc.expectedDetails.State.Read, state.State.Read, false)
+					internal.CheckSimilarPermission(assert, tc.expectedDetails.State.Write, state.State.Write, false)
+					internal.CheckSimilarPermission(assert, tc.expectedDetails.State.Delete, state.State.Delete, false)
+				} else {
+					assert.Len(st.Details(), 0)
+				}
 				return
 			}
 			require.NoError(err)
@@ -1934,6 +2343,7 @@ func TestStoragePlugin_ValidatePermissions(t *testing.T) {
 		storageOpts         []awsStoragePersistedStateOption
 		expectedErrContains string
 		expectedErrCode     codes.Code
+		expectedDetails     *pb.StorageBucketCredentialState
 	}{
 		{
 			name:                "nil bucket",
@@ -2001,11 +2411,31 @@ func TestStoragePlugin_ValidatePermissions(t *testing.T) {
 			storageOpts: []awsStoragePersistedStateOption{
 				withTestS3APIFunc(newTestMockS3(
 					nil,
-					testMockS3WithPutObjectError(TestAwsS3Error("AccessDenied", "not authorized to perform PutObject action")),
+					testMockS3WithPutObjectError(TestAwsS3Error("AccessDenied", "PutObject", "not authorized")),
+					testMockS3WithGetObjectOutput(&s3.GetObjectOutput{}),
+					testMockS3WithHeadObjectOutput(&s3.HeadObjectOutput{}),
+					testMockS3WithListObjectsV2OutputFunc(func(i *s3.ListObjectsV2Input) *s3.ListObjectsV2Output {
+						return &s3.ListObjectsV2Output{
+							Contents: []s3types.Object{
+								{
+									Key: i.Prefix,
+								},
+							},
+						}
+					}),
 				)),
 			},
 			expectedErrContains: "aws service s3: invalid credentials error: failed to put object",
 			expectedErrCode:     codes.PermissionDenied,
+			expectedDetails: &pb.StorageBucketCredentialState{
+				State: &pb.Permissions{
+					Write: &pb.Permission{
+						State:        pb.StateType_STATE_TYPE_ERROR,
+						ErrorDetails: "not authorized",
+						CheckedAt:    timestamppb.Now(),
+					},
+				},
+			},
 		},
 		{
 			name:     "dryRunValidation failed putObject throttle",
@@ -2014,11 +2444,30 @@ func TestStoragePlugin_ValidatePermissions(t *testing.T) {
 			storageOpts: []awsStoragePersistedStateOption{
 				withTestS3APIFunc(newTestMockS3(
 					nil,
-					testMockS3WithPutObjectError(TestAwsS3Error("ThrottlingException", "throttling exception")),
+					testMockS3WithPutObjectError(TestAwsS3Error("ThrottlingException", "PutObject", "throttling exception")),
+					testMockS3WithGetObjectOutput(&s3.GetObjectOutput{}),
+					testMockS3WithHeadObjectOutput(&s3.HeadObjectOutput{}),
+					testMockS3WithListObjectsV2OutputFunc(func(i *s3.ListObjectsV2Input) *s3.ListObjectsV2Output {
+						return &s3.ListObjectsV2Output{
+							Contents: []s3types.Object{
+								{
+									Key: i.Prefix,
+								},
+							},
+						}
+					}),
 				)),
 			},
 			expectedErrContains: "aws service s3: throttling error: failed to put object",
 			expectedErrCode:     codes.Unavailable,
+			expectedDetails: &pb.StorageBucketCredentialState{
+				State: &pb.Permissions{
+					Write: &pb.Permission{
+						State:     pb.StateType_STATE_TYPE_UNKNOWN,
+						CheckedAt: timestamppb.Now(),
+					},
+				},
+			},
 		},
 		{
 			name:     "dryRunValidation failed getObject",
@@ -2029,12 +2478,31 @@ func TestStoragePlugin_ValidatePermissions(t *testing.T) {
 					newTestMockS3(
 						nil,
 						testMockS3WithPutObjectOutput(&s3.PutObjectOutput{}),
-						testMockS3WithGetObjectError(TestAwsS3Error("AccessDenied", "not authorized to perform GetObject action")),
+						testMockS3WithGetObjectError(TestAwsS3Error("AccessDenied", "GetObject", "not authorized")),
+						testMockS3WithHeadObjectOutput(&s3.HeadObjectOutput{}),
+						testMockS3WithListObjectsV2OutputFunc(func(i *s3.ListObjectsV2Input) *s3.ListObjectsV2Output {
+							return &s3.ListObjectsV2Output{
+								Contents: []s3types.Object{
+									{
+										Key: i.Prefix,
+									},
+								},
+							}
+						}),
 					),
 				),
 			},
 			expectedErrContains: "aws service s3: invalid credentials error: failed to get object",
 			expectedErrCode:     codes.PermissionDenied,
+			expectedDetails: &pb.StorageBucketCredentialState{
+				State: &pb.Permissions{
+					Read: &pb.Permission{
+						State:        pb.StateType_STATE_TYPE_ERROR,
+						ErrorDetails: "not authorized",
+						CheckedAt:    timestamppb.Now(),
+					},
+				},
+			},
 		},
 		{
 			name:     "dryRunValidation failed getObject throttle",
@@ -2045,12 +2513,30 @@ func TestStoragePlugin_ValidatePermissions(t *testing.T) {
 					newTestMockS3(
 						nil,
 						testMockS3WithPutObjectOutput(&s3.PutObjectOutput{}),
-						testMockS3WithGetObjectError(TestAwsS3Error("ThrottlingException", "throttling exception")),
+						testMockS3WithGetObjectError(TestAwsS3Error("ThrottlingException", "GetObject", "throttling exception")),
+						testMockS3WithHeadObjectOutput(&s3.HeadObjectOutput{}),
+						testMockS3WithListObjectsV2OutputFunc(func(i *s3.ListObjectsV2Input) *s3.ListObjectsV2Output {
+							return &s3.ListObjectsV2Output{
+								Contents: []s3types.Object{
+									{
+										Key: i.Prefix,
+									},
+								},
+							}
+						}),
 					),
 				),
 			},
 			expectedErrContains: "aws service s3: throttling error: failed to get object",
 			expectedErrCode:     codes.Unavailable,
+			expectedDetails: &pb.StorageBucketCredentialState{
+				State: &pb.Permissions{
+					Read: &pb.Permission{
+						State:     pb.StateType_STATE_TYPE_UNKNOWN,
+						CheckedAt: timestamppb.Now(),
+					},
+				},
+			},
 		},
 		{
 			name:     "dryRunValidation failed headObject",
@@ -2062,12 +2548,30 @@ func TestStoragePlugin_ValidatePermissions(t *testing.T) {
 						nil,
 						testMockS3WithPutObjectOutput(&s3.PutObjectOutput{}),
 						testMockS3WithGetObjectOutput(&s3.GetObjectOutput{}),
-						testMockS3WithHeadObjectError(TestAwsS3Error("AccessDenied", "not authorized to perform HeadObject action")),
+						testMockS3WithHeadObjectError(TestAwsS3Error("AccessDenied", "HeadObject", "not authorized")),
+						testMockS3WithListObjectsV2OutputFunc(func(i *s3.ListObjectsV2Input) *s3.ListObjectsV2Output {
+							return &s3.ListObjectsV2Output{
+								Contents: []s3types.Object{
+									{
+										Key: i.Prefix,
+									},
+								},
+							}
+						}),
 					),
 				),
 			},
 			expectedErrContains: "aws service s3: invalid credentials error: failed to head object",
 			expectedErrCode:     codes.PermissionDenied,
+			expectedDetails: &pb.StorageBucketCredentialState{
+				State: &pb.Permissions{
+					Read: &pb.Permission{
+						State:        pb.StateType_STATE_TYPE_ERROR,
+						ErrorDetails: "not authorized",
+						CheckedAt:    timestamppb.Now(),
+					},
+				},
+			},
 		},
 		{
 			name:     "dryRunValidation failed headObject throttle",
@@ -2079,12 +2583,29 @@ func TestStoragePlugin_ValidatePermissions(t *testing.T) {
 						nil,
 						testMockS3WithPutObjectOutput(&s3.PutObjectOutput{}),
 						testMockS3WithGetObjectOutput(&s3.GetObjectOutput{}),
-						testMockS3WithHeadObjectError(TestAwsS3Error("ThrottlingException", "throttling exception")),
+						testMockS3WithHeadObjectError(TestAwsS3Error("ThrottlingException", "HeadObject", "throttling exception")),
+						testMockS3WithListObjectsV2OutputFunc(func(i *s3.ListObjectsV2Input) *s3.ListObjectsV2Output {
+							return &s3.ListObjectsV2Output{
+								Contents: []s3types.Object{
+									{
+										Key: i.Prefix,
+									},
+								},
+							}
+						}),
 					),
 				),
 			},
 			expectedErrContains: "aws service s3: throttling error: failed to head object",
 			expectedErrCode:     codes.Unavailable,
+			expectedDetails: &pb.StorageBucketCredentialState{
+				State: &pb.Permissions{
+					Read: &pb.Permission{
+						State:     pb.StateType_STATE_TYPE_UNKNOWN,
+						CheckedAt: timestamppb.Now(),
+					},
+				},
+			},
 		},
 		{
 			name:     "success",
@@ -2150,7 +2671,7 @@ func TestStoragePlugin_ValidatePermissions(t *testing.T) {
 	for _, tc := range cases {
 		tc := tc
 		t.Run(tc.name, func(t *testing.T) {
-			require := require.New(t)
+			require, assert := require.New(t), assert.New(t)
 			p := &StoragePlugin{
 				testCredStateOpts:    tc.credOpts,
 				testStorageStateOpts: tc.storageOpts,
@@ -2158,9 +2679,26 @@ func TestStoragePlugin_ValidatePermissions(t *testing.T) {
 			resp, err := p.ValidatePermissions(context.Background(), tc.req)
 			if tc.expectedErrContains != "" {
 				require.Error(err)
-				require.Nil(resp)
-				require.Contains(err.Error(), tc.expectedErrContains)
-				require.Equal(status.Code(err).String(), tc.expectedErrCode.String())
+				assert.Contains(err.Error(), tc.expectedErrContains)
+				assert.Equal(tc.expectedErrCode, status.Code(err))
+
+				st, ok := status.FromError(err)
+				require.True(ok)
+				if tc.expectedDetails != nil {
+					var state *pb.StorageBucketCredentialState
+					for _, detail := range st.Details() {
+						if errDetail, ok := detail.(*pb.StorageBucketCredentialState); ok {
+							state = errDetail
+							break
+						}
+					}
+					require.NotNil(state)
+					internal.CheckSimilarPermission(assert, tc.expectedDetails.State.Read, state.State.Read, true)
+					internal.CheckSimilarPermission(assert, tc.expectedDetails.State.Write, state.State.Write, true)
+					internal.CheckSimilarPermission(assert, tc.expectedDetails.State.Delete, state.State.Delete, true)
+				} else {
+					assert.Len(st.Details(), 0)
+				}
 				return
 			}
 			require.NoError(err)
@@ -2192,6 +2730,7 @@ func TestStoragePlugin_GetObject(t *testing.T) {
 		storageOpts         []awsStoragePersistedStateOption
 		expectedErrContains string
 		expectedErrCode     codes.Code
+		expectedDetails     *pb.StorageBucketCredentialState
 	}{
 		{
 			name:                "empty object key",
@@ -2271,12 +2810,21 @@ func TestStoragePlugin_GetObject(t *testing.T) {
 				withTestS3APIFunc(
 					newTestMockS3(
 						nil,
-						testMockS3WithGetObjectError(TestAwsS3Error("AccessDenied", "not authorized to perform HeadObject action")),
+						testMockS3WithGetObjectError(TestAwsS3Error("AccessDenied", "GetObject", "not authorized")),
 					),
 				),
 			},
 			expectedErrContains: "aws service s3: invalid credentials error: failed to get object",
 			expectedErrCode:     codes.PermissionDenied,
+			expectedDetails: &pb.StorageBucketCredentialState{
+				State: &pb.Permissions{
+					Read: &pb.Permission{
+						State:        pb.StateType_STATE_TYPE_ERROR,
+						ErrorDetails: "not authorized",
+						CheckedAt:    timestamppb.Now(),
+					},
+				},
+			},
 		},
 		{
 			name:     "getObject no such key",
@@ -2286,14 +2834,20 @@ func TestStoragePlugin_GetObject(t *testing.T) {
 				withTestS3APIFunc(
 					newTestMockS3(
 						nil,
-						testMockS3WithGetObjectError(&s3types.NoSuchKey{
-							Message: aws.String("resource does not exist"),
-						}),
+						testMockS3WithGetObjectError(TestAwsS3Error("NoSuchKey", "GetObject", "resource not found")),
 					),
 				),
 			},
 			expectedErrContains: "aws s3 error: failed to get object",
 			expectedErrCode:     codes.NotFound,
+			expectedDetails: &pb.StorageBucketCredentialState{
+				State: &pb.Permissions{
+					Read: &pb.Permission{
+						State:     pb.StateType_STATE_TYPE_UNKNOWN,
+						CheckedAt: timestamppb.Now(),
+					},
+				},
+			},
 		},
 		{
 			name:     "getObject invalid state",
@@ -2303,14 +2857,20 @@ func TestStoragePlugin_GetObject(t *testing.T) {
 				withTestS3APIFunc(
 					newTestMockS3(
 						nil,
-						testMockS3WithGetObjectError(&s3types.InvalidObjectState{
-							Message: aws.String("resource is in cold storage"),
-						}),
+						testMockS3WithGetObjectError(TestAwsS3Error("InvalidObjectState", "GetObject", "resource is in cold storage")),
 					),
 				),
 			},
 			expectedErrContains: "aws s3 error: failed to get object",
 			expectedErrCode:     codes.NotFound,
+			expectedDetails: &pb.StorageBucketCredentialState{
+				State: &pb.Permissions{
+					Read: &pb.Permission{
+						State:     pb.StateType_STATE_TYPE_UNKNOWN,
+						CheckedAt: timestamppb.Now(),
+					},
+				},
+			},
 		},
 		{
 			name:     "getObject no such bucket",
@@ -2320,14 +2880,21 @@ func TestStoragePlugin_GetObject(t *testing.T) {
 				withTestS3APIFunc(
 					newTestMockS3(
 						nil,
-						testMockS3WithGetObjectError(&s3types.NoSuchBucket{
-							Message: aws.String("bucket does not exist"),
-						}),
+						testMockS3WithGetObjectError(TestAwsS3Error("NoSuchBucket", "GetObject", "bucket does not exist")),
 					),
 				),
 			},
 			expectedErrContains: "aws s3 error: failed to get object",
 			expectedErrCode:     codes.NotFound,
+			expectedDetails: &pb.StorageBucketCredentialState{
+				State: &pb.Permissions{
+					Read: &pb.Permission{
+						State:        pb.StateType_STATE_TYPE_ERROR,
+						ErrorDetails: "bucket does not exist",
+						CheckedAt:    timestamppb.Now(),
+					},
+				},
+			},
 		},
 		{
 			name:     "getObject throttle error",
@@ -2337,12 +2904,20 @@ func TestStoragePlugin_GetObject(t *testing.T) {
 				withTestS3APIFunc(
 					newTestMockS3(
 						nil,
-						testMockS3WithGetObjectError(TestAwsS3Error("ThrottlingException", "throttling exception")),
+						testMockS3WithGetObjectError(TestAwsS3Error("ThrottlingException", "GetObject", "throttling exception")),
 					),
 				),
 			},
 			expectedErrContains: "aws service s3: throttling error: failed to get object",
 			expectedErrCode:     codes.Unavailable,
+			expectedDetails: &pb.StorageBucketCredentialState{
+				State: &pb.Permissions{
+					Read: &pb.Permission{
+						State:     pb.StateType_STATE_TYPE_UNKNOWN,
+						CheckedAt: timestamppb.Now(),
+					},
+				},
+			},
 		},
 		{
 			name: "with chunk size",
@@ -2358,7 +2933,7 @@ func TestStoragePlugin_GetObject(t *testing.T) {
 					newTestMockS3(
 						nil,
 						testMockS3WithGetObjectOutput(&s3.GetObjectOutput{
-							Body: ioutil.NopCloser(bytes.NewReader([]byte("test"))),
+							Body: io.NopCloser(bytes.NewReader([]byte("test"))),
 						}),
 					),
 				),
@@ -2374,7 +2949,7 @@ func TestStoragePlugin_GetObject(t *testing.T) {
 					newTestMockS3(
 						nil,
 						testMockS3WithGetObjectOutput(&s3.GetObjectOutput{
-							Body: ioutil.NopCloser(bytes.NewReader([]byte("test"))),
+							Body: io.NopCloser(bytes.NewReader([]byte("test"))),
 						}),
 					),
 				),
@@ -2402,7 +2977,7 @@ func TestStoragePlugin_GetObject(t *testing.T) {
 					newTestMockS3(
 						nil,
 						testMockS3WithGetObjectOutput(&s3.GetObjectOutput{
-							Body: ioutil.NopCloser(bytes.NewReader([]byte("test"))),
+							Body: io.NopCloser(bytes.NewReader([]byte("test"))),
 						}),
 					),
 				),
@@ -2413,7 +2988,7 @@ func TestStoragePlugin_GetObject(t *testing.T) {
 	for _, tc := range cases {
 		tc := tc
 		t.Run(tc.name, func(t *testing.T) {
-			require := require.New(t)
+			require, assert := require.New(t), assert.New(t)
 			p := &StoragePlugin{
 				testCredStateOpts:    tc.credOpts,
 				testStorageStateOpts: tc.storageOpts,
@@ -2421,8 +2996,27 @@ func TestStoragePlugin_GetObject(t *testing.T) {
 			stream := newGetObjectStreamMock()
 			err := p.GetObject(tc.req, stream)
 			if tc.expectedErrContains != "" {
-				require.Contains(err.Error(), tc.expectedErrContains)
-				require.Equal(status.Code(err).String(), tc.expectedErrCode.String())
+				require.Error(err)
+				assert.Contains(err.Error(), tc.expectedErrContains)
+				assert.Equal(tc.expectedErrCode, status.Code(err))
+
+				st, ok := status.FromError(err)
+				require.True(ok)
+				if tc.expectedDetails != nil {
+					var state *pb.StorageBucketCredentialState
+					for _, detail := range st.Details() {
+						if errDetail, ok := detail.(*pb.StorageBucketCredentialState); ok {
+							state = errDetail
+							break
+						}
+					}
+					require.NotNil(state)
+					internal.CheckSimilarPermission(assert, tc.expectedDetails.State.Read, state.State.Read, false)
+					internal.CheckSimilarPermission(assert, tc.expectedDetails.State.Write, state.State.Write, false)
+					internal.CheckSimilarPermission(assert, tc.expectedDetails.State.Delete, state.State.Delete, false)
+				} else {
+					assert.Len(st.Details(), 0)
+				}
 				return
 			}
 			require.NoError(err)
@@ -2476,6 +3070,7 @@ func TestStoragePlugin_PutObject(t *testing.T) {
 		expectedObject      []byte
 		expectedErrContains string
 		expectedErrCode     codes.Code
+		expectedDetails     *pb.StorageBucketCredentialState
 	}{
 		{
 			name:                "missing request",
@@ -2565,7 +3160,7 @@ func TestStoragePlugin_PutObject(t *testing.T) {
 				Path: path.Join(td, "file-does-not-exist"),
 			},
 			expectedErrContains: "failed to open file",
-			expectedErrCode:     codes.Internal,
+			expectedErrCode:     codes.InvalidArgument,
 		},
 		{
 			name: "path is a directory",
@@ -2664,12 +3259,21 @@ func TestStoragePlugin_PutObject(t *testing.T) {
 				withTestS3APIFunc(
 					newTestMockS3(
 						nil,
-						testMockS3WithPutObjectError(TestAwsS3Error("AccessDenied", "not authorized to perform HeadObject action")),
+						testMockS3WithPutObjectError(TestAwsS3Error("AccessDenied", "PutObject", "not authorized")),
 					),
 				),
 			},
 			expectedErrContains: "aws service s3: invalid credentials error: failed to put object",
 			expectedErrCode:     codes.PermissionDenied,
+			expectedDetails: &pb.StorageBucketCredentialState{
+				State: &pb.Permissions{
+					Write: &pb.Permission{
+						State:        pb.StateType_STATE_TYPE_ERROR,
+						ErrorDetails: "not authorized",
+						CheckedAt:    timestamppb.Now(),
+					},
+				},
+			},
 		},
 		{
 			name:     "putObject no such bucket",
@@ -2679,14 +3283,21 @@ func TestStoragePlugin_PutObject(t *testing.T) {
 				withTestS3APIFunc(
 					newTestMockS3(
 						nil,
-						testMockS3WithPutObjectError(&s3types.NoSuchBucket{
-							Message: aws.String("bucket does not exist"),
-						}),
+						testMockS3WithPutObjectError(TestAwsS3Error("NoSuchBucket", "PutObject", "bucket does not exist")),
 					),
 				),
 			},
 			expectedErrContains: "aws s3 error: failed to put object",
 			expectedErrCode:     codes.NotFound,
+			expectedDetails: &pb.StorageBucketCredentialState{
+				State: &pb.Permissions{
+					Write: &pb.Permission{
+						State:        pb.StateType_STATE_TYPE_ERROR,
+						ErrorDetails: "bucket does not exist",
+						CheckedAt:    timestamppb.Now(),
+					},
+				},
+			},
 		},
 		{
 			name:     "throttle error",
@@ -2696,12 +3307,20 @@ func TestStoragePlugin_PutObject(t *testing.T) {
 				withTestS3APIFunc(
 					newTestMockS3(
 						nil,
-						testMockS3WithPutObjectError(TestAwsS3Error("ThrottlingException", "throttling exception")),
+						testMockS3WithPutObjectError(TestAwsS3Error("ThrottlingException", "PutObject", "throttling exception")),
 					),
 				),
 			},
 			expectedErrContains: "aws service s3: throttling error: failed to put object",
 			expectedErrCode:     codes.Unavailable,
+			expectedDetails: &pb.StorageBucketCredentialState{
+				State: &pb.Permissions{
+					Write: &pb.Permission{
+						State:     pb.StateType_STATE_TYPE_UNKNOWN,
+						CheckedAt: timestamppb.Now(),
+					},
+				},
+			},
 		},
 		{
 			name:           "missing checksum from aws",
@@ -2720,6 +3339,7 @@ func TestStoragePlugin_PutObject(t *testing.T) {
 			},
 			expectedErrContains: "missing checksum response from aws",
 			expectedErrCode:     codes.Internal,
+			expectedDetails:     nil,
 		},
 		{
 			name:           "mismatched checksum",
@@ -2744,7 +3364,8 @@ func TestStoragePlugin_PutObject(t *testing.T) {
 				}
 			}(),
 			expectedErrContains: "mismatched checksum",
-			expectedErrCode:     codes.Internal,
+			expectedErrCode:     codes.Aborted,
+			expectedDetails:     nil,
 		},
 		{
 			name:           "valid file",
@@ -2812,7 +3433,7 @@ func TestStoragePlugin_PutObject(t *testing.T) {
 	for _, tc := range cases {
 		tc := tc
 		t.Run(tc.name, func(t *testing.T) {
-			require := require.New(t)
+			require, assert := require.New(t), assert.New(t)
 			p := &StoragePlugin{
 				testCredStateOpts:    tc.credOpts,
 				testStorageStateOpts: tc.storageOpts,
@@ -2825,8 +3446,26 @@ func TestStoragePlugin_PutObject(t *testing.T) {
 			resp, err := p.PutObject(context.Background(), tc.request)
 			if tc.expectedErrContains != "" {
 				require.Error(err)
-				require.Contains(err.Error(), tc.expectedErrContains)
-				require.Equal(tc.expectedErrCode.String(), status.Code(err).String())
+				assert.Contains(err.Error(), tc.expectedErrContains)
+				assert.Equal(tc.expectedErrCode, status.Code(err))
+
+				st, ok := status.FromError(err)
+				require.True(ok)
+				if tc.expectedDetails != nil {
+					var state *pb.StorageBucketCredentialState
+					for _, detail := range st.Details() {
+						if errDetail, ok := detail.(*pb.StorageBucketCredentialState); ok {
+							state = errDetail
+							break
+						}
+					}
+					require.NotNil(state)
+					internal.CheckSimilarPermission(assert, tc.expectedDetails.State.Read, state.State.Read, false)
+					internal.CheckSimilarPermission(assert, tc.expectedDetails.State.Write, state.State.Write, false)
+					internal.CheckSimilarPermission(assert, tc.expectedDetails.State.Delete, state.State.Delete, false)
+				} else {
+					assert.Len(st.Details(), 0)
+				}
 				return
 			}
 			require.NoError(err)
@@ -2879,6 +3518,7 @@ func TestStoragePlugin_DeleteObjects(t *testing.T) {
 		storageOpts         []awsStoragePersistedStateOption
 		expectedErrContains string
 		expectedErrCode     codes.Code
+		expectedDetails     *pb.StorageBucketCredentialState
 		expected            uint32
 	}{
 		{
@@ -2959,12 +3599,21 @@ func TestStoragePlugin_DeleteObjects(t *testing.T) {
 				withTestS3APIFunc(
 					newTestMockS3(
 						nil,
-						testMockS3WithDeleteObjectError(TestAwsS3Error("AccessDenied", "not authorized to perform HeadObject action")),
+						testMockS3WithDeleteObjectError(TestAwsS3Error("AccessDenied", "DeleteObject", "not authorized")),
 					),
 				),
 			},
 			expectedErrContains: "aws service s3: invalid credentials error: failed to delete object",
 			expectedErrCode:     codes.PermissionDenied,
+			expectedDetails: &pb.StorageBucketCredentialState{
+				State: &pb.Permissions{
+					Delete: &pb.Permission{
+						State:        pb.StateType_STATE_TYPE_ERROR,
+						ErrorDetails: "not authorized",
+						CheckedAt:    timestamppb.Now(),
+					},
+				},
+			},
 		},
 		{
 			name:     "ListObjectV2 error",
@@ -2974,12 +3623,21 @@ func TestStoragePlugin_DeleteObjects(t *testing.T) {
 				withTestS3APIFunc(
 					newTestMockS3(
 						nil,
-						testMockS3WithListObjectsV2Error(TestAwsS3Error("AccessDenied", "not authorized to perform HeadObject action")),
+						testMockS3WithListObjectsV2Error(TestAwsS3Error("AccessDenied", "ListObjectsV2", "not authorized")),
 					),
 				),
 			},
 			expectedErrContains: "aws service s3: invalid credentials error: failed to list objects",
 			expectedErrCode:     codes.PermissionDenied,
+			expectedDetails: &pb.StorageBucketCredentialState{
+				State: &pb.Permissions{
+					Delete: &pb.Permission{
+						State:        pb.StateType_STATE_TYPE_ERROR,
+						ErrorDetails: "not authorized",
+						CheckedAt:    timestamppb.Now(),
+					},
+				},
+			},
 		},
 		{
 			name:     "DeleteObjects error",
@@ -2997,12 +3655,21 @@ func TestStoragePlugin_DeleteObjects(t *testing.T) {
 								},
 							},
 						}),
-						testMockS3WithDeleteObjectsError(TestAwsS3Error("AccessDenied", "not authorized to perform HeadObject action")),
+						testMockS3WithDeleteObjectsError(TestAwsS3Error("AccessDenied", "DeleteObjects", "not authorized")),
 					),
 				),
 			},
 			expectedErrContains: "aws service s3: invalid credentials error: failed to delete objects",
 			expectedErrCode:     codes.PermissionDenied,
+			expectedDetails: &pb.StorageBucketCredentialState{
+				State: &pb.Permissions{
+					Delete: &pb.Permission{
+						State:        pb.StateType_STATE_TYPE_ERROR,
+						ErrorDetails: "not authorized",
+						CheckedAt:    timestamppb.Now(),
+					},
+				},
+			},
 		},
 		{
 			name:     "DeleteObject throttle error",
@@ -3012,12 +3679,20 @@ func TestStoragePlugin_DeleteObjects(t *testing.T) {
 				withTestS3APIFunc(
 					newTestMockS3(
 						nil,
-						testMockS3WithDeleteObjectError(TestAwsS3Error("ThrottlingException", "throttling exception")),
+						testMockS3WithDeleteObjectError(TestAwsS3Error("ThrottlingException", "DeleteObject", "throttling exception")),
 					),
 				),
 			},
 			expectedErrContains: "aws service s3: throttling error: failed to delete object",
 			expectedErrCode:     codes.Unavailable,
+			expectedDetails: &pb.StorageBucketCredentialState{
+				State: &pb.Permissions{
+					Delete: &pb.Permission{
+						State:     pb.StateType_STATE_TYPE_UNKNOWN,
+						CheckedAt: timestamppb.Now(),
+					},
+				},
+			},
 		},
 		{
 			name:     "ListObjectsV2 throttle error",
@@ -3027,12 +3702,20 @@ func TestStoragePlugin_DeleteObjects(t *testing.T) {
 				withTestS3APIFunc(
 					newTestMockS3(
 						nil,
-						testMockS3WithListObjectsV2Error(TestAwsS3Error("ThrottlingException", "throttling exception")),
+						testMockS3WithListObjectsV2Error(TestAwsS3Error("ThrottlingException", "ListObjectsV2", "throttling exception")),
 					),
 				),
 			},
 			expectedErrContains: "aws service s3: throttling error: failed to list objects",
 			expectedErrCode:     codes.Unavailable,
+			expectedDetails: &pb.StorageBucketCredentialState{
+				State: &pb.Permissions{
+					Delete: &pb.Permission{
+						State:     pb.StateType_STATE_TYPE_UNKNOWN,
+						CheckedAt: timestamppb.Now(),
+					},
+				},
+			},
 		},
 		{
 			name:     "DeleteObjects throttle error",
@@ -3050,12 +3733,20 @@ func TestStoragePlugin_DeleteObjects(t *testing.T) {
 								},
 							},
 						}),
-						testMockS3WithDeleteObjectsError(TestAwsS3Error("ThrottlingException", "throttling exception")),
+						testMockS3WithDeleteObjectsError(TestAwsS3Error("ThrottlingException", "DeleteObjects", "throttling exception")),
 					),
 				),
 			},
 			expectedErrContains: "aws service s3: throttling error: failed to delete objects",
 			expectedErrCode:     codes.Unavailable,
+			expectedDetails: &pb.StorageBucketCredentialState{
+				State: &pb.Permissions{
+					Delete: &pb.Permission{
+						State:     pb.StateType_STATE_TYPE_UNKNOWN,
+						CheckedAt: timestamppb.Now(),
+					},
+				},
+			},
 		},
 		{
 			name:     "success",
@@ -3082,22 +3773,16 @@ func TestStoragePlugin_DeleteObjects(t *testing.T) {
 						testMockS3WithListObjectsV2Output(&s3.ListObjectsV2Output{
 							IsTruncated: false,
 							Contents: []s3types.Object{
-								s3types.Object{
-									Key: aws.String("abc/abc1"),
-								},
-								s3types.Object{
-									Key: aws.String("abc/abc2"),
-								},
-								s3types.Object{
-									Key: aws.String("abc/abc3"),
-								},
+								{Key: aws.String("abc/abc1")},
+								{Key: aws.String("abc/abc2")},
+								{Key: aws.String("abc/abc3")},
 							},
 						}),
 						testMockS3WithDeleteObjectsOutput(&s3.DeleteObjectsOutput{
 							Deleted: []s3types.DeletedObject{
-								s3types.DeletedObject{},
-								s3types.DeletedObject{},
-								s3types.DeletedObject{},
+								{},
+								{},
+								{},
 							},
 						}),
 					),
@@ -3157,7 +3842,7 @@ func TestStoragePlugin_DeleteObjects(t *testing.T) {
 	for _, tc := range cases {
 		tc := tc
 		t.Run(tc.name, func(t *testing.T) {
-			require := require.New(t)
+			require, assert := require.New(t), assert.New(t)
 			p := &StoragePlugin{
 				testCredStateOpts:    tc.credOpts,
 				testStorageStateOpts: tc.storageOpts,
@@ -3165,8 +3850,26 @@ func TestStoragePlugin_DeleteObjects(t *testing.T) {
 			res, err := p.DeleteObjects(context.Background(), tc.req)
 			if tc.expectedErrContains != "" {
 				require.Error(err)
-				require.Contains(err.Error(), tc.expectedErrContains)
-				require.Equal(status.Code(err).String(), tc.expectedErrCode.String())
+				assert.Contains(err.Error(), tc.expectedErrContains)
+				assert.Equal(tc.expectedErrCode, status.Code(err))
+
+				st, ok := status.FromError(err)
+				require.True(ok)
+				if tc.expectedDetails != nil {
+					var state *pb.StorageBucketCredentialState
+					for _, detail := range st.Details() {
+						if errDetail, ok := detail.(*pb.StorageBucketCredentialState); ok {
+							state = errDetail
+							break
+						}
+					}
+					require.NotNil(state)
+					internal.CheckSimilarPermission(assert, tc.expectedDetails.State.Read, state.State.Read, false)
+					internal.CheckSimilarPermission(assert, tc.expectedDetails.State.Write, state.State.Write, false)
+					internal.CheckSimilarPermission(assert, tc.expectedDetails.State.Delete, state.State.Delete, false)
+				} else {
+					assert.Len(st.Details(), 0)
+				}
 				return
 			}
 			require.NoError(err)

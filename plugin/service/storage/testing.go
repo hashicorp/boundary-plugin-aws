@@ -400,9 +400,10 @@ func validSTSMock() []credential.AwsCredentialPersistedStateOption {
 }
 
 // TestAwsS3Error returns an s3 api error
-func TestAwsS3Error(code, msg string) error {
+func TestAwsS3Error(code, op, msg string) error {
 	return &smithy.OperationError{
-		ServiceID: "s3",
+		ServiceID:     "s3",
+		OperationName: op,
 		Err: &smithy.GenericAPIError{
 			Code:    code,
 			Message: msg,

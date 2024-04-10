@@ -3,130 +3,158 @@ package storage
 import (
 	"testing"
 
-	"github.com/aws/aws-sdk-go-v2/aws"
-	"github.com/aws/aws-sdk-go-v2/service/s3/types"
 	"github.com/hashicorp/boundary-plugin-aws/internal/errors"
 	pb "github.com/hashicorp/boundary/sdk/pbs/plugin"
+	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"google.golang.org/grpc/codes"
+	"google.golang.org/protobuf/types/known/timestamppb"
 )
 
 func Test_ParseS3Error(t *testing.T) {
 	t.Parallel()
 
 	cases := []struct {
-		name                string
-		err                 error
-		expectedStatusCode  codes.Code
-		expectedStatusMsg   string
-		expectedPluginError *pb.PluginError
+		name               string
+		req                any
+		err                error
+		expectedStatusCode codes.Code
+		expectedStatusMsg  string
+		expectedDetails    *pb.StorageBucketCredentialState
 	}{
 		{
 			name:               "nil-error",
 			expectedStatusCode: codes.OK,
 		},
 		{
-			name: "no-such-bucket",
-			err: &types.NoSuchBucket{
-				Message: aws.String("no such bucket"),
-			},
+			name:               "no-such-bucket",
+			req:                &pb.GetObjectRequest{},
+			err:                TestAwsS3Error("NoSuchBucket", "GetObject", "no such bucket"),
 			expectedStatusCode: codes.NotFound,
 			expectedStatusMsg:  "aws s3 error: test",
-			expectedPluginError: &pb.PluginError{
-				Code:         pb.ERROR_ERROR_STORAGE_NO_SUCH_BUCKET,
-				Message:      "no such bucket",
-				Nonretryable: true,
+			expectedDetails: &pb.StorageBucketCredentialState{
+				State: &pb.Permissions{
+					Read: &pb.Permission{
+						State:        pb.StateType_STATE_TYPE_ERROR,
+						ErrorDetails: "no such bucket",
+						CheckedAt:    timestamppb.Now(),
+					},
+				},
 			},
 		},
 		{
-			name: "no-such-key",
-			err: &types.NoSuchKey{
-				Message: aws.String("no such key"),
-			},
+			name:               "no-such-key",
+			req:                &pb.GetObjectRequest{},
+			err:                TestAwsS3Error("NoSuchKey", "GetObject", "no such key"),
 			expectedStatusCode: codes.NotFound,
 			expectedStatusMsg:  "aws s3 error: test",
-			expectedPluginError: &pb.PluginError{
-				Code:         pb.ERROR_ERROR_STORAGE_NO_SUCH_OBJECT,
-				Message:      "no such key",
-				Nonretryable: true,
+			expectedDetails: &pb.StorageBucketCredentialState{
+				State: &pb.Permissions{
+					Read: &pb.Permission{
+						State:     pb.StateType_STATE_TYPE_UNKNOWN,
+						CheckedAt: timestamppb.Now(),
+					},
+				},
 			},
 		},
 		{
-			name: "not-found",
-			err: &types.NotFound{
-				Message: aws.String("not found"),
-			},
+			name:               "not-found",
+			req:                &pb.GetObjectRequest{},
+			err:                errors.TestAwsHttpResponseError(404, "not found"),
 			expectedStatusCode: codes.NotFound,
-			expectedStatusMsg:  "aws s3 error: test",
-			expectedPluginError: &pb.PluginError{
-				Code:         pb.ERROR_ERROR_STORAGE_NO_SUCH_OBJECT,
-				Message:      "not found",
-				Nonretryable: true,
+			// cannot embed services within mock http errors, therefore unknown service
+			expectedStatusMsg: "aws service unknown: resource not found error: test",
+			expectedDetails: &pb.StorageBucketCredentialState{
+				State: &pb.Permissions{
+					Read: &pb.Permission{
+						State:     pb.StateType_STATE_TYPE_UNKNOWN,
+						CheckedAt: timestamppb.Now(),
+					},
+				},
 			},
 		},
 		{
-			name: "invalid-object-state",
-			err: &types.InvalidObjectState{
-				Message: aws.String("invalid object state"),
-			},
+			name:               "invalid-object-state",
+			req:                &pb.GetObjectRequest{},
+			err:                TestAwsS3Error("InvalidObjectState", "GetObject", "invalid object state"),
 			expectedStatusCode: codes.NotFound,
 			expectedStatusMsg:  "aws s3 error: test",
-			expectedPluginError: &pb.PluginError{
-				Code:         pb.ERROR_ERROR_STORAGE_NO_SUCH_OBJECT,
-				Message:      "invalid object state",
-				Nonretryable: true,
+			expectedDetails: &pb.StorageBucketCredentialState{
+				State: &pb.Permissions{
+					Read: &pb.Permission{
+						State:     pb.StateType_STATE_TYPE_UNKNOWN,
+						CheckedAt: timestamppb.Now(),
+					},
+				},
 			},
 		},
 		{
 			name:               "bad-digest",
-			err:                errors.TestAwsError(s3ErrorBadDigest, "checksum mismatch"),
+			req:                &pb.PutObjectRequest{},
+			err:                TestAwsS3Error(s3ErrorBadDigest, "PutObject", "checksum mismatch"),
 			expectedStatusCode: codes.Aborted,
 			expectedStatusMsg:  "aws s3 error: test",
-			expectedPluginError: &pb.PluginError{
-				Code:         pb.ERROR_ERROR_STORAGE_CHECKSUM_MISMATCH,
-				Message:      "checksum mismatch",
-				Nonretryable: false,
+			expectedDetails: &pb.StorageBucketCredentialState{
+				State: &pb.Permissions{
+					Write: &pb.Permission{
+						State:     pb.StateType_STATE_TYPE_UNKNOWN,
+						CheckedAt: timestamppb.Now(),
+					},
+				},
 			},
 		},
 		{
 			name:               "fallback-throttle-error",
-			err:                TestAwsS3Error("Throttling", "throttling exception"),
+			req:                &pb.GetObjectRequest{},
+			err:                TestAwsS3Error("Throttling", "action", "throttling exception"),
 			expectedStatusCode: codes.Unavailable,
 			expectedStatusMsg:  "aws service s3: throttling error: test",
-			expectedPluginError: &pb.PluginError{
-				Code:         pb.ERROR_ERROR_THROTTLING,
-				Message:      "throttling exception",
-				Nonretryable: false,
+			expectedDetails: &pb.StorageBucketCredentialState{
+				State: &pb.Permissions{
+					Read: &pb.Permission{
+						State:     pb.StateType_STATE_TYPE_UNKNOWN,
+						CheckedAt: timestamppb.Now(),
+					},
+				},
 			},
 		},
 		{
 			name:               "fallback-connectivity-error",
-			err:                TestAwsS3Error("RequestTimeout", "request timeout"),
+			req:                &pb.GetObjectRequest{},
+			err:                TestAwsS3Error("RequestTimeout", "action", "request timeout"),
 			expectedStatusCode: codes.DeadlineExceeded,
 			expectedStatusMsg:  "aws service s3: connectivity error: test",
-			expectedPluginError: &pb.PluginError{
-				Code:         pb.ERROR_ERROR_TIMEOUT,
-				Message:      "request timeout",
-				Nonretryable: false,
+			expectedDetails: &pb.StorageBucketCredentialState{
+				State: &pb.Permissions{
+					Read: &pb.Permission{
+						State:     pb.StateType_STATE_TYPE_UNKNOWN,
+						CheckedAt: timestamppb.Now(),
+					},
+				},
 			},
 		},
 		{
 			name:               "fallback-credentials-error",
-			err:                TestAwsS3Error("AccessDenied", "access denied"),
+			req:                &pb.GetObjectRequest{},
+			err:                TestAwsS3Error("AccessDenied", "action", "access denied"),
 			expectedStatusCode: codes.PermissionDenied,
 			expectedStatusMsg:  "aws service s3: invalid credentials error: test",
-			expectedPluginError: &pb.PluginError{
-				Code:         pb.ERROR_ERROR_INVALID_CREDENTIAL,
-				Message:      "access denied",
-				Nonretryable: true,
+			expectedDetails: &pb.StorageBucketCredentialState{
+				State: &pb.Permissions{
+					Read: &pb.Permission{
+						State:        pb.StateType_STATE_TYPE_ERROR,
+						ErrorDetails: "access denied",
+						CheckedAt:    timestamppb.Now(),
+					},
+				},
 			},
 		},
 	}
 	for _, tt := range cases {
 		t.Run(tt.name, func(t *testing.T) {
-			require := require.New(t)
+			require, assert := require.New(t), assert.New(t)
 
-			actualStatus := parseS3Error(tt.err, "test")
+			actualStatus := parseS3Error(tt.err, "test", tt.req)
 			if tt.expectedStatusCode == codes.OK {
 				require.Nil(actualStatus)
 				return
@@ -135,14 +163,18 @@ func Test_ParseS3Error(t *testing.T) {
 			require.Equal(tt.expectedStatusCode, actualStatus.Code())
 			require.Equal(tt.expectedStatusMsg, actualStatus.Message())
 			require.Len(actualStatus.Details(), 1)
+
+			foundDetail := false
 			for _, detail := range actualStatus.Details() {
 				switch errDetail := detail.(type) {
-				case *pb.PluginError:
-					require.Equal(tt.expectedPluginError.Code, errDetail.Code)
-					require.Contains(errDetail.Message, tt.expectedPluginError.Message)
-					require.Equal(tt.expectedPluginError.Nonretryable, errDetail.Nonretryable)
+				case *pb.StorageBucketCredentialState:
+					foundDetail = true
+					errors.CheckSimilarPermission(assert, tt.expectedDetails.State.Read, errDetail.State.Read, false)
+					errors.CheckSimilarPermission(assert, tt.expectedDetails.State.Write, errDetail.State.Write, false)
+					errors.CheckSimilarPermission(assert, tt.expectedDetails.State.Delete, errDetail.State.Delete, false)
 				}
 			}
+			require.True(foundDetail, "did not find error details with status")
 		})
 	}
 }

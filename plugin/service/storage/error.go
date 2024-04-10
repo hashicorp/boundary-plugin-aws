@@ -1,11 +1,6 @@
 package storage
 
 import (
-	stderr "errors"
-	"fmt"
-
-	"github.com/aws/aws-sdk-go-v2/service/s3/types"
-	"github.com/aws/smithy-go"
 	"github.com/hashicorp/boundary-plugin-aws/internal/errors"
 	pb "github.com/hashicorp/boundary/sdk/pbs/plugin"
 	"google.golang.org/grpc/codes"
@@ -21,84 +16,53 @@ const (
 	s3ErrorBadDigest = "BadDigest"
 )
 
+func setStatePermission(req any, permission *pb.Permission) *pb.StorageBucketCredentialState {
+	state := &pb.StorageBucketCredentialState{
+		State: &pb.Permissions{},
+	}
+	switch req.(type) {
+	case pb.HeadObjectRequest:
+		state.State.Read = permission
+	case *pb.HeadObjectRequest:
+		state.State.Read = permission
+	case pb.GetObjectRequest:
+		state.State.Read = permission
+	case *pb.GetObjectRequest:
+		state.State.Read = permission
+	case pb.PutObjectRequest:
+		state.State.Write = permission
+	case *pb.PutObjectRequest:
+		state.State.Write = permission
+	case pb.DeleteObjectsRequest:
+		state.State.Delete = permission
+	case *pb.DeleteObjectsRequest:
+		state.State.Delete = permission
+	}
+	return state
+}
+
 // parseS3Error will convert an S3 api error into a RPC status. If the
 // error does not match against an s3 error type, it will fallback to
 // evaluating against generic aws service errors. This includes throttling,
 // credentials, and connectivity error types.
 //
 // https://docs.aws.amazon.com/AmazonS3/latest/API/ErrorResponses.html
-func parseS3Error(err error, msg string) (st *status.Status) {
+func parseS3Error(err error, msg string, req any) *status.Status {
 	if err == nil {
 		return nil
 	}
 
-	var plgErr *pb.PluginError
-	defer func() {
-		if plgErr != nil {
-			st, err = st.WithDetails(plgErr)
-			if err != nil {
-				st = status.New(codes.Internal, err.Error())
-			}
-		}
-	}()
-
-	// The NoSuchBucket error is returned when trying to access
-	// an s3 bucket that does not exist.
-	var missingStore *types.NoSuchBucket
-	if stderr.As(err, &missingStore) {
-		plgErr = &pb.PluginError{
-			Code:         pb.ERROR_ERROR_STORAGE_NO_SUCH_BUCKET,
-			Message:      missingStore.ErrorMessage(),
-			Nonretryable: true,
-		}
-		return status.New(codes.NotFound, fmt.Sprintf(s3StatusErrMsg, msg))
-	}
-
-	// The NoSuchKey error is returned when trying to download
-	// an object from s3 that does not exist.
-	var missingObject *types.NoSuchKey
-	if stderr.As(err, &missingObject) {
-		plgErr = &pb.PluginError{
-			Code:         pb.ERROR_ERROR_STORAGE_NO_SUCH_OBJECT,
-			Message:      missingObject.ErrorMessage(),
-			Nonretryable: true,
-		}
-		return status.New(codes.NotFound, fmt.Sprintf(s3StatusErrMsg, msg))
-	}
-
-	var notFound *types.NotFound
-	if stderr.As(err, &notFound) {
-		plgErr = &pb.PluginError{
-			Code:         pb.ERROR_ERROR_STORAGE_NO_SUCH_OBJECT,
-			Message:      notFound.ErrorMessage(),
-			Nonretryable: true,
-		}
-		return status.New(codes.NotFound, fmt.Sprintf(s3StatusErrMsg, msg))
-	}
-
-	// The InvalidObjectState error is returned when trying to
-	// access an object that was moved into cold storage.
-	var invalidState *types.InvalidObjectState
-	if stderr.As(err, &invalidState) {
-		plgErr = &pb.PluginError{
-			Code:         pb.ERROR_ERROR_STORAGE_NO_SUCH_OBJECT,
-			Message:      invalidState.ErrorMessage(),
-			Nonretryable: true,
-		}
-		return status.New(codes.NotFound, fmt.Sprintf(s3StatusErrMsg, msg))
-	}
-
-	var apiErr smithy.APIError
-	if stderr.As(err, &apiErr) {
-		if apiErr.ErrorCode() == s3ErrorBadDigest {
-			plgErr = &pb.PluginError{
-				Code:         pb.ERROR_ERROR_STORAGE_CHECKSUM_MISMATCH,
-				Message:      apiErr.ErrorMessage(),
-				Nonretryable: false,
-			}
-			return status.New(codes.Aborted, fmt.Sprintf(s3StatusErrMsg, msg))
+	st, p := errors.ParseAWSError(err, msg)
+	if p != nil {
+		state := setStatePermission(req, p)
+		if st, err = st.WithDetails(state); err != nil {
+			st = status.New(codes.Internal, err.Error())
 		}
 	}
 
-	return errors.ParseAWSError(err, msg)
+	return st
+}
+
+func checksumMistmatchStatus() error {
+	return status.New(codes.Aborted, "mismatched checksum").Err()
 }

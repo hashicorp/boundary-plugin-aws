@@ -18,6 +18,7 @@ import (
 	awshttp "github.com/aws/aws-sdk-go-v2/aws/transport/http"
 	"github.com/aws/smithy-go"
 	pb "github.com/hashicorp/boundary/sdk/pbs/plugin"
+	"google.golang.org/protobuf/types/known/timestamppb"
 )
 
 const (
@@ -38,6 +39,22 @@ const (
 	// expired. This error can only be returned by a dynamic credential
 	// type. This error can resolve itself by retrying the request.
 	awsErrorExpiredToken = "ExpiredToken"
+
+	// NoSuchBucket is returned when the specified S3 storage bucket does
+	// not exist
+	awsErrorNoSuchBucket = "NoSuchBucket"
+
+	// BadDigest is returned when an S3 PUT OBJECT request's calculated
+	// checksum does not match the checksum which was sent by the client
+	awsErrorBadDigest = "BadDigest"
+
+	// NoSuchKey is returned when attempting to interact with an S3 object
+	// whose key does not exist
+	awsErrorNoSuchKey = "NoSuchKey"
+
+	// The InvalidObjectState error is returned when trying to
+	// access an object that was moved into cold storage.
+	awsErrorInvalidObjectState = "InvalidObjectState"
 )
 
 // InvalidArgumentError returns an grpc invalid argument status error.
@@ -50,7 +67,7 @@ func InvalidArgumentError(msg string, f map[string]string) error {
 		sort.Strings(fieldMsgs)
 		msg = fmt.Sprintf("%s: [%s]", msg, strings.Join(fieldMsgs, ", "))
 	}
-	return status.Error(codes.InvalidArgument, msg)
+	return BadRequestStatus(msg)
 }
 
 // ParseAWSError converts an aws service error into a RPC status. This method
@@ -58,9 +75,9 @@ func InvalidArgumentError(msg string, f map[string]string) error {
 // and credentials. This method will fallback to parsing the http status code
 // when it cannot match an aws error code. This method does not handle specific
 // service type errors such as S3 or EC2.
-func ParseAWSError(err error, msg string) (st *status.Status) {
+func ParseAWSError(err error, msg string) (st *status.Status, permission *pb.Permission) {
 	if err == nil {
-		return nil
+		return nil, nil
 	}
 
 	// find the service name of the aws api
@@ -74,20 +91,14 @@ func ParseAWSError(err error, msg string) (st *status.Status) {
 	// when the aws service returns an error that
 	// has failed to be parsed. By default, this
 	// error code is retryable.
-	plgErr := &pb.PluginError{
-		Code:         pb.ERROR_ERROR_UNKNOWN,
-		Message:      err.Error(),
-		Nonretryable: false,
-	}
 
 	defer func() {
 		if st == nil {
 			statusMsg := fmt.Sprintf("aws service %s: unknown error: %s", serviceName, msg)
 			st = status.New(codes.Unknown, statusMsg)
 		}
-		st, err = st.WithDetails(plgErr)
-		if err != nil {
-			st = status.New(codes.Internal, err.Error())
+		if permission == nil {
+			permission = &pb.Permission{State: pb.StateType_STATE_TYPE_UNKNOWN, CheckedAt: timestamppb.Now()}
 		}
 	}()
 
@@ -96,9 +107,8 @@ func ParseAWSError(err error, msg string) (st *status.Status) {
 		Codes: retry.DefaultThrottleErrorCodes,
 	}
 	if throttleErr.IsErrorThrottle(err).Bool() {
-		plgErr.Code = pb.ERROR_ERROR_THROTTLING
 		statusMsg := fmt.Sprintf("aws service %s: throttling error: %s", serviceName, msg)
-		return status.New(codes.Unavailable, statusMsg)
+		return status.New(codes.Unavailable, statusMsg), nil
 	}
 	// evaluate against aws connection error codes
 	connectionErr := retry.IsErrorRetryables([]retry.IsErrorRetryable{
@@ -113,24 +123,40 @@ func ParseAWSError(err error, msg string) (st *status.Status) {
 		},
 	})
 	if connectionErr.IsErrorRetryable(err).Bool() {
-		plgErr.Code = pb.ERROR_ERROR_TIMEOUT
 		statusMsg := fmt.Sprintf("aws service %s: connectivity error: %s", serviceName, msg)
-		return status.New(codes.DeadlineExceeded, statusMsg)
+		return status.New(codes.DeadlineExceeded, statusMsg), nil
 	}
-	// evaluate against aws credentials error codes
+
+	// parse some specific aws error codes that we have special cred states for
 	var apiErr smithy.APIError
 	if errors.As(err, &apiErr) {
-		statusMsg := fmt.Sprintf("aws service %s: invalid credentials error: %s", serviceName, msg)
 		switch apiErr.ErrorCode() {
 		case awsErrorAccessDenied:
 			fallthrough
 		case awsErrorInvalidAccessKeyId:
-			plgErr.Code = pb.ERROR_ERROR_INVALID_CREDENTIAL
-			plgErr.Nonretryable = true
-			return status.New(codes.PermissionDenied, statusMsg)
+			fallthrough
 		case awsErrorExpiredToken:
-			plgErr.Code = pb.ERROR_ERROR_INVALID_CREDENTIAL
-			return status.New(codes.PermissionDenied, statusMsg)
+			statusMsg := fmt.Sprintf("aws service %s: invalid credentials error: %s", serviceName, msg)
+			return status.New(codes.PermissionDenied, statusMsg), &pb.Permission{
+				State:        pb.StateType_STATE_TYPE_ERROR,
+				ErrorDetails: apiErr.ErrorMessage(),
+				CheckedAt:    timestamppb.Now(),
+			}
+		case awsErrorNoSuchBucket:
+			statusMsg := fmt.Sprintf("aws %s error: %s", serviceName, msg)
+			return status.New(codes.NotFound, statusMsg), &pb.Permission{
+				State:        pb.StateType_STATE_TYPE_ERROR,
+				ErrorDetails: apiErr.ErrorMessage(),
+				CheckedAt:    timestamppb.Now(),
+			}
+		case awsErrorBadDigest:
+			statusMsg := fmt.Sprintf("aws %s error: %s", serviceName, msg)
+			return status.New(codes.Aborted, statusMsg), nil
+		case awsErrorNoSuchKey:
+			fallthrough
+		case awsErrorInvalidObjectState:
+			statusMsg := fmt.Sprintf("aws %s error: %s", serviceName, msg)
+			return status.New(codes.NotFound, statusMsg), nil
 		}
 	}
 
@@ -139,34 +165,33 @@ func ParseAWSError(err error, msg string) (st *status.Status) {
 		buf := new(bytes.Buffer)
 		_, err = buf.ReadFrom(httpErr.Response.Body)
 		if err != nil {
-			return status.New(codes.Internal, err.Error())
+			return status.New(codes.Internal, err.Error()), nil
 		}
 		defer httpErr.Response.Body.Close()
-		plgErr.Message = buf.String()
 		switch httpErr.HTTPStatusCode() {
 		case http.StatusBadRequest:
-			plgErr.Code = pb.ERROR_ERROR_BAD_REQUEST
-			plgErr.Nonretryable = true
 			statusMsg := fmt.Sprintf("aws service %s: bad request error: %s", serviceName, msg)
-			return status.New(codes.InvalidArgument, statusMsg)
+			return status.New(codes.InvalidArgument, statusMsg), nil
 		case http.StatusUnauthorized:
-			plgErr.Code = pb.ERROR_ERROR_INVALID_CREDENTIAL
 			statusMsg := fmt.Sprintf("aws service %s: invalid credentials error: %s", serviceName, msg)
-			return status.New(codes.PermissionDenied, statusMsg)
+			return status.New(codes.PermissionDenied, statusMsg), &pb.Permission{
+				State:        pb.StateType_STATE_TYPE_ERROR,
+				ErrorDetails: buf.String(),
+				CheckedAt:    timestamppb.Now(),
+			}
 		case http.StatusForbidden:
-			plgErr.Code = pb.ERROR_ERROR_INVALID_CREDENTIAL
-			plgErr.Nonretryable = true
 			statusMsg := fmt.Sprintf("aws service %s: invalid credentials error: %s", serviceName, msg)
-			return status.New(codes.PermissionDenied, statusMsg)
+			return status.New(codes.PermissionDenied, statusMsg), &pb.Permission{
+				State:        pb.StateType_STATE_TYPE_ERROR,
+				ErrorDetails: buf.String(),
+				CheckedAt:    timestamppb.Now(),
+			}
 		case http.StatusNotFound:
-			plgErr.Code = pb.ERROR_ERROR_BAD_REQUEST
-			plgErr.Nonretryable = true
 			statusMsg := fmt.Sprintf("aws service %s: resource not found error: %s", serviceName, msg)
-			return status.New(codes.NotFound, statusMsg)
+			return status.New(codes.NotFound, statusMsg), nil
 		case http.StatusTooManyRequests:
-			plgErr.Code = pb.ERROR_ERROR_THROTTLING
 			statusMsg := fmt.Sprintf("aws service %s: throttling error: %s", serviceName, msg)
-			return status.New(codes.Unavailable, statusMsg)
+			return status.New(codes.Unavailable, statusMsg), nil
 		case http.StatusRequestTimeout:
 			fallthrough
 		case http.StatusInternalServerError:
@@ -176,11 +201,22 @@ func ParseAWSError(err error, msg string) (st *status.Status) {
 		case http.StatusServiceUnavailable:
 			fallthrough
 		case http.StatusGatewayTimeout:
-			plgErr.Code = pb.ERROR_ERROR_TIMEOUT
 			statusMsg := fmt.Sprintf("aws service %s: connectivity error: %s", serviceName, msg)
-			return status.New(codes.DeadlineExceeded, statusMsg)
+			return status.New(codes.DeadlineExceeded, statusMsg), nil
 		}
 	}
 
-	return st
+	return st, nil
+}
+
+// BadRequestStatus returns a status error with an invalid
+// argument code
+func BadRequestStatus(format string, args ...any) error {
+	return status.New(codes.InvalidArgument, fmt.Sprintf(format, args...)).Err()
+}
+
+// UnknownStatus returns a status error with an internal
+// error code and a retryable plugin error detail.
+func UnknownStatus(format string, args ...any) error {
+	return status.New(codes.Internal, fmt.Sprintf(format, args...)).Err()
 }

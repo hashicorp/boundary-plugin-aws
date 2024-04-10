@@ -84,7 +84,6 @@ func newAwsStoragePersistedState(opts ...awsStoragePersistedStateOption) (*awsSt
 }
 
 func (s *awsStoragePersistedState) toProto() (*storagebuckets.StorageBucketPersisted, error) {
-
 	data, err := structpb.NewStruct(s.ToMap())
 	if err != nil {
 		return nil, fmt.Errorf("error converting state to structpb.Struct: %w", err)
