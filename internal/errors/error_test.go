@@ -10,6 +10,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"google.golang.org/grpc/codes"
+	"google.golang.org/grpc/status"
 	"google.golang.org/protobuf/types/known/timestamppb"
 )
 
@@ -326,42 +327,20 @@ func Test_ParseAWSError(t *testing.T) {
 	}
 }
 
-// func Test_BadRequestStatus(t *testing.T) {
-// 	require, assert := require.New(t), assert.New(t)
-// 	err := BadRequestStatus("test: %s", "hello world")
-// 	assert.ErrorContains(err, "test: hello world")
-// 	assert.Equal(status.Code(err), codes.InvalidArgument)
-// 	st, ok := status.FromError(err)
-// 	require.True(ok)
-// 	var plgErr *pb.PluginError
-// 	for _, detail := range st.Details() {
-// 		if errDetail, ok := detail.(*pb.PluginError); ok {
-// 			plgErr = errDetail
-// 			break
-// 		}
-// 	}
-// 	require.NotNil(plgErr)
-// 	assert.Equal(pb.ERROR_ERROR_BAD_REQUEST, plgErr.Code)
-// 	assert.Equal("bad request", plgErr.Message)
-// 	assert.True(plgErr.Nonretryable)
-// }
+func Test_BadRequestStatus(t *testing.T) {
+	require, assert := require.New(t), assert.New(t)
+	err := BadRequestStatus("test: %s", "hello world")
+	assert.ErrorContains(err, "test: hello world")
+	assert.Equal(status.Code(err), codes.InvalidArgument)
+	_, ok := status.FromError(err)
+	require.True(ok)
+}
 
-// func Test_UnknownStatus(t *testing.T) {
-// 	require, assert := require.New(t), assert.New(t)
-// 	err := UnknownStatus("test: %s", "hello world")
-// 	assert.ErrorContains(err, "test: hello world")
-// 	assert.Equal(status.Code(err), codes.Internal)
-// 	st, ok := status.FromError(err)
-// 	require.True(ok)
-// 	var plgErr *pb.PluginError
-// 	for _, detail := range st.Details() {
-// 		if errDetail, ok := detail.(*pb.PluginError); ok {
-// 			plgErr = errDetail
-// 			break
-// 		}
-// 	}
-// 	require.NotNil(plgErr)
-// 	assert.Equal(pb.ERROR_ERROR_UNKNOWN, plgErr.Code)
-// 	assert.Equal("unknown internal error", plgErr.Message)
-// 	assert.False(plgErr.Nonretryable)
-// }
+func Test_UnknownStatus(t *testing.T) {
+	require, assert := require.New(t), assert.New(t)
+	err := UnknownStatus("test: %s", "hello world")
+	assert.ErrorContains(err, "test: hello world")
+	assert.Equal(status.Code(err), codes.Internal)
+	_, ok := status.FromError(err)
+	require.True(ok)
+}

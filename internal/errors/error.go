@@ -110,22 +110,6 @@ func ParseAWSError(err error, msg string) (st *status.Status, permission *pb.Per
 		statusMsg := fmt.Sprintf("aws service %s: throttling error: %s", serviceName, msg)
 		return status.New(codes.Unavailable, statusMsg), nil
 	}
-	// evaluate against aws connection error codes
-	connectionErr := retry.IsErrorRetryables([]retry.IsErrorRetryable{
-		retry.NoRetryCanceledError{},
-		retry.RetryableError{},
-		retry.RetryableConnectionError{},
-		retry.RetryableHTTPStatusCode{
-			Codes: retry.DefaultRetryableHTTPStatusCodes,
-		},
-		retry.RetryableErrorCode{
-			Codes: retry.DefaultRetryableErrorCodes,
-		},
-	})
-	if connectionErr.IsErrorRetryable(err).Bool() {
-		statusMsg := fmt.Sprintf("aws service %s: connectivity error: %s", serviceName, msg)
-		return status.New(codes.DeadlineExceeded, statusMsg), nil
-	}
 
 	// parse some specific aws error codes that we have special cred states for
 	var apiErr smithy.APIError
@@ -192,16 +176,17 @@ func ParseAWSError(err error, msg string) (st *status.Status, permission *pb.Per
 		case http.StatusTooManyRequests:
 			statusMsg := fmt.Sprintf("aws service %s: throttling error: %s", serviceName, msg)
 			return status.New(codes.Unavailable, statusMsg), nil
-		case http.StatusRequestTimeout:
-			fallthrough
 		case http.StatusInternalServerError:
 			fallthrough
 		case http.StatusBadGateway:
 			fallthrough
 		case http.StatusServiceUnavailable:
+			statusMsg := fmt.Sprintf("aws service %s: connectivity error: %s", serviceName, msg)
+			return status.New(codes.Unavailable, statusMsg), nil
+		case http.StatusRequestTimeout:
 			fallthrough
 		case http.StatusGatewayTimeout:
-			statusMsg := fmt.Sprintf("aws service %s: connectivity error: %s", serviceName, msg)
+			statusMsg := fmt.Sprintf("aws service %s: timeout error: %s", serviceName, msg)
 			return status.New(codes.DeadlineExceeded, statusMsg), nil
 		}
 	}
@@ -216,7 +201,7 @@ func BadRequestStatus(format string, args ...any) error {
 }
 
 // UnknownStatus returns a status error with an internal
-// error code and a retryable plugin error detail.
+// error code
 func UnknownStatus(format string, args ...any) error {
 	return status.New(codes.Internal, fmt.Sprintf(format, args...)).Err()
 }
