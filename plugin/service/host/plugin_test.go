@@ -177,6 +177,7 @@ func TestPluginOnCreateCatalogErr(t *testing.T) {
 				testCatalogStateOpts: tc.catalogOpts,
 			}
 			_, err := p.OnCreateCatalog(context.Background(), tc.req)
+			require.Error(err)
 			require.Contains(err.Error(), tc.expectedErrContains)
 			require.Equal(status.Code(err).String(), tc.expectedErrCode.String())
 		})
@@ -388,6 +389,7 @@ func TestPluginOnUpdateCatalogErr(t *testing.T) {
 				testCatalogStateOpts: tc.catalogOpts,
 			}
 			_, err := p.OnUpdateCatalog(context.Background(), tc.req)
+			require.Error(err)
 			require.Contains(err.Error(), tc.expectedErrContains)
 			require.Equal(status.Code(err).String(), tc.expectedErrCode.String())
 		})
@@ -478,6 +480,7 @@ func TestPluginOnDeleteCatalogErr(t *testing.T) {
 				testCatalogStateOpts: tc.catalogOpts,
 			}
 			_, err := p.OnDeleteCatalog(context.Background(), tc.req)
+			require.Error(err)
 			require.Contains(err.Error(), tc.expectedErrContains)
 			require.Equal(status.Code(err).String(), tc.expectedErrCode.String())
 		})
@@ -830,6 +833,7 @@ func TestPluginOnCreateSetErr(t *testing.T) {
 				testCatalogStateOpts: tc.catalogOpts,
 			}
 			_, err := p.OnCreateSet(context.Background(), tc.req)
+			require.Error(err)
 			require.Contains(err.Error(), tc.expectedErrContains)
 			require.Equal(status.Code(err).String(), tc.expectedErrCode.String())
 		})
@@ -1137,6 +1141,7 @@ func TestPluginOnUpdateSetErr(t *testing.T) {
 				testCatalogStateOpts: tc.catalogOpts,
 			}
 			_, err := p.OnUpdateSet(context.Background(), tc.req)
+			require.Error(err)
 			require.Contains(err.Error(), tc.expectedErrContains)
 			require.Equal(status.Code(err).String(), tc.expectedErrCode.String())
 		})
@@ -1499,6 +1504,7 @@ func TestPluginListHostsErr(t *testing.T) {
 				testCatalogStateOpts: tc.catalogOpts,
 			}
 			_, err := p.ListHosts(context.Background(), tc.req)
+			require.Error(err)
 			require.Contains(err.Error(), tc.expectedErrContains)
 			require.Equal(status.Code(err).String(), tc.expectedErrCode.String())
 		})
