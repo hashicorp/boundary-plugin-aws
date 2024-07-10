@@ -6,7 +6,6 @@ package credential
 import (
 	"fmt"
 
-	"github.com/aws/aws-sdk-go/aws/endpoints"
 	"github.com/hashicorp/boundary-plugin-aws/internal/errors"
 	"github.com/hashicorp/boundary-plugin-aws/internal/values"
 	"github.com/hashicorp/go-secure-stdlib/awsutil/v2"
@@ -130,12 +129,6 @@ func GetCredentialAttributes(in *structpb.Struct) (*CredentialAttributes, error)
 	region, err := values.GetStringValue(in, ConstRegion, true)
 	if err != nil {
 		badFields[fmt.Sprintf("attributes.%s", ConstRegion)] = err.Error()
-	}
-
-	if region != "" {
-		if _, found := endpoints.PartitionForRegion(endpoints.DefaultPartitions(), region); !found {
-			badFields[fmt.Sprintf("attributes.%s", ConstRegion)] = fmt.Sprintf("not a valid region: %s", region)
-		}
 	}
 
 	disableCredentialRotation, err := values.GetBoolValue(in, ConstDisableCredentialRotation, false)

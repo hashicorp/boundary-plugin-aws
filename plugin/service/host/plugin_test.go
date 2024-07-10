@@ -80,27 +80,6 @@ func TestPluginOnCreateCatalogErr(t *testing.T) {
 			expectedErrCode:     codes.InvalidArgument,
 		},
 		{
-			name: "invalid region",
-			req: &pb.OnCreateCatalogRequest{
-				Catalog: &hostcatalogs.HostCatalog{
-					Secrets: &structpb.Struct{
-						Fields: map[string]*structpb.Value{
-							credential.ConstAccessKeyId:     structpb.NewStringValue("AKIA_foobar"),
-							credential.ConstSecretAccessKey: structpb.NewStringValue("bazqux"),
-						}},
-					Attrs: &hostcatalogs.HostCatalog_Attributes{
-						Attributes: &structpb.Struct{
-							Fields: map[string]*structpb.Value{
-								credential.ConstRegion: structpb.NewStringValue("foobar"),
-							},
-						},
-					},
-				},
-			},
-			expectedErrContains: "not a valid region: foobar",
-			expectedErrCode:     codes.InvalidArgument,
-		},
-		{
 			name: "persisted state setup error",
 			req: &pb.OnCreateCatalogRequest{
 				Catalog: &hostcatalogs.HostCatalog{
@@ -240,22 +219,6 @@ func TestPluginOnUpdateCatalogErr(t *testing.T) {
 				},
 			},
 			expectedErrContains: "missing required value \"region\"",
-			expectedErrCode:     codes.InvalidArgument,
-		},
-		{
-			name: "invalid region",
-			req: &pb.OnUpdateCatalogRequest{
-				NewCatalog: &hostcatalogs.HostCatalog{
-					Attrs: &hostcatalogs.HostCatalog_Attributes{
-						Attributes: &structpb.Struct{
-							Fields: map[string]*structpb.Value{
-								credential.ConstRegion: structpb.NewStringValue("foobar"),
-							},
-						},
-					},
-				},
-			},
-			expectedErrContains: "not a valid region: foobar",
 			expectedErrCode:     codes.InvalidArgument,
 		},
 		{
@@ -557,22 +520,6 @@ func TestPluginOnCreateSetErr(t *testing.T) {
 				},
 			},
 			expectedErrContains: "missing required value \"region\"",
-			expectedErrCode:     codes.InvalidArgument,
-		},
-		{
-			name: "invalid region",
-			req: &pb.OnCreateSetRequest{
-				Catalog: &hostcatalogs.HostCatalog{
-					Attrs: &hostcatalogs.HostCatalog_Attributes{
-						Attributes: &structpb.Struct{
-							Fields: map[string]*structpb.Value{
-								credential.ConstRegion: structpb.NewStringValue("foobar"),
-							},
-						},
-					},
-				},
-			},
-			expectedErrContains: "not a valid region: foobar",
 			expectedErrCode:     codes.InvalidArgument,
 		},
 		{
@@ -928,23 +875,6 @@ func TestPluginOnUpdateSetErr(t *testing.T) {
 			expectedErrCode:     codes.InvalidArgument,
 		},
 		{
-			name: "invalid region",
-			req: &pb.OnUpdateSetRequest{
-				Catalog: &hostcatalogs.HostCatalog{
-					Secrets: new(structpb.Struct),
-					Attrs: &hostcatalogs.HostCatalog_Attributes{
-						Attributes: &structpb.Struct{
-							Fields: map[string]*structpb.Value{
-								credential.ConstRegion: structpb.NewStringValue("foobar"),
-							},
-						},
-					},
-				},
-			},
-			expectedErrContains: "not a valid region: foobar",
-			expectedErrCode:     codes.InvalidArgument,
-		},
-		{
 			name: "persisted state setup error",
 			req: &pb.OnUpdateSetRequest{
 				Catalog: &hostcatalogs.HostCatalog{
@@ -1249,23 +1179,6 @@ func TestPluginListHostsErr(t *testing.T) {
 				},
 			},
 			expectedErrContains: "attributes.region: missing required value \"region\"",
-			expectedErrCode:     codes.InvalidArgument,
-		},
-		{
-			name: "invalid region",
-			req: &pb.ListHostsRequest{
-				Catalog: &hostcatalogs.HostCatalog{
-					Secrets: new(structpb.Struct),
-					Attrs: &hostcatalogs.HostCatalog_Attributes{
-						Attributes: &structpb.Struct{
-							Fields: map[string]*structpb.Value{
-								credential.ConstRegion: structpb.NewStringValue("foobar"),
-							},
-						},
-					},
-				},
-			},
-			expectedErrContains: "not a valid region: ",
 			expectedErrCode:     codes.InvalidArgument,
 		},
 		{

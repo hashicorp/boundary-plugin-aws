@@ -3,7 +3,6 @@ module github.com/hashicorp/boundary-plugin-aws
 go 1.21
 
 require (
-	github.com/aws/aws-sdk-go v1.44.80
 	github.com/aws/aws-sdk-go-v2 v1.20.1
 	github.com/aws/aws-sdk-go-v2/service/ec2 v1.99.0
 	github.com/aws/aws-sdk-go-v2/service/iam v1.22.2
