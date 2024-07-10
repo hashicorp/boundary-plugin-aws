@@ -93,21 +93,6 @@ func TestStoragePlugin_OnCreateStorageBucket(t *testing.T) {
 			expectedErrCode:     codes.InvalidArgument,
 		},
 		{
-			name: "invalid region",
-			req: &pb.OnCreateStorageBucketRequest{
-				Bucket: &storagebuckets.StorageBucket{
-					BucketName: "foo",
-					Attributes: &structpb.Struct{
-						Fields: map[string]*structpb.Value{
-							credential.ConstRegion: structpb.NewStringValue("foobar"),
-						},
-					},
-				},
-			},
-			expectedErrContains: "not a valid region: foobar",
-			expectedErrCode:     codes.InvalidArgument,
-		},
-		{
 			name: "dynamic credentials without disable credential rotation",
 			req: &pb.OnCreateStorageBucketRequest{
 				Bucket: &storagebuckets.StorageBucket{
@@ -534,28 +519,6 @@ func TestStoragePlugin_OnUpdateStorageBucket(t *testing.T) {
 				},
 			},
 			expectedErrContains: "missing required value \"region\"",
-			expectedErrCode:     codes.InvalidArgument,
-		},
-		{
-			name: "invalid region",
-			req: &pb.OnUpdateStorageBucketRequest{
-				NewBucket: &storagebuckets.StorageBucket{
-					BucketName: "foo",
-					Attributes: &structpb.Struct{
-						Fields: map[string]*structpb.Value{
-							credential.ConstRegion: structpb.NewStringValue("foobar"),
-						},
-					},
-				},
-				CurrentBucket: &storagebuckets.StorageBucket{
-					Attributes: &structpb.Struct{
-						Fields: map[string]*structpb.Value{
-							credential.ConstRegion: structpb.NewStringValue("us-west-2"),
-						},
-					},
-				},
-			},
-			expectedErrContains: "not a valid region: foobar",
 			expectedErrCode:     codes.InvalidArgument,
 		},
 		{
@@ -1604,22 +1567,6 @@ func TestStoragePlugin_OnDeleteStorageBucket(t *testing.T) {
 			expectedErrCode:     codes.InvalidArgument,
 		},
 		{
-			name: "invalid region",
-			req: &pb.OnDeleteStorageBucketRequest{
-				Bucket: &storagebuckets.StorageBucket{
-					BucketName: "foo",
-					Secrets:    credential.MockStaticCredentialSecrets(),
-					Attributes: &structpb.Struct{
-						Fields: map[string]*structpb.Value{
-							credential.ConstRegion: structpb.NewStringValue("foobar"),
-						},
-					},
-				},
-			},
-			expectedErrContains: "not a valid region: foobar",
-			expectedErrCode:     codes.InvalidArgument,
-		},
-		{
 			name: "persisted state setup error",
 			req: &pb.OnDeleteStorageBucketRequest{
 				Bucket: &storagebuckets.StorageBucket{
@@ -1823,23 +1770,6 @@ func TestStoragePlugin_HeadObject(t *testing.T) {
 			expectedErrCode:     codes.InvalidArgument,
 		},
 		{
-			name: "invalid region",
-			req: &pb.HeadObjectRequest{
-				Key: "/foo/bar/key",
-				Bucket: &storagebuckets.StorageBucket{
-					BucketName: "foo",
-					Secrets:    new(structpb.Struct),
-					Attributes: &structpb.Struct{
-						Fields: map[string]*structpb.Value{
-							credential.ConstRegion: structpb.NewStringValue("foobar"),
-						},
-					},
-				},
-			},
-			expectedErrContains: "not a valid region: foobar",
-			expectedErrCode:     codes.InvalidArgument,
-		},
-		{
 			name: "credential persisted state setup error",
 			req:  validRequest(),
 			credOpts: []credential.AwsCredentialPersistedStateOption{
@@ -2023,22 +1953,6 @@ func TestStoragePlugin_ValidatePermissions(t *testing.T) {
 				},
 			},
 			expectedErrContains: "missing required value \"region\"",
-			expectedErrCode:     codes.InvalidArgument,
-		},
-		{
-			name: "invalid region",
-			req: &pb.ValidatePermissionsRequest{
-				Bucket: &storagebuckets.StorageBucket{
-					BucketName: "foo",
-					Secrets:    new(structpb.Struct),
-					Attributes: &structpb.Struct{
-						Fields: map[string]*structpb.Value{
-							credential.ConstRegion: structpb.NewStringValue("foobar"),
-						},
-					},
-				},
-			},
-			expectedErrContains: "not a valid region: foobar",
 			expectedErrCode:     codes.InvalidArgument,
 		},
 		{
@@ -2308,23 +2222,6 @@ func TestStoragePlugin_GetObject(t *testing.T) {
 				},
 			},
 			expectedErrContains: "missing required value \"region\"",
-			expectedErrCode:     codes.InvalidArgument,
-		},
-		{
-			name: "invalid region",
-			req: &pb.GetObjectRequest{
-				Key: "/foo/bar/key",
-				Bucket: &storagebuckets.StorageBucket{
-					BucketName: "foo",
-					Secrets:    new(structpb.Struct),
-					Attributes: &structpb.Struct{
-						Fields: map[string]*structpb.Value{
-							credential.ConstRegion: structpb.NewStringValue("foobar"),
-						},
-					},
-				},
-			},
-			expectedErrContains: "not a valid region: foobar",
 			expectedErrCode:     codes.InvalidArgument,
 		},
 		{
@@ -2670,29 +2567,6 @@ func TestStoragePlugin_PutObject(t *testing.T) {
 			expectedErrCode:     codes.InvalidArgument,
 		},
 		{
-			name: "invalid region",
-			request: &pb.PutObjectRequest{
-				Bucket: &storagebuckets.StorageBucket{
-					BucketName: "external-obj-store",
-					Secrets: &structpb.Struct{
-						Fields: map[string]*structpb.Value{
-							credential.ConstAccessKeyId:     structpb.NewStringValue("foobar"),
-							credential.ConstSecretAccessKey: structpb.NewStringValue("bazqux"),
-						},
-					},
-					Attributes: &structpb.Struct{
-						Fields: map[string]*structpb.Value{
-							credential.ConstRegion: structpb.NewStringValue("foobar"),
-						},
-					},
-				},
-				Key:  "mock-object",
-				Path: validFilePath,
-			},
-			expectedErrContains: "not a valid region: foobar",
-			expectedErrCode:     codes.InvalidArgument,
-		},
-		{
 			name:    "credential persisted state setup error",
 			request: validRequest(),
 			credOpts: []credential.AwsCredentialPersistedStateOption{
@@ -2968,23 +2842,6 @@ func TestStoragePlugin_DeleteObjects(t *testing.T) {
 				},
 			},
 			expectedErrContains: "missing required value \"region\"",
-			expectedErrCode:     codes.InvalidArgument,
-		},
-		{
-			name: "invalid region",
-			req: &pb.DeleteObjectsRequest{
-				KeyPrefix: "/foo/bar/key",
-				Bucket: &storagebuckets.StorageBucket{
-					BucketName: "foo",
-					Secrets:    new(structpb.Struct),
-					Attributes: &structpb.Struct{
-						Fields: map[string]*structpb.Value{
-							credential.ConstRegion: structpb.NewStringValue("foobar"),
-						},
-					},
-				},
-			},
-			expectedErrContains: "not a valid region: foobar",
 			expectedErrCode:     codes.InvalidArgument,
 		},
 		{

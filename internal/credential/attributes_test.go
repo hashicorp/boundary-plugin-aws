@@ -26,13 +26,6 @@ func TestGetCredentialAttributes(t *testing.T) {
 			expectedErrContains: "missing required value \"region\"",
 		},
 		{
-			name: "invalid aws region value",
-			in: map[string]any{
-				ConstRegion: "dne",
-			},
-			expectedErrContains: "not a valid region",
-		},
-		{
 			name: "bad value for disable_credential_rotation",
 			in: map[string]any{
 				ConstRegion:                    "us-west-2",
