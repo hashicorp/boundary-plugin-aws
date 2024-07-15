@@ -90,7 +90,7 @@ func Test_ParseAWSError(t *testing.T) {
 			name:               "http-status-code-request-timeout",
 			err:                TestAwsHttpResponseError(http.StatusRequestTimeout, "request timeout"),
 			expectedStatusCode: codes.DeadlineExceeded,
-			expectedStatusMsg:  "aws service unknown: connectivity error: test",
+			expectedStatusMsg:  "aws service unknown: timeout error: test",
 			expectedPermission: &pb.Permission{
 				State: pb.StateType_STATE_TYPE_UNKNOWN,
 			},
@@ -98,7 +98,7 @@ func Test_ParseAWSError(t *testing.T) {
 		{
 			name:               "http-status-code-internal-server-error",
 			err:                TestAwsHttpResponseError(http.StatusInternalServerError, "internal server error"),
-			expectedStatusCode: codes.DeadlineExceeded,
+			expectedStatusCode: codes.Unavailable,
 			expectedStatusMsg:  "aws service unknown: connectivity error: test",
 			expectedPermission: &pb.Permission{
 				State: pb.StateType_STATE_TYPE_UNKNOWN,
@@ -107,7 +107,7 @@ func Test_ParseAWSError(t *testing.T) {
 		{
 			name:               "http-status-code-bad-gateway",
 			err:                TestAwsHttpResponseError(http.StatusBadGateway, "bad gateway"),
-			expectedStatusCode: codes.DeadlineExceeded,
+			expectedStatusCode: codes.Unavailable,
 			expectedStatusMsg:  "aws service unknown: connectivity error: test",
 			expectedPermission: &pb.Permission{
 				State: pb.StateType_STATE_TYPE_UNKNOWN,
@@ -116,7 +116,7 @@ func Test_ParseAWSError(t *testing.T) {
 		{
 			name:               "http-status-code-service-unavailable",
 			err:                TestAwsHttpResponseError(http.StatusServiceUnavailable, "service unavailable"),
-			expectedStatusCode: codes.DeadlineExceeded,
+			expectedStatusCode: codes.Unavailable,
 			expectedStatusMsg:  "aws service unknown: connectivity error: test",
 			expectedPermission: &pb.Permission{
 				State: pb.StateType_STATE_TYPE_UNKNOWN,
@@ -126,7 +126,7 @@ func Test_ParseAWSError(t *testing.T) {
 			name:               "http-status-code-gateway-timeout",
 			err:                TestAwsHttpResponseError(http.StatusGatewayTimeout, "gateway timeout"),
 			expectedStatusCode: codes.DeadlineExceeded,
-			expectedStatusMsg:  "aws service unknown: connectivity error: test",
+			expectedStatusMsg:  "aws service unknown: timeout error: test",
 			expectedPermission: &pb.Permission{
 				State: pb.StateType_STATE_TYPE_UNKNOWN,
 			},
@@ -261,7 +261,7 @@ func Test_ParseAWSError(t *testing.T) {
 			name:               "aws-request-timeout",
 			err:                TestAwsError("RequestTimeout", "request timeout"),
 			expectedStatusCode: codes.DeadlineExceeded,
-			expectedStatusMsg:  "aws service unknown: connectivity error: test",
+			expectedStatusMsg:  "aws unknown error: test",
 			expectedPermission: &pb.Permission{
 				State: pb.StateType_STATE_TYPE_UNKNOWN,
 			},
@@ -270,7 +270,7 @@ func Test_ParseAWSError(t *testing.T) {
 			name:               "aws-request-timeout-exception",
 			err:                TestAwsError("RequestTimeoutException", "request timeout exception"),
 			expectedStatusCode: codes.DeadlineExceeded,
-			expectedStatusMsg:  "aws service unknown: connectivity error: test",
+			expectedStatusMsg:  "aws unknown error: test",
 			expectedPermission: &pb.Permission{
 				State: pb.StateType_STATE_TYPE_UNKNOWN,
 			},

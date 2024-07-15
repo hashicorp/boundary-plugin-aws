@@ -55,6 +55,12 @@ const (
 	// The InvalidObjectState error is returned when trying to
 	// access an object that was moved into cold storage.
 	awsErrorInvalidObjectState = "InvalidObjectState"
+
+	// RequestTimeout is returned when an http request takes longer than allowed
+	awsErrorRequestTimeout = "RequestTimeout"
+
+	// RequestTimeoutException is returned when an http request takes longer than allowed
+	awsErrorRequestTimeoutException = "RequestTimeoutException"
 )
 
 // InvalidArgumentError returns an grpc invalid argument status error.
@@ -141,6 +147,11 @@ func ParseAWSError(err error, msg string) (st *status.Status, permission *pb.Per
 		case awsErrorInvalidObjectState:
 			statusMsg := fmt.Sprintf("aws %s error: %s", serviceName, msg)
 			return status.New(codes.NotFound, statusMsg), nil
+		case awsErrorRequestTimeout:
+			fallthrough
+		case awsErrorRequestTimeoutException:
+			statusMsg := fmt.Sprintf("aws %s error: %s", serviceName, msg)
+			return status.New(codes.DeadlineExceeded, statusMsg), nil
 		}
 	}
 

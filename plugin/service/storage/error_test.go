@@ -123,7 +123,7 @@ func Test_ParseS3Error(t *testing.T) {
 			req:                &pb.GetObjectRequest{},
 			err:                TestAwsS3Error("RequestTimeout", "action", "request timeout"),
 			expectedStatusCode: codes.DeadlineExceeded,
-			expectedStatusMsg:  "aws service s3: connectivity error: test",
+			expectedStatusMsg:  "aws s3 error: test",
 			expectedDetails: &pb.StorageBucketCredentialState{
 				State: &pb.Permissions{
 					Read: &pb.Permission{
