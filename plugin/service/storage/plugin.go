@@ -778,7 +778,6 @@ func dryRunValidation(ctx context.Context, state *awsStoragePersistedState, attr
 	var errs *multierror.Error
 	permissions := &pb.Permissions{}
 	// we track the codes returned by ParseAWSError and pick the most severe one by using the max func
-	code := codes.OK
 
 	objectKey := path.Join(bucket.GetBucketPrefix(), uuid.New().String())
 	if _, err := client.PutObject(ctx, &s3.PutObjectInput{
@@ -788,7 +787,6 @@ func dryRunValidation(ctx context.Context, state *awsStoragePersistedState, attr
 	}); err != nil {
 		var st *status.Status
 		st, permissions.Write = errors.ParseAWSError(err, "failed to put object")
-		code = max(st.Code(), code)
 		errs = multierror.Append(errs, st.Err())
 	} else {
 		permissions.Write = &pb.Permission{State: pb.StateType_STATE_TYPE_OK, CheckedAt: timestamppb.Now()}
@@ -800,7 +798,6 @@ func dryRunValidation(ctx context.Context, state *awsStoragePersistedState, attr
 	}); err != nil {
 		var st *status.Status
 		st, permissions.Read = errors.ParseAWSError(err, "failed to get object")
-		code = max(st.Code(), code)
 		errs = multierror.Append(errs, st.Err())
 	} else {
 		permissions.Read = &pb.Permission{State: pb.StateType_STATE_TYPE_OK, CheckedAt: timestamppb.Now()}
@@ -812,7 +809,6 @@ func dryRunValidation(ctx context.Context, state *awsStoragePersistedState, attr
 	}); err != nil {
 		var st *status.Status
 		st, permissions.Read = errors.ParseAWSError(err, "failed to head object")
-		code = max(st.Code(), code)
 		errs = multierror.Append(errs, st.Err())
 	}
 
@@ -822,7 +818,6 @@ func dryRunValidation(ctx context.Context, state *awsStoragePersistedState, attr
 	}); err != nil {
 		var st *status.Status
 		st, permissions.Read = errors.ParseAWSError(err, "failed to list object")
-		code = max(st.Code(), code)
 		errs = multierror.Append(errs, st.Err())
 	} else if res == nil || len(res.Contents) != 1 || *res.Contents[0].Key != objectKey {
 		return status.New(codes.Aborted, fmt.Sprintf("list response did not contain the expected key: %+v", res))
@@ -834,14 +829,13 @@ func dryRunValidation(ctx context.Context, state *awsStoragePersistedState, attr
 	}); err != nil {
 		var st *status.Status
 		st, permissions.Delete = errors.ParseAWSError(err, "failed to delete object")
-		code = max(st.Code(), code)
 		errs = multierror.Append(errs, st.Err())
 	} else {
 		permissions.Delete = &pb.Permission{State: pb.StateType_STATE_TYPE_OK, CheckedAt: timestamppb.Now()}
 	}
 
 	if errs != nil {
-		st := status.New(code, fmt.Sprintf("failed to validate provided aws credentials: %v", errs.Unwrap()))
+		st := status.New(codes.FailedPrecondition, fmt.Sprintf("failed to validate provided aws credentials: %v", errs.Unwrap()))
 		state := &pb.StorageBucketCredentialState{State: permissions}
 		if st, err = st.WithDetails(state); err != nil {
 			st = status.New(codes.Internal, err.Error())
