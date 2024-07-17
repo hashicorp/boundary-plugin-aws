@@ -7,6 +7,8 @@ import (
 	"testing"
 
 	cred "github.com/hashicorp/boundary-plugin-aws/internal/credential"
+	pb "github.com/hashicorp/boundary/sdk/pbs/plugin"
+	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
@@ -19,6 +21,7 @@ func TestGetStorageAttributes(t *testing.T) {
 		in                  *structpb.Struct
 		expected            *StorageAttributes
 		expectedErrContains string
+		expectedDetails     *pb.StorageBucketCredentialState
 	}{
 		{
 			name: "missing region",
@@ -100,13 +103,17 @@ func TestGetStorageAttributes(t *testing.T) {
 	for _, tc := range cases {
 		tc := tc
 		t.Run(tc.name, func(t *testing.T) {
-			require := require.New(t)
+			require, assert := require.New(t), assert.New(t)
 
 			actual, err := getStorageAttributes(tc.in)
 			if tc.expectedErrContains != "" {
 				require.Error(err)
 				require.Contains(err.Error(), tc.expectedErrContains)
-				require.Equal(status.Code(err), codes.InvalidArgument)
+				require.Equal(codes.InvalidArgument, status.Code(err))
+
+				st, ok := status.FromError(err)
+				require.True(ok)
+				assert.Len(st.Details(), 0)
 				return
 			}
 

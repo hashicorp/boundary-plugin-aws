@@ -34,8 +34,9 @@ type CredentialAttributes struct {
 }
 
 // GetCredentialsConfig parses values out of a protobuf struct secrets and returns a
-// CredentialsConfig used for configuring an AWS session. An error is returned if
-// any unrecognized fields are found in the protobuf struct input.
+// CredentialsConfig used for configuring an AWS session. An status error is returned
+// with an InvalidArgument code if any unrecognized fields are found in the protobuf
+// struct input.
 func GetCredentialsConfig(secrets *structpb.Struct, attrs *CredentialAttributes, required bool) (*awsutil.CredentialsConfig, error) {
 	// initialize secrets if it is nil
 	// secrets can be nil because static credentials are optional
@@ -116,13 +117,18 @@ func GetCredentialsConfig(secrets *structpb.Struct, attrs *CredentialAttributes,
 		opts = append(opts, awsutil.WithRoleTags(attrs.RoleTags))
 	}
 
-	return awsutil.NewCredentialsConfig(opts...)
+	cfg, err := awsutil.NewCredentialsConfig(opts...)
+	if err != nil {
+		return nil, errors.BadRequestStatus(err.Error())
+	}
+
+	return cfg, nil
 }
 
 // GetCredentialAttributes parses values out of a protobuf struct input and returns a
-// CredentialAttributes used for configuring an AWS session. An error is returned if
-// any of the following fields are missing from the protobuf struct input or have
-// invalid value types: region, disableCredentialRotation
+// CredentialAttributes used for configuring an AWS session. An status error is returned
+// with an InvalidArgument code if any of the following fields are missing from the protobuf
+// struct input or have invalid value types: region, disableCredentialRotation
 func GetCredentialAttributes(in *structpb.Struct) (*CredentialAttributes, error) {
 	badFields := make(map[string]string)
 

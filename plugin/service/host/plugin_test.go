@@ -132,7 +132,7 @@ func TestPluginOnCreateCatalogErr(t *testing.T) {
 					),
 				}),
 			},
-			expectedErrContains: fmt.Sprintf("error during credential rotation: error rotating credentials: error calling CreateAccessKey: error calling iam.GetUser: %s", testGetUserErr),
+			expectedErrContains: "aws service unknown: unknown error: error rotating credentials",
 			expectedErrCode:     codes.InvalidArgument,
 		},
 		{
@@ -163,7 +163,7 @@ func TestPluginOnCreateCatalogErr(t *testing.T) {
 					),
 				}),
 			},
-			expectedErrContains: fmt.Sprintf("error during credential validation: error validating credentials: %s", testGetCallerIdentityErr),
+			expectedErrContains: "aws service unknown: unknown error: validating credentials",
 			expectedErrCode:     codes.InvalidArgument,
 		},
 	}
@@ -342,7 +342,7 @@ func TestPluginOnUpdateCatalogErr(t *testing.T) {
 					),
 				}),
 			},
-			expectedErrContains: fmt.Sprintf("error attempting to replace credentials: error deleting old access key: %s", testDeleteAccessKeyErr),
+			expectedErrContains: "aws service unknown: unknown error: failed to delete access key",
 			expectedErrCode:     codes.InvalidArgument,
 		},
 		{
@@ -375,7 +375,7 @@ func TestPluginOnUpdateCatalogErr(t *testing.T) {
 					),
 				}),
 			},
-			expectedErrContains: fmt.Sprintf("error during credential rotation: error rotating credentials: error calling CreateAccessKey: error calling iam.GetUser: %s", testGetUserErr),
+			expectedErrContains: "aws service unknown: unknown error: error rotating credentials",
 			expectedErrCode:     codes.InvalidArgument,
 		},
 	}
@@ -466,7 +466,7 @@ func TestPluginOnDeleteCatalogErr(t *testing.T) {
 					),
 				}),
 			},
-			expectedErrContains: fmt.Sprintf("error removing rotated credentials during catalog deletion: error deleting old access key: %s", testDeleteAccessKeyErr),
+			expectedErrContains: "aws service unknown: unknown error: failed to delete access key",
 			expectedErrCode:     codes.Aborted,
 		},
 	}

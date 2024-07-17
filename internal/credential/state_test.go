@@ -14,7 +14,10 @@ import (
 	"github.com/aws/aws-sdk-go-v2/service/iam"
 	iamTypes "github.com/aws/aws-sdk-go-v2/service/iam/types"
 	"github.com/hashicorp/go-secure-stdlib/awsutil/v2"
+	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	"google.golang.org/grpc/codes"
+	"google.golang.org/grpc/status"
 	"google.golang.org/protobuf/types/known/structpb"
 )
 
@@ -340,14 +343,16 @@ func TestAwsCredentialPersistedStateFromProto(t *testing.T) {
 
 func TestAwsCatalogPersistedState_ValidateCreds(t *testing.T) {
 	cases := []struct {
-		name        string
-		in          *AwsCredentialPersistedState
-		expectedErr string
+		name               string
+		in                 *AwsCredentialPersistedState
+		expectedStatusCode codes.Code
+		expectedErr        string
 	}{
 		{
-			name:        "missing credentials config",
-			in:          &AwsCredentialPersistedState{},
-			expectedErr: "missing credentials config",
+			name:               "missing credentials config",
+			in:                 &AwsCredentialPersistedState{},
+			expectedStatusCode: codes.InvalidArgument,
+			expectedErr:        "missing credentials config",
 		},
 		{
 			name: "validation error",
@@ -365,7 +370,8 @@ func TestAwsCatalogPersistedState_ValidateCreds(t *testing.T) {
 					),
 				},
 			},
-			expectedErr: fmt.Sprintf("error validating credentials: %s", testGetCallerIdentityErr),
+			expectedStatusCode: codes.Unknown,
+			expectedErr:        "aws service unknown: unknown error: validating credentials",
 		},
 		{
 			name: "good",
@@ -383,10 +389,12 @@ func TestAwsCatalogPersistedState_ValidateCreds(t *testing.T) {
 	for _, tc := range cases {
 		tc := tc
 		t.Run(tc.name, func(t *testing.T) {
-			require := require.New(t)
+			require, assert := require.New(t), assert.New(t)
 			err := tc.in.ValidateCreds(context.Background())
 			if tc.expectedErr != "" {
-				require.EqualError(err, tc.expectedErr)
+				require.Error(err)
+				assert.ErrorContains(err, tc.expectedErr)
+				assert.Equal(tc.expectedStatusCode, status.Code(err))
 				return
 			}
 
@@ -402,11 +410,13 @@ func TestAwsCatalogPersistedState_RotateCreds(t *testing.T) {
 		exepected                  *awsutil.CredentialsConfig
 		expectedNonZeroRotatedTime bool
 		expectedErr                string
+		expectedStatusCode         codes.Code
 	}{
 		{
-			name:        "missing credentials config",
-			in:          &AwsCredentialPersistedState{},
-			expectedErr: "missing credentials config",
+			name:               "missing credentials config",
+			in:                 &AwsCredentialPersistedState{},
+			expectedErr:        "missing credentials config",
+			expectedStatusCode: codes.InvalidArgument,
 		},
 		{
 			name: "cannot delete dynamic credential type",
@@ -417,7 +427,8 @@ func TestAwsCatalogPersistedState_RotateCreds(t *testing.T) {
 				},
 				CredsLastRotatedTime: time.Now(),
 			},
-			expectedErr: "invalid credential type",
+			expectedErr:        "invalid credential type",
+			expectedStatusCode: codes.InvalidArgument,
 		},
 		{
 			name: "cannot delete unknown credential type",
@@ -428,7 +439,8 @@ func TestAwsCatalogPersistedState_RotateCreds(t *testing.T) {
 				},
 				CredsLastRotatedTime: time.Now(),
 			},
-			expectedErr: "invalid credential type",
+			expectedErr:        "invalid credential type",
+			expectedStatusCode: codes.InvalidArgument,
 		},
 		{
 			name: "rotation error",
@@ -446,7 +458,8 @@ func TestAwsCatalogPersistedState_RotateCreds(t *testing.T) {
 					),
 				},
 			},
-			expectedErr: fmt.Sprintf("error rotating credentials: error calling CreateAccessKey: error calling iam.GetUser: %s", testGetUserErr),
+			expectedErr:        "aws service unknown: unknown error: error rotating credentials",
+			expectedStatusCode: codes.Unknown,
 		},
 		{
 			name: "good",
@@ -496,10 +509,12 @@ func TestAwsCatalogPersistedState_RotateCreds(t *testing.T) {
 	for _, tc := range cases {
 		tc := tc
 		t.Run(tc.name, func(t *testing.T) {
-			require := require.New(t)
+			require, assert := require.New(t), assert.New(t)
 			err := tc.in.RotateCreds(context.Background())
 			if tc.expectedErr != "" {
-				require.EqualError(err, tc.expectedErr)
+				require.Error(err)
+				assert.ErrorContains(err, tc.expectedErr)
+				assert.Equal(tc.expectedStatusCode, status.Code(err))
 				return
 			}
 
@@ -521,17 +536,20 @@ func TestAwsCatalogPersistedState_ReplaceCreds(t *testing.T) {
 		expected             *awsutil.CredentialsConfig
 		expectedDeleteCalled bool
 		expectedErr          string
+		expectedStatusCode   codes.Code
 	}{
 		{
-			name:        "missing new credentials config",
-			in:          &AwsCredentialPersistedState{},
-			expectedErr: "missing new credentials config",
+			name:               "missing new credentials config",
+			in:                 &AwsCredentialPersistedState{},
+			expectedErr:        "missing new credentials config",
+			expectedStatusCode: codes.InvalidArgument,
 		},
 		{
-			name:             "missing credentials config",
-			in:               &AwsCredentialPersistedState{},
-			credentialConfig: &awsutil.CredentialsConfig{},
-			expectedErr:      "missing credentials config",
+			name:               "missing credentials config",
+			in:                 &AwsCredentialPersistedState{},
+			credentialConfig:   &awsutil.CredentialsConfig{},
+			expectedErr:        "missing credentials config",
+			expectedStatusCode: codes.InvalidArgument,
 		},
 		{
 			name: "deletion error",
@@ -549,8 +567,9 @@ func TestAwsCatalogPersistedState_ReplaceCreds(t *testing.T) {
 					),
 				},
 			},
-			credentialConfig: &awsutil.CredentialsConfig{},
-			expectedErr:      fmt.Sprintf("error deleting old access key: %s", testDeleteAccessKeyErr),
+			credentialConfig:   &awsutil.CredentialsConfig{},
+			expectedErr:        "aws service unknown: unknown error: failed to delete access key",
+			expectedStatusCode: codes.Unknown,
 		},
 		{
 			name: "good with delete of old rotated",
@@ -604,11 +623,12 @@ func TestAwsCatalogPersistedState_ReplaceCreds(t *testing.T) {
 	for _, tc := range cases {
 		tc := tc
 		t.Run(tc.name, func(t *testing.T) {
-			require := require.New(t)
+			require, assert := require.New(t), assert.New(t)
 			state.Reset()
 			err := tc.in.ReplaceCreds(context.Background(), tc.credentialConfig)
 			if tc.expectedErr != "" {
-				require.EqualError(err, tc.expectedErr)
+				require.Error(err)
+				assert.ErrorContains(err, tc.expectedErr)
 				return
 			}
 
@@ -623,14 +643,16 @@ func TestAwsCatalogPersistedState_ReplaceCreds(t *testing.T) {
 
 func TestAwsCatalogPersistedState_DeleteCreds(t *testing.T) {
 	cases := []struct {
-		name        string
-		in          *AwsCredentialPersistedState
-		expectedErr string
+		name               string
+		in                 *AwsCredentialPersistedState
+		expectedErr        string
+		expectedStatusCode codes.Code
 	}{
 		{
-			name:        "missing credentials config",
-			in:          &AwsCredentialPersistedState{},
-			expectedErr: "missing credentials config",
+			name:               "missing credentials config",
+			in:                 &AwsCredentialPersistedState{},
+			expectedErr:        "missing credentials config",
+			expectedStatusCode: codes.InvalidArgument,
 		},
 		{
 			name: "cannot delete dynamic credential type",
@@ -641,7 +663,8 @@ func TestAwsCatalogPersistedState_DeleteCreds(t *testing.T) {
 				},
 				CredsLastRotatedTime: time.Now(),
 			},
-			expectedErr: "invalid credential type",
+			expectedErr:        "invalid credential type",
+			expectedStatusCode: codes.InvalidArgument,
 		},
 		{
 			name: "cannot delete unknown credential type",
@@ -652,7 +675,8 @@ func TestAwsCatalogPersistedState_DeleteCreds(t *testing.T) {
 				},
 				CredsLastRotatedTime: time.Now(),
 			},
-			expectedErr: "invalid credential type",
+			expectedErr:        "invalid credential type",
+			expectedStatusCode: codes.InvalidArgument,
 		},
 		{
 			name: "deletion error",
@@ -669,7 +693,8 @@ func TestAwsCatalogPersistedState_DeleteCreds(t *testing.T) {
 					),
 				},
 			},
-			expectedErr: fmt.Sprintf("error deleting old access key: %s", testDeleteAccessKeyErr),
+			expectedErr:        "aws service unknown: unknown error: failed to delete access key",
+			expectedStatusCode: codes.Unknown,
 		},
 		{
 			name: "deletion error, but OK because key was just gone",
@@ -708,10 +733,11 @@ func TestAwsCatalogPersistedState_DeleteCreds(t *testing.T) {
 	for _, tc := range cases {
 		tc := tc
 		t.Run(tc.name, func(t *testing.T) {
-			require := require.New(t)
+			require, assert := require.New(t), assert.New(t)
 			err := tc.in.DeleteCreds(context.Background())
 			if tc.expectedErr != "" {
-				require.EqualError(err, tc.expectedErr)
+				require.Error(err)
+				assert.ErrorContains(err, tc.expectedErr)
 				return
 			}
 
