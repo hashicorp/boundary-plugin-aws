@@ -11,7 +11,7 @@ require (
 	github.com/aws/smithy-go v1.14.1
 	github.com/google/go-cmp v0.6.0
 	github.com/google/uuid v1.4.0
-	github.com/hashicorp/boundary/sdk v0.0.41-0.20231117205527-08045ddb050e
+	github.com/hashicorp/boundary/sdk v0.0.43-0.20240717182311-a20aae98794a
 	github.com/hashicorp/go-multierror v1.1.1
 	github.com/hashicorp/go-secure-stdlib/awsutil/v2 v2.0.0
 	github.com/hashicorp/terraform-json v0.14.0
@@ -59,6 +59,8 @@ require (
 	golang.org/x/net v0.20.0 // indirect
 	golang.org/x/sys v0.16.0 // indirect
 	golang.org/x/text v0.14.0 // indirect
+	google.golang.org/genproto v0.0.0-20240116215550-a9fa1716bcac // indirect
+	google.golang.org/genproto/googleapis/api v0.0.0-20240125205218-1f4bbc51befe // indirect
 	google.golang.org/genproto/googleapis/rpc v0.0.0-20240125205218-1f4bbc51befe // indirect
 	gopkg.in/yaml.v3 v3.0.1 // indirect
 )
