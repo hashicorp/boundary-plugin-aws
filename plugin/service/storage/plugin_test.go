@@ -2688,7 +2688,7 @@ func TestStoragePlugin_ValidatePermissions(t *testing.T) {
 			expectedDetails: &pb.StorageBucketCredentialState{
 				State: &pb.Permissions{
 					Read: &pb.Permission{
-						State:     pb.StateType_STATE_TYPE_OK,
+						State:     pb.StateType_STATE_TYPE_UNKNOWN,
 						CheckedAt: timestamppb.Now(),
 					},
 					Write: &pb.Permission{
