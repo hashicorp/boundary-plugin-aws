@@ -820,7 +820,8 @@ func dryRunValidation(ctx context.Context, state *awsStoragePersistedState, attr
 		st, permissions.Read = errors.ParseAWSError(err, "failed to list object")
 		errs = multierror.Append(errs, st.Err())
 	} else if res == nil || len(res.Contents) != 1 || *res.Contents[0].Key != objectKey {
-		return status.New(codes.Aborted, fmt.Sprintf("list response did not contain the expected key: %+v", res))
+		permissions.Read = &pb.Permission{State: pb.StateType_STATE_TYPE_UNKNOWN, CheckedAt: timestamppb.Now()}
+		errs = multierror.Append(errs, status.New(codes.Aborted, fmt.Sprintf("list response did not contain the expected key: %+v", res)).Err())
 	}
 
 	if _, err := client.DeleteObject(ctx, &s3.DeleteObjectInput{

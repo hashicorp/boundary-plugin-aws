@@ -2666,6 +2666,43 @@ func TestStoragePlugin_ValidatePermissions(t *testing.T) {
 				),
 			},
 		},
+		{
+			name:     "dryRunValidation failed putObject with missing list expected key",
+			req:      validRequest(),
+			credOpts: validSTSMock(),
+			storageOpts: []awsStoragePersistedStateOption{
+				withTestS3APIFunc(newTestMockS3(
+					nil,
+					testMockS3WithPutObjectError(TestAwsS3Error("AccessDenied", "PutObject", "not authorized")),
+					testMockS3WithGetObjectOutput(&s3.GetObjectOutput{}),
+					testMockS3WithHeadObjectOutput(&s3.HeadObjectOutput{}),
+					testMockS3WithListObjectsV2OutputFunc(func(i *s3.ListObjectsV2Input) *s3.ListObjectsV2Output {
+						return &s3.ListObjectsV2Output{
+							Contents: []s3types.Object{},
+						}
+					}),
+				)),
+			},
+			expectedErrContains: "aws service s3: invalid credentials error: failed to put object",
+			expectedErrCode:     codes.FailedPrecondition,
+			expectedDetails: &pb.StorageBucketCredentialState{
+				State: &pb.Permissions{
+					Read: &pb.Permission{
+						State:     pb.StateType_STATE_TYPE_UNKNOWN,
+						CheckedAt: timestamppb.Now(),
+					},
+					Write: &pb.Permission{
+						State:        pb.StateType_STATE_TYPE_ERROR,
+						ErrorDetails: "not authorized",
+						CheckedAt:    timestamppb.Now(),
+					},
+					Delete: &pb.Permission{
+						State:     pb.StateType_STATE_TYPE_OK,
+						CheckedAt: timestamppb.Now(),
+					},
+				},
+			},
+		},
 	}
 
 	for _, tc := range cases {
