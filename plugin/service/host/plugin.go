@@ -5,22 +5,19 @@ package host
 
 import (
 	"context"
-	"errors"
 	"fmt"
 	"strings"
 
 	"github.com/aws/aws-sdk-go-v2/aws"
 	"github.com/aws/aws-sdk-go-v2/service/ec2"
 	"github.com/aws/aws-sdk-go-v2/service/ec2/types"
-	"github.com/aws/smithy-go"
+	"github.com/hashicorp/boundary-plugin-aws/internal/credential"
+	"github.com/hashicorp/boundary-plugin-aws/internal/errors"
 	pb "github.com/hashicorp/boundary/sdk/pbs/plugin"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 	"google.golang.org/protobuf/proto"
 	"google.golang.org/protobuf/types/known/structpb"
-
-	"github.com/hashicorp/boundary-plugin-aws/internal/credential"
-	cred "github.com/hashicorp/boundary-plugin-aws/internal/credential"
 )
 
 // HostPlugin implements the HostPluginServiceServer interface for the
@@ -42,24 +39,19 @@ var _ pb.HostPluginServiceServer = (*HostPlugin)(nil)
 func (p *HostPlugin) OnCreateCatalog(ctx context.Context, req *pb.OnCreateCatalogRequest) (*pb.OnCreateCatalogResponse, error) {
 	catalog := req.GetCatalog()
 	if catalog == nil {
-		return nil, status.Error(codes.InvalidArgument, "catalog is nil")
-	}
-
-	secrets := catalog.GetSecrets()
-	if secrets == nil {
-		return nil, status.Error(codes.InvalidArgument, "secrets are required")
+		return nil, errors.BadRequestStatus("catalog is required")
 	}
 
 	attrs := catalog.GetAttributes()
 	if attrs == nil {
-		return nil, status.Error(codes.InvalidArgument, "attributes are required")
+		return nil, errors.BadRequestStatus("attributes are required")
 	}
 
 	catalogAttributes, err := getCatalogAttributes(attrs)
 	if err != nil {
 		return nil, err
 	}
-	credConfig, err := cred.GetCredentialsConfig(secrets, catalogAttributes.CredentialAttributes, true)
+	credConfig, err := credential.GetCredentialsConfig(catalog.GetSecrets(), catalogAttributes.CredentialAttributes, false)
 	if err != nil {
 		return nil, err
 	}
@@ -71,7 +63,14 @@ func (p *HostPlugin) OnCreateCatalog(ctx context.Context, req *pb.OnCreateCatalo
 		}, p.testCredStateOpts...)...,
 	)
 	if err != nil {
-		return nil, status.Errorf(codes.InvalidArgument, "error setting up persisted state: %s", err)
+		return nil, errors.BadRequestStatus("error setting up persisted state: %s", err)
+	}
+
+	// Try to rotate AWS static credentials
+	if credential.GetCredentialType(credState.CredentialsConfig) == credential.StaticAWS && !catalogAttributes.DisableCredentialRotation {
+		if err := credState.RotateCreds(ctx); err != nil {
+			return nil, err
+		}
 	}
 
 	catalogState, err := newAwsCatalogPersistedState(
@@ -80,25 +79,17 @@ func (p *HostPlugin) OnCreateCatalog(ctx context.Context, req *pb.OnCreateCatalo
 		}, p.testCatalogStateOpts...)...,
 	)
 	if err != nil {
-		return nil, status.Errorf(codes.InvalidArgument, "error setting up persisted state: %s", err)
+		return nil, errors.BadRequestStatus("error setting up persisted state: %s", err)
 	}
 
-	if cred.GetCredentialType(credState.CredentialsConfig) == cred.StaticAWS {
-		if !catalogAttributes.DisableCredentialRotation {
-			if err := credState.RotateCreds(ctx); err != nil {
-				return nil, status.Errorf(codes.InvalidArgument, "error during credential rotation: %s", err)
-			}
-		} else {
-			// Simply validate if we aren't rotating.
-			if err := credState.ValidateCreds(ctx); err != nil {
-				return nil, status.Errorf(codes.InvalidArgument, "error during credential validation: %s", err)
-			}
-		}
+	// perform dry run to ensure we can interact with AWS as expected.
+	if st := dryRunValidation(ctx, catalogState); st != nil {
+		return nil, st.Err()
 	}
 
 	persistedProto, err := catalogState.toProto()
 	if err != nil {
-		return nil, status.Error(codes.InvalidArgument, err.Error())
+		return nil, errors.BadRequestStatus(err.Error())
 	}
 
 	return &pb.OnCreateCatalogResponse{
@@ -111,43 +102,100 @@ func (p *HostPlugin) OnUpdateCatalog(ctx context.Context, req *pb.OnUpdateCatalo
 	// For host catalogs we only need to really validate what is
 	// currently in the new copy of the host catalog data, so skip
 	// fetching the new copy to keep things a little less messy.
-	catalog := req.GetNewCatalog()
-	if catalog == nil {
-		return nil, status.Error(codes.InvalidArgument, "new catalog is nil")
+	currentCatalog := req.GetCurrentCatalog()
+	if currentCatalog == nil {
+		return nil, errors.BadRequestStatus("current catalog is required")
+	}
+	newCatalog := req.GetNewCatalog()
+	if newCatalog == nil {
+		return nil, errors.BadRequestStatus("new catalog is required")
 	}
 
-	var updateSecrets bool
-	secrets := catalog.GetSecrets()
-	if secrets != nil {
-		// We will be updating secrets this run, but what exactly that
-		// means will be determined later.
-		updateSecrets = true
+	oldAttrs := currentCatalog.GetAttributes()
+	if oldAttrs == nil {
+		return nil, errors.BadRequestStatus("current catalog attributes are required")
 	}
-
-	attrs := catalog.GetAttributes()
-	if attrs == nil {
-		return nil, status.Error(codes.InvalidArgument, "new catalog missing attributes")
+	oldCatalogAttributes, err := getCatalogAttributes(oldAttrs)
+	if err != nil {
+		return nil, err
 	}
-
-	catalogAttributes, err := getCatalogAttributes(attrs)
+	newAttrs := newCatalog.GetAttributes()
+	if newAttrs == nil {
+		return nil, errors.BadRequestStatus("new catalog attributes are required")
+	}
+	newCatalogAttributes, err := getCatalogAttributes(newAttrs)
 	if err != nil {
 		return nil, err
 	}
 
-	// Get the persisted data.
-	// NOTE: We might need to change this at a later time. I'm not too
-	// sure *exactly* what scenarios we might encounter that would
-	// ultimately mean that we would have to handle an empty or missing
-	// state in update, but what we are ultimately assuming here
-	// (implicitly through awsCatalogPersistedStateFromProto) is that
-	// the state will exist and be populated. Personally I think this
-	// is fine and important, but this may change in the future.
 	credState, err := credential.AwsCredentialPersistedStateFromProto(
 		req.GetPersisted().GetSecrets(),
-		catalogAttributes.CredentialAttributes,
+		oldCatalogAttributes.CredentialAttributes,
 		p.testCredStateOpts...)
 	if err != nil {
-		return nil, status.Errorf(codes.InvalidArgument, "error loading persisted state: %s", err)
+		return nil, errors.BadRequestStatus("error loading persisted state: %s", err)
+	}
+
+	// Verify the incoming credentials are valid and return any errors to the
+	// user if they're not. Note this doesn't validate the credentials against
+	// AWS - it only does logical validation on the fields.
+	updatedCredentials, err := credential.GetCredentialsConfig(newCatalog.GetSecrets(), newCatalogAttributes.CredentialAttributes, false)
+	if err != nil {
+		return nil, err
+	}
+
+	// We will be updating credentials when one of two changes occur:
+	// 1. the new catalog has secrets for static credentials, in which case we need to delete the old static credentials
+	// 2. the new catalog has a different roleARN value for dynamic credentials
+	if newCatalog.GetSecrets() != nil || newCatalogAttributes.RoleArn != oldCatalogAttributes.RoleArn {
+		// Ensure the incoming credentials are valid for interaction with the S3
+		// Bucket before replacing them.
+		newCredState, err := credential.NewAwsCredentialPersistedState(
+			append([]credential.AwsCredentialPersistedStateOption{
+				credential.WithCredentialsConfig(updatedCredentials),
+			}, p.testCredStateOpts...)...,
+		)
+		if err != nil {
+			return nil, errors.BadRequestStatus("error setting up new credential persisted state: %s", err)
+		}
+		newCatalogState, err := newAwsCatalogPersistedState(
+			append([]awsCatalogPersistedStateOption{
+				withCredentials(newCredState),
+			}, p.testCatalogStateOpts...)...,
+		)
+		if err != nil {
+			return nil, errors.BadRequestStatus("error loading persisted state: %s", err)
+		}
+		if st := dryRunValidation(ctx, newCatalogState); st != nil {
+			return nil, st.Err()
+		}
+
+		// Replace the existing credential state.
+		// This checks the timestamp on the last rotation time as well
+		// and deletes the credentials if we are managing them
+		// (ie: if we've rotated them before).
+		if err := credState.ReplaceCreds(ctx, updatedCredentials); err != nil {
+			return nil, err
+		}
+	}
+
+	if credential.GetCredentialType(credState.CredentialsConfig) == credential.StaticAWS {
+		// This is a validate check to make sure that we aren't disabling
+		// rotation for credentials currently being managed by rotation.
+		// This is not allowed.
+		if newCatalogAttributes.DisableCredentialRotation && newCatalog.GetSecrets() == nil {
+			if !credState.CredsLastRotatedTime.IsZero() {
+				return nil, errors.BadRequestStatus("cannot disable rotation for already-rotated credentials")
+			}
+		}
+
+		// If we're enabling rotation now but didn't before, or have
+		// freshly replaced credentials, we can rotate here.
+		if !newCatalogAttributes.DisableCredentialRotation && credState.CredsLastRotatedTime.IsZero() {
+			if err := credState.RotateCreds(ctx); err != nil {
+				return nil, err
+			}
+		}
 	}
 
 	catalogState, err := newAwsCatalogPersistedState(
@@ -156,45 +204,17 @@ func (p *HostPlugin) OnUpdateCatalog(ctx context.Context, req *pb.OnUpdateCatalo
 		}, p.testCatalogStateOpts...)...,
 	)
 	if err != nil {
-		return nil, status.Errorf(codes.InvalidArgument, "error loading persisted state: %s", err)
+		return nil, errors.BadRequestStatus("error loading persisted state: %s", err)
 	}
 
-	if cred.GetCredentialType(credState.CredentialsConfig) == cred.StaticAWS {
-		if catalogAttributes.DisableCredentialRotation && !updateSecrets {
-			// This is a validate check to make sure that we aren't disabling
-			// rotation for credentials currently being managed by rotation.
-			// This is not allowed.
-			if !credState.CredsLastRotatedTime.IsZero() {
-				return nil, status.Error(codes.FailedPrecondition, "cannot disable rotation for already-rotated credentials")
-			}
-		}
-
-		if updateSecrets {
-			catalogSecrets, err := credential.GetCredentialsConfig(secrets, catalogAttributes.CredentialAttributes, true)
-			if err != nil {
-				return nil, err
-			}
-
-			// Replace the credentials. This checks the timestamp on the last
-			// rotation time as well and deletes the credentials if we are
-			// managing them (ie: if we've rotated them before).
-			if err := credState.ReplaceCreds(ctx, catalogSecrets); err != nil {
-				return nil, status.Errorf(codes.InvalidArgument, "error attempting to replace credentials: %s", err)
-			}
-		}
-
-		if !catalogAttributes.DisableCredentialRotation && credState.CredsLastRotatedTime.IsZero() {
-			// If we're enabling rotation now but didn't before, or have
-			// freshly replaced credentials, we can rotate here.
-			if err := credState.RotateCreds(ctx); err != nil {
-				return nil, status.Errorf(codes.InvalidArgument, "error during credential rotation: %s", err)
-			}
-		}
+	// perform dry run to ensure we can interact with AWS as expected.
+	if st := dryRunValidation(ctx, catalogState); st != nil {
+		return nil, st.Err()
 	}
 
 	persistedProto, err := catalogState.toProto()
 	if err != nil {
-		return nil, status.Error(codes.InvalidArgument, err.Error())
+		return nil, errors.BadRequestStatus(err.Error())
 	}
 
 	return &pb.OnUpdateCatalogResponse{
@@ -206,12 +226,12 @@ func (p *HostPlugin) OnUpdateCatalog(ctx context.Context, req *pb.OnUpdateCatalo
 func (p *HostPlugin) OnDeleteCatalog(ctx context.Context, req *pb.OnDeleteCatalogRequest) (*pb.OnDeleteCatalogResponse, error) {
 	catalog := req.GetCatalog()
 	if catalog == nil {
-		return nil, status.Error(codes.InvalidArgument, "new catalog is nil")
+		return nil, errors.BadRequestStatus("catalog is required")
 	}
 
 	attrs := catalog.GetAttributes()
 	if attrs == nil {
-		return nil, status.Error(codes.InvalidArgument, "new catalog missing attributes")
+		return nil, errors.BadRequestStatus("catalog attributes are required")
 	}
 
 	catalogAttributes, err := getCatalogAttributes(attrs)
@@ -230,7 +250,7 @@ func (p *HostPlugin) OnDeleteCatalog(ctx context.Context, req *pb.OnDeleteCatalo
 		catalogAttributes.CredentialAttributes,
 		p.testCredStateOpts...)
 	if err != nil {
-		return nil, status.Errorf(codes.InvalidArgument, "error loading persisted state: %s", err)
+		return nil, errors.BadRequestStatus("error loading persisted state: %s", err)
 	}
 
 	_, err = newAwsCatalogPersistedState(
@@ -239,17 +259,17 @@ func (p *HostPlugin) OnDeleteCatalog(ctx context.Context, req *pb.OnDeleteCatalo
 		}, p.testCatalogStateOpts...)...,
 	)
 	if err != nil {
-		return nil, status.Errorf(codes.InvalidArgument, "error loading persisted state: %s", err)
+		return nil, errors.BadRequestStatus("error loading persisted state: %s", err)
 	}
 
 	// try to delete static credentials
-	if cred.GetCredentialType(credState.CredentialsConfig) == cred.StaticAWS {
+	if credential.GetCredentialType(credState.CredentialsConfig) == credential.StaticAWS {
 		if !credState.CredsLastRotatedTime.IsZero() {
 			// Delete old/existing credentials. This is done with the same
 			// credentials to ensure that it has the proper permissions to do
 			// it.
 			if err := credState.DeleteCreds(ctx); err != nil {
-				return nil, status.Errorf(codes.Aborted, "error removing rotated credentials during catalog deletion: %s", err)
+				return nil, err
 			}
 		}
 	}
@@ -288,12 +308,12 @@ func (p *HostPlugin) NormalizeSetData(ctx context.Context, req *pb.NormalizeSetD
 func (p *HostPlugin) OnCreateSet(ctx context.Context, req *pb.OnCreateSetRequest) (*pb.OnCreateSetResponse, error) {
 	catalog := req.GetCatalog()
 	if catalog == nil {
-		return nil, status.Error(codes.InvalidArgument, "catalog is nil")
+		return nil, errors.BadRequestStatus("catalog is required")
 	}
 
 	catalogAttrsRaw := catalog.GetAttributes()
 	if catalogAttrsRaw == nil {
-		return nil, status.Error(codes.InvalidArgument, "catalog missing attributes")
+		return nil, errors.BadRequestStatus("catalog attributes are required")
 	}
 
 	catalogAttributes, err := getCatalogAttributes(catalogAttrsRaw)
@@ -306,7 +326,7 @@ func (p *HostPlugin) OnCreateSet(ctx context.Context, req *pb.OnCreateSetRequest
 		catalogAttributes.CredentialAttributes,
 		p.testCredStateOpts...)
 	if err != nil {
-		return nil, status.Errorf(codes.InvalidArgument, "error loading persisted state: %s", err)
+		return nil, errors.BadRequestStatus("error loading persisted state: %s", err)
 	}
 
 	catalogState, err := newAwsCatalogPersistedState(
@@ -315,56 +335,43 @@ func (p *HostPlugin) OnCreateSet(ctx context.Context, req *pb.OnCreateSetRequest
 		}, p.testCatalogStateOpts...)...,
 	)
 	if err != nil {
-		return nil, status.Errorf(codes.InvalidArgument, "error loading persisted state: %s", err)
+		return nil, errors.BadRequestStatus("error loading persisted state: %s", err)
 	}
 
 	set := req.GetSet()
 	if set == nil {
-		return nil, status.Error(codes.InvalidArgument, "set is nil")
+		return nil, errors.BadRequestStatus("set is required")
 	}
 
 	if set.GetAttributes() == nil {
-		return nil, status.Error(codes.InvalidArgument, "set missing attributes")
+		return nil, errors.BadRequestStatus("set attributes are required")
 	}
 	setAttrs, err := getSetAttributes(set.GetAttributes())
 	if err != nil {
 		return nil, err
 	}
 
-	ec2Client, err := catalogState.EC2Client(ctx)
+	describeInstanceFilters, err := buildFilters(setAttrs)
 	if err != nil {
-		return nil, status.Errorf(codes.InvalidArgument, "error getting EC2 client: %s", err)
+		return nil, errors.BadRequestStatus("error building set filters: %s", err)
 	}
 
-	input, err := buildDescribeInstancesInput(setAttrs, true)
-	if err != nil {
-		return nil, status.Errorf(codes.InvalidArgument, "error building DescribeInstances parameters: %s", err)
+	if st := dryRunValidation(ctx, catalogState, describeInstanceFilters...); st != nil {
+		return nil, st.Err()
 	}
-
-	_, err = ec2Client.DescribeInstances(ctx, input)
-	if err == nil {
-		return nil, status.Error(codes.FailedPrecondition, "query error: DescribeInstances DryRun should have returned error, but none was found")
-	}
-
-	var apiErr smithy.APIError
-	if errors.As(err, &apiErr) && apiErr.ErrorCode() == "DryRunOperation" {
-		// Success
-		return &pb.OnCreateSetResponse{}, nil
-	}
-
-	return nil, status.Errorf(codes.InvalidArgument, "error performing dry run of DescribeInstances: %s", err)
+	return &pb.OnCreateSetResponse{}, nil
 }
 
 // OnUpdateSet is called when a dynamic host set is updated.
 func (p *HostPlugin) OnUpdateSet(ctx context.Context, req *pb.OnUpdateSetRequest) (*pb.OnUpdateSetResponse, error) {
 	catalog := req.GetCatalog()
 	if catalog == nil {
-		return nil, status.Error(codes.InvalidArgument, "catalog is nil")
+		return nil, errors.BadRequestStatus("catalog is required")
 	}
 
 	catalogAttrsRaw := catalog.GetAttributes()
 	if catalogAttrsRaw == nil {
-		return nil, status.Error(codes.InvalidArgument, "catalog missing attributes")
+		return nil, errors.BadRequestStatus("catalog attributes are required")
 	}
 
 	catalogAttributes, err := getCatalogAttributes(catalogAttrsRaw)
@@ -377,7 +384,7 @@ func (p *HostPlugin) OnUpdateSet(ctx context.Context, req *pb.OnUpdateSetRequest
 		catalogAttributes.CredentialAttributes,
 		p.testCredStateOpts...)
 	if err != nil {
-		return nil, status.Errorf(codes.InvalidArgument, "error loading persisted state: %s", err)
+		return nil, errors.BadRequestStatus("error loading persisted state: %s", err)
 	}
 
 	catalogState, err := newAwsCatalogPersistedState(
@@ -386,46 +393,34 @@ func (p *HostPlugin) OnUpdateSet(ctx context.Context, req *pb.OnUpdateSetRequest
 		}, p.testCatalogStateOpts...)...,
 	)
 	if err != nil {
-		return nil, status.Errorf(codes.InvalidArgument, "error loading persisted state: %s", err)
+		return nil, errors.BadRequestStatus("error loading persisted state: %s", err)
 	}
 
 	// As with catalog, we don't need to really look at the old host
 	// set here, just need to work off of/validate the new set config
 	set := req.GetNewSet()
 	if set == nil {
-		return nil, status.Error(codes.InvalidArgument, "new set is nil")
+		return nil, errors.BadRequestStatus("new set is required")
 	}
 
 	if set.GetAttributes() == nil {
-		return nil, status.Error(codes.InvalidArgument, "new set missing attributes")
+		return nil, errors.BadRequestStatus("new set attributes are required")
 	}
 	setAttrs, err := getSetAttributes(set.GetAttributes())
 	if err != nil {
 		return nil, err
 	}
 
-	ec2Client, err := catalogState.EC2Client(ctx)
+	describeInstanceFilters, err := buildFilters(setAttrs)
 	if err != nil {
-		return nil, status.Errorf(codes.InvalidArgument, "error getting EC2 client: %s", err)
+		return nil, errors.BadRequestStatus("error building set filters: %s", err)
 	}
 
-	input, err := buildDescribeInstancesInput(setAttrs, true)
-	if err != nil {
-		return nil, status.Errorf(codes.InvalidArgument, "error building DescribeInstances parameters: %s", err)
+	if st := dryRunValidation(ctx, catalogState, describeInstanceFilters...); st != nil {
+		return nil, st.Err()
 	}
 
-	_, err = ec2Client.DescribeInstances(ctx, input)
-	if err == nil {
-		return nil, status.Error(codes.FailedPrecondition, "query error: DescribeInstances DryRun should have returned error, but none was found")
-	}
-
-	var apiErr smithy.APIError
-	if errors.As(err, &apiErr) && apiErr.ErrorCode() == "DryRunOperation" {
-		// Success
-		return &pb.OnUpdateSetResponse{}, nil
-	}
-
-	return nil, status.Errorf(codes.InvalidArgument, "error performing dry run of DescribeInstances: %s", err)
+	return &pb.OnUpdateSetResponse{}, nil
 }
 
 // OnDeleteSet is called when a dynamic host set is deleted.
@@ -439,12 +434,12 @@ func (p *HostPlugin) OnDeleteSet(ctx context.Context, req *pb.OnDeleteSetRequest
 func (p *HostPlugin) ListHosts(ctx context.Context, req *pb.ListHostsRequest) (*pb.ListHostsResponse, error) {
 	catalog := req.GetCatalog()
 	if catalog == nil {
-		return nil, status.Error(codes.InvalidArgument, "catalog is nil")
+		return nil, errors.BadRequestStatus("catalog is required")
 	}
 
 	catalogAttrsRaw := catalog.GetAttributes()
 	if catalogAttrsRaw == nil {
-		return nil, status.Error(codes.InvalidArgument, "catalog missing attributes")
+		return nil, errors.BadRequestStatus("catalog attributes are required")
 	}
 
 	catalogAttributes, err := getCatalogAttributes(catalogAttrsRaw)
@@ -457,7 +452,7 @@ func (p *HostPlugin) ListHosts(ctx context.Context, req *pb.ListHostsRequest) (*
 		catalogAttributes.CredentialAttributes,
 		p.testCredStateOpts...)
 	if err != nil {
-		return nil, status.Errorf(codes.InvalidArgument, "error loading persisted state: %s", err)
+		return nil, errors.BadRequestStatus("error loading persisted state: %s", err)
 	}
 
 	catalogState, err := newAwsCatalogPersistedState(
@@ -466,12 +461,12 @@ func (p *HostPlugin) ListHosts(ctx context.Context, req *pb.ListHostsRequest) (*
 		}, p.testCatalogStateOpts...)...,
 	)
 	if err != nil {
-		return nil, status.Errorf(codes.InvalidArgument, "error loading persisted state: %s", err)
+		return nil, errors.BadRequestStatus("error loading persisted state: %s", err)
 	}
 
 	sets := req.GetSets()
 	if sets == nil {
-		return nil, status.Error(codes.InvalidArgument, "sets is nil")
+		return nil, errors.BadRequestStatus("sets are required")
 	}
 
 	// Build all the queries in advance.
@@ -486,11 +481,11 @@ func (p *HostPlugin) ListHosts(ctx context.Context, req *pb.ListHostsRequest) (*
 	for i, set := range sets {
 		// Validate Id since we use it in output
 		if set.GetId() == "" {
-			return nil, status.Error(codes.InvalidArgument, "set missing id")
+			return nil, errors.BadRequestStatus("set id is required")
 		}
 
 		if set.GetAttributes() == nil {
-			return nil, status.Error(codes.InvalidArgument, "set missing attributes")
+			return nil, errors.BadRequestStatus("set %s attributes are required", set.GetId())
 		}
 		setAttrs, err := getSetAttributes(set.GetAttributes())
 		if err != nil {
@@ -499,7 +494,7 @@ func (p *HostPlugin) ListHosts(ctx context.Context, req *pb.ListHostsRequest) (*
 
 		input, err := buildDescribeInstancesInput(setAttrs, false)
 		if err != nil {
-			return nil, status.Errorf(codes.InvalidArgument, "error building DescribeInstances parameters for host set id %q: %s", set.GetId(), err)
+			return nil, errors.BadRequestStatus("error building DescribeInstances parameters for host set id %q: %s", set.GetId(), err)
 		}
 		queries[i] = hostSetQuery{
 			Id:    set.GetId(),
@@ -509,7 +504,7 @@ func (p *HostPlugin) ListHosts(ctx context.Context, req *pb.ListHostsRequest) (*
 
 	ec2Client, err := catalogState.EC2Client(ctx)
 	if err != nil {
-		return nil, status.Errorf(codes.InvalidArgument, "error getting EC2 client: %s", err)
+		return nil, errors.BadRequestStatus("error getting EC2 client: %s", err)
 	}
 
 	// Run all queries now and assemble output.
@@ -517,7 +512,7 @@ func (p *HostPlugin) ListHosts(ctx context.Context, req *pb.ListHostsRequest) (*
 	for i, query := range queries {
 		output, err := ec2Client.DescribeInstances(ctx, query.Input)
 		if err != nil {
-			return nil, status.Errorf(codes.InvalidArgument, "error running DescribeInstances for host set id %q: %s", query.Id, err)
+			return nil, errors.BadRequestStatus("error running DescribeInstances for host set id %q: %s", query.Id, err)
 		}
 
 		queries[i].Output = output
@@ -528,7 +523,7 @@ func (p *HostPlugin) ListHosts(ctx context.Context, req *pb.ListHostsRequest) (*
 			for _, instance := range reservation.Instances {
 				host, err := awsInstanceToHost(instance)
 				if err != nil {
-					return nil, status.Errorf(codes.InvalidArgument, "error processing host results for host set id %q: %s", query.Id, err)
+					return nil, errors.BadRequestStatus("error processing host results for host set id %q: %s", query.Id, err)
 				}
 
 				queries[i].OutputHosts = append(queries[i].OutputHosts, host)
@@ -626,7 +621,7 @@ func buildDescribeInstancesInput(attrs *SetAttributes, dryRun bool) (*ec2.Descri
 // populated.
 func awsInstanceToHost(instance types.Instance) (*pb.ListHostsResponseHost, error) {
 	if aws.ToString(instance.InstanceId) == "" {
-		return nil, errors.New("response integrity error: missing instance id")
+		return nil, fmt.Errorf("response integrity error: missing instance id")
 	}
 
 	result := new(pb.ListHostsResponseHost)
@@ -672,6 +667,28 @@ func awsInstanceToHost(instance types.Instance) (*pb.ListHostsResponseHost, erro
 
 	// Done
 	return result, nil
+}
+
+// dryRunValidation performs an AWS DescribeInstances call to verify the state's
+// credentials, the host listing functionality as well as the filters, if any
+// are passed in. This function can therefore be used for both host catalog and
+// host set validation.
+func dryRunValidation(ctx context.Context, state *awsCatalogPersistedState, filters ...types.Filter) *status.Status {
+	if state == nil {
+		return status.New(codes.InvalidArgument, "persisted state is required")
+	}
+
+	ec2Client, err := state.EC2Client(ctx)
+	if err != nil {
+		return status.New(codes.InvalidArgument, fmt.Sprintf("error getting EC2 client: %s", err))
+	}
+
+	_, err = ec2Client.DescribeInstances(ctx, &ec2.DescribeInstancesInput{Filters: filters})
+	if err != nil {
+		return status.New(codes.FailedPrecondition, fmt.Sprintf("aws describe instances failed: %s", err))
+	}
+
+	return nil
 }
 
 // appendDistinct will append the elements to the slice
