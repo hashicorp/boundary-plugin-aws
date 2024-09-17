@@ -37,7 +37,7 @@ type CredentialAttributes struct {
 // CredentialsConfig used for configuring an AWS session. An status error is returned
 // with an InvalidArgument code if any unrecognized fields are found in the protobuf
 // struct input.
-func GetCredentialsConfig(secrets *structpb.Struct, attrs *CredentialAttributes, required bool) (*awsutil.CredentialsConfig, error) {
+func GetCredentialsConfig(secrets *structpb.Struct, attrs *CredentialAttributes) (*awsutil.CredentialsConfig, error) {
 	// initialize secrets if it is nil
 	// secrets can be nil because static credentials are optional
 	if secrets == nil {
@@ -49,13 +49,13 @@ func GetCredentialsConfig(secrets *structpb.Struct, attrs *CredentialAttributes,
 	unknownFields := values.StructFields(secrets)
 	badFields := make(map[string]string)
 
-	accessKey, err := values.GetStringValue(secrets, ConstAccessKeyId, required)
+	accessKey, err := values.GetStringValue(secrets, ConstAccessKeyId, false)
 	if err != nil {
 		badFields[fmt.Sprintf("secrets.%s", ConstAccessKeyId)] = err.Error()
 	}
 	delete(unknownFields, ConstAccessKeyId)
 
-	secretKey, err := values.GetStringValue(secrets, ConstSecretAccessKey, required)
+	secretKey, err := values.GetStringValue(secrets, ConstSecretAccessKey, false)
 	if err != nil {
 		badFields[fmt.Sprintf("secrets.%s", ConstSecretAccessKey)] = err.Error()
 	}

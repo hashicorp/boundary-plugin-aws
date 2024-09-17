@@ -105,7 +105,6 @@ func TestGetCredentialsConfig(t *testing.T) {
 	cases := []struct {
 		name                string
 		secrets             *structpb.Struct
-		required            bool
 		attrs               *CredentialAttributes
 		expected            *awsutil.CredentialsConfig
 		expectedErrContains string
@@ -135,32 +134,6 @@ func TestGetCredentialsConfig(t *testing.T) {
 				SecretKey: "bazqux",
 				Region:    "us-west-2",
 			},
-		},
-		{
-			name: "missing access key",
-			secrets: &structpb.Struct{
-				Fields: map[string]*structpb.Value{
-					ConstSecretAccessKey: structpb.NewStringValue("bazqux"),
-				},
-			},
-			attrs: &CredentialAttributes{
-				Region: "us-west-2",
-			},
-			required:            true,
-			expectedErrContains: "secrets.access_key_id: missing required value",
-		},
-		{
-			name: "missing secret key",
-			secrets: &structpb.Struct{
-				Fields: map[string]*structpb.Value{
-					ConstAccessKeyId: structpb.NewStringValue("AKIAfoobar"),
-				},
-			},
-			required: true,
-			attrs: &CredentialAttributes{
-				Region: "us-west-2",
-			},
-			expectedErrContains: "secrets.secret_access_key: missing required value",
 		},
 		{
 			name: "unknown fields",
@@ -260,7 +233,7 @@ func TestGetCredentialsConfig(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			require := require.New(t)
 
-			actual, err := GetCredentialsConfig(tc.secrets, tc.attrs, tc.required)
+			actual, err := GetCredentialsConfig(tc.secrets, tc.attrs)
 			if tc.expectedErrContains != "" {
 				require.Error(err)
 				require.Contains(err.Error(), tc.expectedErrContains)
