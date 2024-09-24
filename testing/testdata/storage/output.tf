@@ -13,8 +13,12 @@ output "missing_put_obj_policy_arn" {
     value = aws_iam_role.missing_put_obj.arn
 }
 
-output "missing_put_get_policy_arn" {
+output "missing_get_obj_policy_arn" {
     value = aws_iam_role.missing_get_obj.arn
+}
+
+output "missing_delete_obj_policy_arn" {
+    value = aws_iam_role.missing_delete_obj.arn
 }
 
 output "iam_user_names" {
@@ -52,5 +56,15 @@ output "iam_access_key_missing_get_obj" {
 
 output "iam_secret_access_key_missing_get_obj" {
   value     = aws_iam_access_key.missing_get_obj.secret
+  sensitive = true
+}
+
+output "iam_access_key_missing_delete_obj" {
+  value     = aws_iam_access_key.missing_delete_obj.id
+  sensitive = true
+}
+
+output "iam_secret_access_key_missing_delete_obj" {
+  value     = aws_iam_access_key.missing_delete_obj.secret
   sensitive = true
 }

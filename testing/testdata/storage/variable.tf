@@ -4,7 +4,7 @@
 data "aws_caller_identity" "current" {}
 
 resource "random_id" "prefix" {
-  prefix      = "storage-e2e-test"
+  prefix      = "aws-plugin-e2e-test"
   byte_length = 4
 }
 
@@ -13,8 +13,10 @@ variable "iam_user_count" {
 }
 
 locals {
+  hashicorp_email = split(":", data.aws_caller_identity.current.user_id)[1]
   tags = {
-    user_id = split(":", data.aws_caller_identity.current.user_id)[1]
-    repo    = "boundary-plugin-aws" 
+    User        = split(":", data.aws_caller_identity.current.user_id)[1]
+    Repo        = "boundary-plugin-aws" 
+    Environment = "Demo"
   }
 }
