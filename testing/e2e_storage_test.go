@@ -369,7 +369,7 @@ func testPluginObjectMethods(ctx context.Context, t *testing.T, p *storage.Stora
 
 	// Need to create a GRPC server to test GetObject
 	t.Logf("testing GetObject")
-	lis, err := net.Listen("tcp", "localhost:2030")
+	lis, err := net.Listen("tcp", "[::1]:2030")
 	require.NoError(err)
 	grpcServer := grpc.NewServer()
 	pb.RegisterStoragePluginServiceServer(grpcServer, &storage.StoragePlugin{})
@@ -377,7 +377,7 @@ func testPluginObjectMethods(ctx context.Context, t *testing.T, p *storage.Stora
 		grpcServer.Serve(lis)
 	}()
 
-	conn, err := grpc.Dial("localhost:2030", grpc.WithTransportCredentials(insecure.NewCredentials()))
+	conn, err := grpc.Dial("[::1]:2030", grpc.WithTransportCredentials(insecure.NewCredentials()))
 	require.NoError(err)
 	defer conn.Close()
 	client := pb.NewStoragePluginServiceClient(conn)
