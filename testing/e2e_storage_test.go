@@ -17,12 +17,16 @@ import (
 	"github.com/hashicorp/boundary-plugin-aws/plugin/service/storage"
 	"github.com/hashicorp/boundary/sdk/pbs/controller/api/resources/storagebuckets"
 	pb "github.com/hashicorp/boundary/sdk/pbs/plugin"
+	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials/insecure"
+	"google.golang.org/grpc/status"
 	"google.golang.org/protobuf/types/known/structpb"
 )
 
+// NOTE: this test does not vaildate against dynamic credentials because
+// this credential type can only be tested on an EC2 instance.
 func TestStoragePlugin(t *testing.T) {
 	region := os.Getenv("AWS_REGION")
 	if region == "" {
@@ -75,6 +79,12 @@ func TestStoragePlugin(t *testing.T) {
 	iamSecretAccessKeyMissingPutObject, err := tf.GetOutputString("iam_secret_access_key_missing_put_obj")
 	require.NoError(err)
 
+	iamAccessKeyMissingDeleteObject, err := tf.GetOutputString("iam_access_key_missing_delete_obj")
+	require.NoError(err)
+
+	iamSecretAccessKeyMissingDeleteObject, err := tf.GetOutputString("iam_secret_access_key_missing_delete_obj")
+	require.NoError(err)
+
 	// Start the workflow now. Set up the storage bucket. Note that this
 	// will cause the state to go out of drift above in the sense that
 	// the access key ID/secret access key will no longer be valid. We
@@ -121,7 +131,7 @@ func TestStoragePlugin(t *testing.T) {
 	testPluginOnDeleteStorageBucket(ctx, t, p, bucketName, region, keyid, secret, true)
 
 	// ********************
-	// * Object Methods: PutObject, GetObject, HeadObject
+	// * Object Methods: PutObject, GetObject, HeadObject, DeleteObjects
 	// ********************
 	//
 	// Reassign the keyid and secret first.
@@ -132,11 +142,59 @@ func TestStoragePlugin(t *testing.T) {
 	// * Validate Permissions
 	// ********************
 	//
+	var expectedSBCState *pb.StorageBucketCredentialState
+
 	// Validate error is returned for missing get object permission
-	testPluginValidatePermissions(ctx, t, p, bucketName, region, iamAccessKeyMissingGetObject, iamSecretAccessKeyMissingGetObject)
+	expectedSBCState = &pb.StorageBucketCredentialState{
+		State: &pb.Permissions{
+			Write: &pb.Permission{
+				State: pb.StateType_STATE_TYPE_OK,
+			},
+			Read: &pb.Permission{
+				State: pb.StateType_STATE_TYPE_ERROR,
+			},
+			Delete: &pb.Permission{
+				State: pb.StateType_STATE_TYPE_OK,
+			},
+		},
+	}
+	testPluginValidatePermissions(ctx, t, p, bucketName, region, iamAccessKeyMissingGetObject, iamSecretAccessKeyMissingGetObject, expectedSBCState)
 
 	// Validate error is returned for missing put object permission
-	testPluginValidatePermissions(ctx, t, p, bucketName, region, iamAccessKeyMissingPutObject, iamSecretAccessKeyMissingPutObject)
+	expectedSBCState = &pb.StorageBucketCredentialState{
+		State: &pb.Permissions{
+			Write: &pb.Permission{
+				State: pb.StateType_STATE_TYPE_ERROR,
+			},
+			Read: &pb.Permission{
+				// Since we cannot write an object to S3,
+				// we cannot test against the ability to read from S3.
+				State: pb.StateType_STATE_TYPE_UNKNOWN,
+			},
+			Delete: &pb.Permission{
+				// We can still try deleting an object that does
+				// not exist in the S3 bucket to validate access.
+				State: pb.StateType_STATE_TYPE_OK,
+			},
+		},
+	}
+	testPluginValidatePermissions(ctx, t, p, bucketName, region, iamAccessKeyMissingPutObject, iamSecretAccessKeyMissingPutObject, expectedSBCState)
+
+	// Validate error is returned for missing delete object permission
+	expectedSBCState = &pb.StorageBucketCredentialState{
+		State: &pb.Permissions{
+			Write: &pb.Permission{
+				State: pb.StateType_STATE_TYPE_OK,
+			},
+			Read: &pb.Permission{
+				State: pb.StateType_STATE_TYPE_OK,
+			},
+			Delete: &pb.Permission{
+				State: pb.StateType_STATE_TYPE_ERROR,
+			},
+		},
+	}
+	testPluginValidatePermissions(ctx, t, p, bucketName, region, iamAccessKeyMissingDeleteObject, iamSecretAccessKeyMissingDeleteObject, expectedSBCState)
 }
 
 func testPluginOnCreateStorageBucket(ctx context.Context, t *testing.T, p *storage.StoragePlugin, bucketName, region, accessKeyId, secretAccessKey string, rotate bool) (string, string) {
@@ -289,10 +347,12 @@ func testPluginOnDeleteStorageBucket(ctx context.Context, t *testing.T, p *stora
 	}
 }
 
-func testPluginValidatePermissions(ctx context.Context, t *testing.T, p *storage.StoragePlugin, bucketName, region, accessKeyId, secretAccessKey string) {
+func testPluginValidatePermissions(ctx context.Context, t *testing.T, p *storage.StoragePlugin, bucketName, region, accessKeyId, secretAccessKey string, expectedState *pb.StorageBucketCredentialState) {
 	t.Helper()
 	t.Logf("testing ValidatePermissions")
-	require := require.New(t)
+	require, assert := require.New(t), assert.New(t)
+
+	require.NotNil(expectedState)
 
 	reqAttrs, err := structpb.NewStruct(map[string]any{
 		credential.ConstRegion:                    region,
@@ -315,6 +375,51 @@ func testPluginValidatePermissions(ctx context.Context, t *testing.T, p *storage
 
 	_, err = p.ValidatePermissions(ctx, req)
 	require.Error(err)
+
+	var actualSBCState *pb.StorageBucketCredentialState
+	if st, ok := status.FromError(err); ok {
+		for _, detail := range st.Details() {
+			if statusDetail, ok := detail.(*pb.StorageBucketCredentialState); ok {
+				actualSBCState = statusDetail
+				break
+			}
+		}
+	}
+	require.NotNil(actualSBCState)
+	require.NotNil(actualSBCState.GetState())
+
+	expectedReadState := expectedState.GetState().GetRead()
+	if expectedReadState != nil {
+		actualReadState := actualSBCState.GetState().GetRead()
+		require.NotNil(actualReadState)
+		assert.Equal(expectedReadState.GetState(), actualReadState.GetState())
+		assert.NotEmpty(actualReadState.GetCheckedAt())
+		if expectedReadState.GetState() == pb.StateType_STATE_TYPE_ERROR {
+			assert.NotEmpty(actualReadState.GetErrorDetails())
+		}
+	}
+
+	expectedWriteState := expectedState.GetState().GetWrite()
+	if expectedWriteState != nil {
+		actualWriteState := actualSBCState.GetState().GetWrite()
+		require.NotNil(actualWriteState)
+		assert.Equal(expectedWriteState.GetState(), actualWriteState.GetState())
+		assert.NotEmpty(actualWriteState.GetCheckedAt())
+		if expectedWriteState.GetState() == pb.StateType_STATE_TYPE_ERROR {
+			assert.NotEmpty(actualWriteState.GetErrorDetails())
+		}
+	}
+
+	expectedDeleteState := expectedState.GetState().GetDelete()
+	if expectedDeleteState != nil {
+		actualDeleteState := actualSBCState.GetState().GetDelete()
+		require.NotNil(actualDeleteState)
+		assert.Equal(expectedDeleteState.GetState(), actualDeleteState.GetState())
+		assert.NotEmpty(actualDeleteState.GetCheckedAt())
+		if expectedDeleteState.GetState() == pb.StateType_STATE_TYPE_ERROR {
+			assert.NotEmpty(actualDeleteState.GetErrorDetails())
+		}
+	}
 }
 
 func testPluginObjectMethods(ctx context.Context, t *testing.T, p *storage.StoragePlugin, bucketName, region, accessKeyId, secretAccessKey string) {
@@ -369,7 +474,7 @@ func testPluginObjectMethods(ctx context.Context, t *testing.T, p *storage.Stora
 
 	// Need to create a GRPC server to test GetObject
 	t.Logf("testing GetObject")
-	lis, err := net.Listen("tcp", "localhost:2030")
+	lis, err := net.Listen("tcp", "[::1]:2030")
 	require.NoError(err)
 	grpcServer := grpc.NewServer()
 	pb.RegisterStoragePluginServiceServer(grpcServer, &storage.StoragePlugin{})
@@ -377,7 +482,7 @@ func testPluginObjectMethods(ctx context.Context, t *testing.T, p *storage.Stora
 		grpcServer.Serve(lis)
 	}()
 
-	conn, err := grpc.Dial("localhost:2030", grpc.WithTransportCredentials(insecure.NewCredentials()))
+	conn, err := grpc.Dial("[::1]:2030", grpc.WithTransportCredentials(insecure.NewCredentials()))
 	require.NoError(err)
 	defer conn.Close()
 	client := pb.NewStoragePluginServiceClient(conn)
