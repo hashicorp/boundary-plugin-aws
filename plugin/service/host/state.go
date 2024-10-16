@@ -86,9 +86,11 @@ func (s *awsCatalogPersistedState) EC2Client(ctx context.Context, opt ...ec2Opti
 		return nil, fmt.Errorf("nil aws configuration")
 	}
 	var ec2Opts []func(*ec2.Options)
-	ec2Opts = append(ec2Opts, ec2.WithEndpointResolverV2(&endpointResolver{
-		dualStack: opts.withDualStack,
-	}))
+	if opts.withDualStack {
+		ec2Opts = append(ec2Opts, ec2.WithEndpointResolverV2(&endpointResolver{
+			dualStack: opts.withDualStack,
+		}))
+	}
 	if s.testEC2APIFunc != nil {
 		return s.testEC2APIFunc(*awsCfg)
 	}

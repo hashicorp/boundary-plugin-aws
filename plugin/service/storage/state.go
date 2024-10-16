@@ -92,10 +92,12 @@ func (s *awsStoragePersistedState) S3Client(ctx context.Context, opt ...s3Option
 		return nil, fmt.Errorf("nil aws configuration")
 	}
 	var s3Opts []func(*s3.Options)
-	s3Opts = append(s3Opts, s3.WithEndpointResolverV2(&endpointResolver{
-		endpoint:  opts.withEndpoint,
-		dualStack: opts.withDualStack,
-	}))
+	if opts.withEndpoint != "" || opts.withDualStack {
+		s3Opts = append(s3Opts, s3.WithEndpointResolverV2(&endpointResolver{
+			endpoint:  opts.withEndpoint,
+			dualStack: opts.withDualStack,
+		}))
+	}
 	if s.testS3APIFunc != nil {
 		return s.testS3APIFunc(*awsCfg)
 	}

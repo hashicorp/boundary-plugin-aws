@@ -2754,20 +2754,6 @@ func TestDryRunValidation(t *testing.T) {
 		require.Equal(t, "persisted state is required", st.Message())
 	})
 
-	t.Run("nil catalog state", func(t *testing.T) {
-		st := dryRunValidation(context.Background(), &awsCatalogPersistedState{
-			AwsCredentialPersistedState: &credential.AwsCredentialPersistedState{
-				CredentialsConfig: &awsutil.CredentialsConfig{},
-			},
-			testEC2APIFunc: func(...aws.Config) (EC2API, error) {
-				return nil, fmt.Errorf("oops ec2 client err")
-			},
-		}, nil)
-		require.NotNil(t, st)
-		require.Equal(t, codes.InvalidArgument.String(), st.Code().String())
-		require.Equal(t, "catalog attributes is required", st.Message())
-	})
-
 	t.Run("ec2ClientErr", func(t *testing.T) {
 		st := dryRunValidation(context.Background(), &awsCatalogPersistedState{
 			AwsCredentialPersistedState: &credential.AwsCredentialPersistedState{
@@ -2776,7 +2762,7 @@ func TestDryRunValidation(t *testing.T) {
 			testEC2APIFunc: func(...aws.Config) (EC2API, error) {
 				return nil, fmt.Errorf("oops ec2 client err")
 			},
-		}, &CatalogAttributes{})
+		}, []ec2Option{})
 		require.NotNil(t, st)
 		require.Equal(t, codes.InvalidArgument.String(), st.Code().String())
 		require.Equal(t, "error getting EC2 client: oops ec2 client err", st.Message())
@@ -2791,7 +2777,7 @@ func TestDryRunValidation(t *testing.T) {
 				},
 			},
 			testEC2APIFunc: newTestMockEC2(nil, testMockEC2WithDescribeInstancesError(fmt.Errorf("oops describe instances error"))),
-		}, &CatalogAttributes{})
+		}, []ec2Option{})
 		require.NotNil(t, st)
 		require.Equal(t, codes.FailedPrecondition.String(), st.Code().String())
 		require.Equal(t, "aws describe instances failed: oops describe instances error", st.Message())
@@ -2806,7 +2792,7 @@ func TestDryRunValidation(t *testing.T) {
 				},
 			},
 			testEC2APIFunc: newTestMockEC2(nil, testMockEC2WithDescribeInstancesOutput(&ec2.DescribeInstancesOutput{})),
-		}, &CatalogAttributes{})
+		}, []ec2Option{})
 		require.Nil(t, st)
 	})
 }
