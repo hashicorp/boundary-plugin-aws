@@ -346,6 +346,9 @@ func (p *StoragePlugin) HeadObject(ctx context.Context, req *pb.HeadObjectReques
 	if storageAttributes.EndpointUrl != "" {
 		opts = append(opts, WithEndpoint(storageAttributes.EndpointUrl))
 	}
+	if storageAttributes.DualStack {
+		opts = append(opts, WithDualStack(storageAttributes.DualStack))
+	}
 	s3Client, err := storageState.S3Client(ctx, opts...)
 	if err != nil {
 		return nil, errors.BadRequestStatus("error getting S3 client: %s", err)
@@ -360,7 +363,7 @@ func (p *StoragePlugin) HeadObject(ctx context.Context, req *pb.HeadObjectReques
 		return nil, parseS3Error("head object", err, req).Err()
 	}
 	return &pb.HeadObjectResponse{
-		ContentLength: resp.ContentLength,
+		ContentLength: aws.ToInt64(resp.ContentLength),
 		LastModified:  timestamppb.New(*resp.LastModified),
 	}, nil
 }
@@ -472,6 +475,9 @@ func (p *StoragePlugin) GetObject(req *pb.GetObjectRequest, stream pb.StoragePlu
 	if storageAttributes.EndpointUrl != "" {
 		opts = append(opts, WithEndpoint(storageAttributes.EndpointUrl))
 	}
+	if storageAttributes.DualStack {
+		opts = append(opts, WithDualStack(storageAttributes.DualStack))
+	}
 	s3Client, err := storageState.S3Client(stream.Context(), opts...)
 	if err != nil {
 		return errors.BadRequestStatus("error getting S3 client: %s", err)
@@ -582,6 +588,9 @@ func (p *StoragePlugin) PutObject(ctx context.Context, req *pb.PutObjectRequest)
 	opts := []s3Option{}
 	if storageAttributes.EndpointUrl != "" {
 		opts = append(opts, WithEndpoint(storageAttributes.EndpointUrl))
+	}
+	if storageAttributes.DualStack {
+		opts = append(opts, WithDualStack(storageAttributes.DualStack))
 	}
 	s3Client, err := storageState.S3Client(ctx, opts...)
 	if err != nil {
@@ -712,13 +721,13 @@ func (p *StoragePlugin) DeleteObjects(ctx context.Context, req *pb.DeleteObjects
 		res, err := client.ListObjectsV2(ctx, &s3.ListObjectsV2Input{
 			Bucket:            aws.String(bucket.GetBucketName()),
 			Prefix:            aws.String(prefix),
-			MaxKeys:           maxkeys,
+			MaxKeys:           aws.Int32(maxkeys),
 			ContinuationToken: conToken,
 		})
 		if err != nil {
 			return nil, parseS3Error("list objects", err, req).Err()
 		}
-		truncated = res.IsTruncated
+		truncated = aws.ToBool(res.IsTruncated)
 		conToken = res.NextContinuationToken
 		for _, o := range res.Contents {
 			objects = append(objects, types.ObjectIdentifier{
@@ -768,6 +777,9 @@ func dryRunValidation(ctx context.Context, state *awsStoragePersistedState, attr
 	opts := []s3Option{}
 	if attrs.EndpointUrl != "" {
 		opts = append(opts, WithEndpoint(attrs.EndpointUrl))
+	}
+	if attrs.DualStack {
+		opts = append(opts, WithDualStack(attrs.DualStack))
 	}
 
 	client, err := state.S3Client(ctx, opts...)

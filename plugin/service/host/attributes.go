@@ -19,6 +19,9 @@ import (
 // map.
 type CatalogAttributes struct {
 	*cred.CredentialAttributes
+
+	// DualStack is used for configuring how the aws client will resolve requests.
+	DualStack bool
 }
 
 func getCatalogAttributes(in *structpb.Struct) (*CatalogAttributes, error) {
@@ -30,6 +33,12 @@ func getCatalogAttributes(in *structpb.Struct) (*CatalogAttributes, error) {
 	if err != nil {
 		return nil, err
 	}
+
+	dualStack, err := values.GetBoolValue(in, ConstAwsDualStack, false)
+	if err != nil {
+		badFields[fmt.Sprintf("attributes.%s", ConstAwsDualStack)] = err.Error()
+	}
+	delete(unknownFields, ConstAwsDualStack)
 
 	for s := range unknownFields {
 		switch s {
@@ -57,6 +66,7 @@ func getCatalogAttributes(in *structpb.Struct) (*CatalogAttributes, error) {
 
 	return &CatalogAttributes{
 		CredentialAttributes: credAttributes,
+		DualStack:            dualStack,
 	}, nil
 }
 

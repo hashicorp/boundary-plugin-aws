@@ -10,4 +10,7 @@ const (
 	// ConstInstanceNameTagKey denotes the special AWS tag key that contains an EC2
 	// instance's name. This field is to be matched literally.
 	ConstInstanceNameTagKey = "Name"
+
+	// ConstAwsDualStack is the key for the dualstack flag in the aws s3 client.
+	ConstAwsDualStack = "dual_stack"
 )
