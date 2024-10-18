@@ -357,7 +357,7 @@ func (p *StoragePlugin) HeadObject(ctx context.Context, req *pb.HeadObjectReques
 		Key:    aws.String(objectKey),
 	})
 	if err != nil {
-		return nil, parseS3Error(err, "failed to head object", req).Err()
+		return nil, parseS3Error("head object", err, req).Err()
 	}
 	return &pb.HeadObjectResponse{
 		ContentLength: resp.ContentLength,
@@ -483,7 +483,7 @@ func (p *StoragePlugin) GetObject(req *pb.GetObjectRequest, stream pb.StoragePlu
 		Key:    aws.String(objectKey),
 	})
 	if err != nil {
-		return parseS3Error(err, "failed to get object", req).Err()
+		return parseS3Error("get object", err, req).Err()
 	}
 
 	defer resp.Body.Close()
@@ -608,7 +608,7 @@ func (p *StoragePlugin) PutObject(ctx context.Context, req *pb.PutObjectRequest)
 		ChecksumSHA256:    aws.String(checksum),
 	})
 	if err != nil {
-		return nil, parseS3Error(err, "failed to put object", req).Err()
+		return nil, parseS3Error("put object", err, req).Err()
 	}
 	if resp.ChecksumSHA256 == nil {
 		return nil, errors.UnknownStatus("missing checksum response from aws")
@@ -696,7 +696,7 @@ func (p *StoragePlugin) DeleteObjects(ctx context.Context, req *pb.DeleteObjects
 			Key:    aws.String(prefix),
 		})
 		if err != nil {
-			return nil, parseS3Error(err, "failed to delete object", req).Err()
+			return nil, parseS3Error("delete object", err, req).Err()
 		}
 		return &pb.DeleteObjectsResponse{
 			ObjectsDeleted: uint32(1),
@@ -716,7 +716,7 @@ func (p *StoragePlugin) DeleteObjects(ctx context.Context, req *pb.DeleteObjects
 			ContinuationToken: conToken,
 		})
 		if err != nil {
-			return nil, parseS3Error(err, "failed to list objects", req).Err()
+			return nil, parseS3Error("list objects", err, req).Err()
 		}
 		truncated = res.IsTruncated
 		conToken = res.NextContinuationToken
@@ -738,7 +738,7 @@ func (p *StoragePlugin) DeleteObjects(ctx context.Context, req *pb.DeleteObjects
 			},
 		})
 		if err != nil {
-			return nil, parseS3Error(err, "failed to delete objects", req).Err()
+			return nil, parseS3Error("delete objects", err, req).Err()
 		}
 		deleted += len(res.Deleted)
 	}
@@ -786,7 +786,7 @@ func dryRunValidation(ctx context.Context, state *awsStoragePersistedState, attr
 		Body:   bytes.NewReader([]byte("hashicorp boundary aws plugin access test")),
 	}); err != nil {
 		var st *status.Status
-		st, permissions.Write = errors.ParseAWSError(err, "failed to put object")
+		st, permissions.Write = errors.ParseAWSError("put object", err)
 		errs = multierror.Append(errs, st.Err())
 	} else {
 		permissions.Write = &pb.Permission{State: pb.StateType_STATE_TYPE_OK, CheckedAt: timestamppb.Now()}
@@ -797,7 +797,7 @@ func dryRunValidation(ctx context.Context, state *awsStoragePersistedState, attr
 		Key:    aws.String(objectKey),
 	}); err != nil {
 		var st *status.Status
-		st, permissions.Read = errors.ParseAWSError(err, "failed to get object")
+		st, permissions.Read = errors.ParseAWSError("get object", err)
 		errs = multierror.Append(errs, st.Err())
 	} else {
 		permissions.Read = &pb.Permission{State: pb.StateType_STATE_TYPE_OK, CheckedAt: timestamppb.Now()}
@@ -808,7 +808,7 @@ func dryRunValidation(ctx context.Context, state *awsStoragePersistedState, attr
 		Key:    aws.String(objectKey),
 	}); err != nil {
 		var st *status.Status
-		st, permissions.Read = errors.ParseAWSError(err, "failed to head object")
+		st, permissions.Read = errors.ParseAWSError("head object", err)
 		errs = multierror.Append(errs, st.Err())
 	}
 
@@ -817,7 +817,7 @@ func dryRunValidation(ctx context.Context, state *awsStoragePersistedState, attr
 		Prefix: aws.String(objectKey),
 	}); err != nil {
 		var st *status.Status
-		st, permissions.Read = errors.ParseAWSError(err, "failed to list object")
+		st, permissions.Read = errors.ParseAWSError("list object", err)
 		errs = multierror.Append(errs, st.Err())
 	} else if res == nil || len(res.Contents) != 1 || *res.Contents[0].Key != objectKey {
 		permissions.Read = &pb.Permission{State: pb.StateType_STATE_TYPE_UNKNOWN, CheckedAt: timestamppb.Now()}
@@ -829,7 +829,7 @@ func dryRunValidation(ctx context.Context, state *awsStoragePersistedState, attr
 		Key:    aws.String(objectKey),
 	}); err != nil {
 		var st *status.Status
-		st, permissions.Delete = errors.ParseAWSError(err, "failed to delete object")
+		st, permissions.Delete = errors.ParseAWSError("delete object", err)
 		errs = multierror.Append(errs, st.Err())
 	} else {
 		permissions.Delete = &pb.Permission{State: pb.StateType_STATE_TYPE_OK, CheckedAt: timestamppb.Now()}

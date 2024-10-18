@@ -153,7 +153,7 @@ func TestStoragePlugin_OnCreateStorageBucket(t *testing.T) {
 					),
 				}),
 			},
-			expectedErrContains: "aws service unknown: unknown error: error rotating credentials",
+			expectedErrContains: "aws service unknown: unknown error: rotating credentials:",
 			expectedErrCode:     codes.Unknown,
 			expectedDetails:     nil,
 		},
@@ -178,7 +178,7 @@ func TestStoragePlugin_OnCreateStorageBucket(t *testing.T) {
 					}),
 				)),
 			},
-			expectedErrContains: "aws service s3: invalid credentials error: failed to put object",
+			expectedErrContains: "aws service s3: invalid credentials: put object:",
 			expectedErrCode:     codes.FailedPrecondition,
 			expectedDetails: &pb.StorageBucketCredentialState{
 				State: &pb.Permissions{
@@ -211,7 +211,7 @@ func TestStoragePlugin_OnCreateStorageBucket(t *testing.T) {
 					}),
 				)),
 			},
-			expectedErrContains: "aws service s3: throttling error: failed to put object",
+			expectedErrContains: "aws service s3: throttling: put object:",
 			expectedErrCode:     codes.FailedPrecondition,
 			expectedDetails: &pb.StorageBucketCredentialState{
 				State: &pb.Permissions{
@@ -245,7 +245,7 @@ func TestStoragePlugin_OnCreateStorageBucket(t *testing.T) {
 					),
 				),
 			},
-			expectedErrContains: "aws service s3: invalid credentials error: failed to get object",
+			expectedErrContains: "aws service s3: invalid credentials: get object:",
 			expectedErrCode:     codes.FailedPrecondition,
 			expectedDetails: &pb.StorageBucketCredentialState{
 				State: &pb.Permissions{
@@ -280,7 +280,7 @@ func TestStoragePlugin_OnCreateStorageBucket(t *testing.T) {
 					),
 				),
 			},
-			expectedErrContains: "aws service s3: throttling error: failed to get object",
+			expectedErrContains: "aws service s3: throttling: get object:",
 			expectedErrCode:     codes.FailedPrecondition,
 			expectedDetails: &pb.StorageBucketCredentialState{
 				State: &pb.Permissions{
@@ -314,7 +314,7 @@ func TestStoragePlugin_OnCreateStorageBucket(t *testing.T) {
 					),
 				),
 			},
-			expectedErrContains: "aws service s3: invalid credentials error: failed to head object",
+			expectedErrContains: "aws service s3: invalid credentials: head object:",
 			expectedErrCode:     codes.FailedPrecondition,
 			expectedDetails: &pb.StorageBucketCredentialState{
 				State: &pb.Permissions{
@@ -349,7 +349,7 @@ func TestStoragePlugin_OnCreateStorageBucket(t *testing.T) {
 					),
 				),
 			},
-			expectedErrContains: "aws service s3: throttling error: failed to head object",
+			expectedErrContains: "aws service s3: throttling: head object:",
 			expectedErrCode:     codes.FailedPrecondition,
 			expectedDetails: &pb.StorageBucketCredentialState{
 				State: &pb.Permissions{
@@ -384,7 +384,7 @@ func TestStoragePlugin_OnCreateStorageBucket(t *testing.T) {
 					),
 				),
 			},
-			expectedErrContains: "aws service s3: invalid credentials error: failed to delete object",
+			expectedErrContains: "aws service s3: invalid credentials: delete object:",
 			expectedErrCode:     codes.FailedPrecondition,
 			expectedDetails: &pb.StorageBucketCredentialState{
 				State: &pb.Permissions{
@@ -857,7 +857,7 @@ func TestStoragePlugin_OnUpdateStorageBucket(t *testing.T) {
 					),
 				}),
 			},
-			expectedErrContains: "aws service unknown: unknown error: failed to delete access key",
+			expectedErrContains: "aws service unknown: unknown error: deleting credentials:",
 			expectedErrCode:     codes.Unknown,
 		},
 		{
@@ -896,7 +896,7 @@ func TestStoragePlugin_OnUpdateStorageBucket(t *testing.T) {
 					),
 				}),
 			},
-			expectedErrContains: "aws service unknown: unknown error: error rotating credentials",
+			expectedErrContains: "aws service unknown: unknown error: rotating credentials",
 			expectedErrCode:     codes.Unknown,
 		},
 		{
@@ -920,7 +920,7 @@ func TestStoragePlugin_OnUpdateStorageBucket(t *testing.T) {
 					testMockS3WithPutObjectError(TestAwsS3Error("AccessDenied", "PutObject", "not authorized")),
 				)),
 			},
-			expectedErrContains: "aws service s3: invalid credentials error: failed to put object",
+			expectedErrContains: "aws service s3: invalid credentials: put object:",
 			expectedErrCode:     codes.FailedPrecondition,
 			expectedDetails: &pb.StorageBucketCredentialState{
 				State: &pb.Permissions{
@@ -953,7 +953,7 @@ func TestStoragePlugin_OnUpdateStorageBucket(t *testing.T) {
 					testMockS3WithPutObjectError(TestAwsS3Error("ThrottlingException", "PutObject", "throttling exception")),
 				)),
 			},
-			expectedErrContains: "aws service s3: throttling error: failed to put object",
+			expectedErrContains: "aws service s3: throttling: put object",
 			expectedErrCode:     codes.FailedPrecondition,
 			expectedDetails: &pb.StorageBucketCredentialState{
 				State: &pb.Permissions{
@@ -987,7 +987,7 @@ func TestStoragePlugin_OnUpdateStorageBucket(t *testing.T) {
 					),
 				),
 			},
-			expectedErrContains: "aws service s3: invalid credentials error: failed to get object",
+			expectedErrContains: "aws service s3: invalid credentials: get object",
 			expectedErrCode:     codes.FailedPrecondition,
 			expectedDetails: &pb.StorageBucketCredentialState{
 				State: &pb.Permissions{
@@ -1022,7 +1022,7 @@ func TestStoragePlugin_OnUpdateStorageBucket(t *testing.T) {
 					),
 				),
 			},
-			expectedErrContains: "aws service s3: throttling error: failed to get object",
+			expectedErrContains: "aws service s3: throttling: get object",
 			expectedErrCode:     codes.FailedPrecondition,
 			expectedDetails: &pb.StorageBucketCredentialState{
 				State: &pb.Permissions{
@@ -1056,7 +1056,7 @@ func TestStoragePlugin_OnUpdateStorageBucket(t *testing.T) {
 					),
 				),
 			},
-			expectedErrContains: "aws service s3: invalid credentials error: failed to head object",
+			expectedErrContains: "aws service s3: invalid credentials: head object",
 			expectedErrCode:     codes.FailedPrecondition,
 			expectedDetails: &pb.StorageBucketCredentialState{
 				State: &pb.Permissions{
@@ -1091,7 +1091,7 @@ func TestStoragePlugin_OnUpdateStorageBucket(t *testing.T) {
 					),
 				),
 			},
-			expectedErrContains: "aws service s3: throttling error: failed to head object",
+			expectedErrContains: "aws service s3: throttling: head object",
 			expectedErrCode:     codes.FailedPrecondition,
 			expectedDetails: &pb.StorageBucketCredentialState{
 				State: &pb.Permissions{
@@ -1255,7 +1255,7 @@ func TestStoragePlugin_OnUpdateStorageBucket(t *testing.T) {
 					),
 				),
 			},
-			expectedErrContains: "aws service s3: invalid credentials error: failed to head object",
+			expectedErrContains: "aws service s3: invalid credentials: head object",
 			expectedErrCode:     codes.FailedPrecondition,
 			expectedDetails: &pb.StorageBucketCredentialState{
 				State: &pb.Permissions{
@@ -1363,7 +1363,7 @@ func TestStoragePlugin_OnUpdateStorageBucket(t *testing.T) {
 					),
 				),
 			},
-			expectedErrContains: "aws service s3: invalid credentials error: failed to put object",
+			expectedErrContains: "aws service s3: invalid credentials: put object",
 			expectedErrCode:     codes.FailedPrecondition,
 			expectedDetails: &pb.StorageBucketCredentialState{
 				State: &pb.Permissions{
@@ -1486,7 +1486,7 @@ func TestStoragePlugin_OnUpdateStorageBucket(t *testing.T) {
 					),
 				}),
 			},
-			expectedErrContains: "aws service unknown: unknown error: failed to delete access key",
+			expectedErrContains: "aws service unknown: unknown error: deleting credentials",
 			expectedErrCode:     codes.Unknown,
 		},
 		{
@@ -1599,7 +1599,7 @@ func TestStoragePlugin_OnUpdateStorageBucket(t *testing.T) {
 					),
 				),
 			},
-			expectedErrContains: "aws service s3: invalid credentials error: failed to put object",
+			expectedErrContains: "aws service s3: invalid credentials: put object",
 			expectedErrCode:     codes.FailedPrecondition,
 			expectedDetails: &pb.StorageBucketCredentialState{
 				State: &pb.Permissions{
@@ -1738,7 +1738,7 @@ func TestStoragePlugin_OnUpdateStorageBucket(t *testing.T) {
 					),
 				}),
 			},
-			expectedErrContains: "aws service unknown: unknown error: error rotating credentials",
+			expectedErrContains: "aws service unknown: unknown error: rotating credentials",
 			expectedErrCode:     codes.Unknown,
 		},
 		{
@@ -1973,7 +1973,7 @@ func TestStoragePlugin_OnDeleteStorageBucket(t *testing.T) {
 					),
 				}),
 			},
-			expectedErrContains: "aws service unknown: unknown error: failed to delete access key",
+			expectedErrContains: "aws service unknown: unknown error: deleting credentials",
 			expectedErrCode:     codes.Unknown,
 		},
 		{
@@ -2172,7 +2172,7 @@ func TestStoragePlugin_HeadObject(t *testing.T) {
 					),
 				),
 			},
-			expectedErrContains: "aws service s3: invalid credentials error: failed to head object",
+			expectedErrContains: "aws service s3: invalid credentials: head object",
 			expectedErrCode:     codes.PermissionDenied,
 			expectedDetails: &pb.StorageBucketCredentialState{
 				State: &pb.Permissions{
@@ -2196,7 +2196,7 @@ func TestStoragePlugin_HeadObject(t *testing.T) {
 					),
 				),
 			},
-			expectedErrContains: "aws service s3: throttling error: failed to head object",
+			expectedErrContains: "aws service s3: throttling: head object",
 			expectedErrCode:     codes.Unavailable,
 			expectedDetails: &pb.StorageBucketCredentialState{
 				State: &pb.Permissions{
@@ -2219,7 +2219,7 @@ func TestStoragePlugin_HeadObject(t *testing.T) {
 					),
 				),
 			},
-			expectedErrContains: "aws s3 error: failed to head object",
+			expectedErrContains: "aws service s3: head object",
 			expectedErrCode:     codes.NotFound,
 			expectedDetails: &pb.StorageBucketCredentialState{
 				State: &pb.Permissions{
@@ -2425,7 +2425,7 @@ func TestStoragePlugin_ValidatePermissions(t *testing.T) {
 					}),
 				)),
 			},
-			expectedErrContains: "aws service s3: invalid credentials error: failed to put object",
+			expectedErrContains: "aws service s3: invalid credentials: put object",
 			expectedErrCode:     codes.FailedPrecondition,
 			expectedDetails: &pb.StorageBucketCredentialState{
 				State: &pb.Permissions{
@@ -2458,7 +2458,7 @@ func TestStoragePlugin_ValidatePermissions(t *testing.T) {
 					}),
 				)),
 			},
-			expectedErrContains: "aws service s3: throttling error: failed to put object",
+			expectedErrContains: "aws service s3: throttling: put object",
 			expectedErrCode:     codes.FailedPrecondition,
 			expectedDetails: &pb.StorageBucketCredentialState{
 				State: &pb.Permissions{
@@ -2492,7 +2492,7 @@ func TestStoragePlugin_ValidatePermissions(t *testing.T) {
 					),
 				),
 			},
-			expectedErrContains: "aws service s3: invalid credentials error: failed to get object",
+			expectedErrContains: "aws service s3: invalid credentials: get object",
 			expectedErrCode:     codes.FailedPrecondition,
 			expectedDetails: &pb.StorageBucketCredentialState{
 				State: &pb.Permissions{
@@ -2527,7 +2527,7 @@ func TestStoragePlugin_ValidatePermissions(t *testing.T) {
 					),
 				),
 			},
-			expectedErrContains: "aws service s3: throttling error: failed to get object",
+			expectedErrContains: "aws service s3: throttling: get object",
 			expectedErrCode:     codes.FailedPrecondition,
 			expectedDetails: &pb.StorageBucketCredentialState{
 				State: &pb.Permissions{
@@ -2561,7 +2561,7 @@ func TestStoragePlugin_ValidatePermissions(t *testing.T) {
 					),
 				),
 			},
-			expectedErrContains: "aws service s3: invalid credentials error: failed to head object",
+			expectedErrContains: "aws service s3: invalid credentials: head object",
 			expectedErrCode:     codes.FailedPrecondition,
 			expectedDetails: &pb.StorageBucketCredentialState{
 				State: &pb.Permissions{
@@ -2596,7 +2596,7 @@ func TestStoragePlugin_ValidatePermissions(t *testing.T) {
 					),
 				),
 			},
-			expectedErrContains: "aws service s3: throttling error: failed to head object",
+			expectedErrContains: "aws service s3: throttling: head object",
 			expectedErrCode:     codes.FailedPrecondition,
 			expectedDetails: &pb.StorageBucketCredentialState{
 				State: &pb.Permissions{
@@ -2683,7 +2683,7 @@ func TestStoragePlugin_ValidatePermissions(t *testing.T) {
 					}),
 				)),
 			},
-			expectedErrContains: "aws service s3: invalid credentials error: failed to put object",
+			expectedErrContains: "aws service s3: invalid credentials: put object",
 			expectedErrCode:     codes.FailedPrecondition,
 			expectedDetails: &pb.StorageBucketCredentialState{
 				State: &pb.Permissions{
@@ -2851,7 +2851,7 @@ func TestStoragePlugin_GetObject(t *testing.T) {
 					),
 				),
 			},
-			expectedErrContains: "aws service s3: invalid credentials error: failed to get object",
+			expectedErrContains: "aws service s3: invalid credentials: get object",
 			expectedErrCode:     codes.PermissionDenied,
 			expectedDetails: &pb.StorageBucketCredentialState{
 				State: &pb.Permissions{
@@ -2875,7 +2875,7 @@ func TestStoragePlugin_GetObject(t *testing.T) {
 					),
 				),
 			},
-			expectedErrContains: "aws s3 error: failed to get object",
+			expectedErrContains: "aws service s3: get object",
 			expectedErrCode:     codes.NotFound,
 			expectedDetails: &pb.StorageBucketCredentialState{
 				State: &pb.Permissions{
@@ -2898,7 +2898,7 @@ func TestStoragePlugin_GetObject(t *testing.T) {
 					),
 				),
 			},
-			expectedErrContains: "aws s3 error: failed to get object",
+			expectedErrContains: "aws service s3: get object",
 			expectedErrCode:     codes.NotFound,
 			expectedDetails: &pb.StorageBucketCredentialState{
 				State: &pb.Permissions{
@@ -2921,7 +2921,7 @@ func TestStoragePlugin_GetObject(t *testing.T) {
 					),
 				),
 			},
-			expectedErrContains: "aws s3 error: failed to get object",
+			expectedErrContains: "aws service s3: get object",
 			expectedErrCode:     codes.NotFound,
 			expectedDetails: &pb.StorageBucketCredentialState{
 				State: &pb.Permissions{
@@ -2945,7 +2945,7 @@ func TestStoragePlugin_GetObject(t *testing.T) {
 					),
 				),
 			},
-			expectedErrContains: "aws service s3: throttling error: failed to get object",
+			expectedErrContains: "aws service s3: throttling: get object",
 			expectedErrCode:     codes.Unavailable,
 			expectedDetails: &pb.StorageBucketCredentialState{
 				State: &pb.Permissions{
@@ -3300,7 +3300,7 @@ func TestStoragePlugin_PutObject(t *testing.T) {
 					),
 				),
 			},
-			expectedErrContains: "aws service s3: invalid credentials error: failed to put object",
+			expectedErrContains: "aws service s3: invalid credentials: put object",
 			expectedErrCode:     codes.PermissionDenied,
 			expectedDetails: &pb.StorageBucketCredentialState{
 				State: &pb.Permissions{
@@ -3324,7 +3324,7 @@ func TestStoragePlugin_PutObject(t *testing.T) {
 					),
 				),
 			},
-			expectedErrContains: "aws s3 error: failed to put object",
+			expectedErrContains: "aws service s3: put object",
 			expectedErrCode:     codes.NotFound,
 			expectedDetails: &pb.StorageBucketCredentialState{
 				State: &pb.Permissions{
@@ -3348,7 +3348,7 @@ func TestStoragePlugin_PutObject(t *testing.T) {
 					),
 				),
 			},
-			expectedErrContains: "aws service s3: throttling error: failed to put object",
+			expectedErrContains: "aws service s3: throttling: put object",
 			expectedErrCode:     codes.Unavailable,
 			expectedDetails: &pb.StorageBucketCredentialState{
 				State: &pb.Permissions{
@@ -3640,7 +3640,7 @@ func TestStoragePlugin_DeleteObjects(t *testing.T) {
 					),
 				),
 			},
-			expectedErrContains: "aws service s3: invalid credentials error: failed to delete object",
+			expectedErrContains: "aws service s3: invalid credentials: delete object",
 			expectedErrCode:     codes.PermissionDenied,
 			expectedDetails: &pb.StorageBucketCredentialState{
 				State: &pb.Permissions{
@@ -3664,7 +3664,7 @@ func TestStoragePlugin_DeleteObjects(t *testing.T) {
 					),
 				),
 			},
-			expectedErrContains: "aws service s3: invalid credentials error: failed to list objects",
+			expectedErrContains: "aws service s3: invalid credentials: list objects",
 			expectedErrCode:     codes.PermissionDenied,
 			expectedDetails: &pb.StorageBucketCredentialState{
 				State: &pb.Permissions{
@@ -3696,7 +3696,7 @@ func TestStoragePlugin_DeleteObjects(t *testing.T) {
 					),
 				),
 			},
-			expectedErrContains: "aws service s3: invalid credentials error: failed to delete objects",
+			expectedErrContains: "aws service s3: invalid credentials: delete objects",
 			expectedErrCode:     codes.PermissionDenied,
 			expectedDetails: &pb.StorageBucketCredentialState{
 				State: &pb.Permissions{
@@ -3720,7 +3720,7 @@ func TestStoragePlugin_DeleteObjects(t *testing.T) {
 					),
 				),
 			},
-			expectedErrContains: "aws service s3: throttling error: failed to delete object",
+			expectedErrContains: "aws service s3: throttling: delete object",
 			expectedErrCode:     codes.Unavailable,
 			expectedDetails: &pb.StorageBucketCredentialState{
 				State: &pb.Permissions{
@@ -3743,7 +3743,7 @@ func TestStoragePlugin_DeleteObjects(t *testing.T) {
 					),
 				),
 			},
-			expectedErrContains: "aws service s3: throttling error: failed to list objects",
+			expectedErrContains: "aws service s3: throttling: list objects",
 			expectedErrCode:     codes.Unavailable,
 			expectedDetails: &pb.StorageBucketCredentialState{
 				State: &pb.Permissions{
@@ -3774,7 +3774,7 @@ func TestStoragePlugin_DeleteObjects(t *testing.T) {
 					),
 				),
 			},
-			expectedErrContains: "aws service s3: throttling error: failed to delete objects",
+			expectedErrContains: "aws service s3: throttling: delete objects",
 			expectedErrCode:     codes.Unavailable,
 			expectedDetails: &pb.StorageBucketCredentialState{
 				State: &pb.Permissions{

@@ -683,7 +683,7 @@ func TestPluginOnCreateCatalogErr(t *testing.T) {
 					),
 				}),
 			},
-			expectedErrContains: "error rotating credentials",
+			expectedErrContains: "rotating credentials",
 			expectedErrCode:     codes.Unknown,
 		},
 		{
@@ -1089,7 +1089,7 @@ func TestPluginOnUpdateCatalogErr(t *testing.T) {
 					),
 				}),
 			},
-			expectedErrContains: "failed to delete access key",
+			expectedErrContains: "deleting credentials",
 			expectedErrCode:     codes.Unknown,
 		},
 		{
@@ -1167,7 +1167,7 @@ func TestPluginOnUpdateCatalogErr(t *testing.T) {
 					),
 				}),
 			},
-			expectedErrContains: "error rotating credentials",
+			expectedErrContains: "rotating credentials",
 			expectedErrCode:     codes.Unknown,
 		},
 		{
@@ -1298,7 +1298,7 @@ func TestPluginOnDeleteCatalogErr(t *testing.T) {
 					),
 				}),
 			},
-			expectedErrContains: "aws service unknown: unknown error: failed to delete access key",
+			expectedErrContains: "aws service unknown: unknown error: deleting credentials:",
 			expectedErrCode:     codes.Unknown,
 		},
 	}

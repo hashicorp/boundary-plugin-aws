@@ -44,7 +44,7 @@ func Test_ParseAWSError(t *testing.T) {
 			name:               "http-status-code-bad-request",
 			err:                TestAwsHttpResponseError(http.StatusBadRequest, "bad request"),
 			expectedStatusCode: codes.InvalidArgument,
-			expectedStatusMsg:  "aws service unknown: bad request error: test",
+			expectedStatusMsg:  "aws service unknown: bad request: test",
 			expectedPermission: &pb.Permission{
 				State: pb.StateType_STATE_TYPE_UNKNOWN,
 			},
@@ -53,7 +53,7 @@ func Test_ParseAWSError(t *testing.T) {
 			name:               "http-status-code-unauthorized",
 			err:                TestAwsHttpResponseError(http.StatusUnauthorized, "unauthorized request"),
 			expectedStatusCode: codes.PermissionDenied,
-			expectedStatusMsg:  "aws service unknown: invalid credentials error: test",
+			expectedStatusMsg:  "aws service unknown: invalid credentials: test",
 			expectedPermission: &pb.Permission{
 				State:        pb.StateType_STATE_TYPE_ERROR,
 				ErrorDetails: "unauthorized request",
@@ -64,7 +64,7 @@ func Test_ParseAWSError(t *testing.T) {
 			name:               "http-status-code-forbidden",
 			err:                TestAwsHttpResponseError(http.StatusForbidden, "forbidden request"),
 			expectedStatusCode: codes.PermissionDenied,
-			expectedStatusMsg:  "aws service unknown: invalid credentials error: test",
+			expectedStatusMsg:  "aws service unknown: invalid credentials: test",
 			expectedPermission: &pb.Permission{
 				State:        pb.StateType_STATE_TYPE_ERROR,
 				ErrorDetails: "forbidden request",
@@ -75,7 +75,7 @@ func Test_ParseAWSError(t *testing.T) {
 			name:               "http-status-code-not-found",
 			err:                TestAwsHttpResponseError(http.StatusNotFound, "not found request"),
 			expectedStatusCode: codes.NotFound,
-			expectedStatusMsg:  "aws service unknown: resource not found error: test",
+			expectedStatusMsg:  "aws service unknown: resource not found: test",
 			expectedPermission: &pb.Permission{
 				State: pb.StateType_STATE_TYPE_UNKNOWN,
 			},
@@ -84,7 +84,7 @@ func Test_ParseAWSError(t *testing.T) {
 			name:               "http-status-code-too-many-requests",
 			err:                TestAwsHttpResponseError(http.StatusTooManyRequests, "too many requests"),
 			expectedStatusCode: codes.Unavailable,
-			expectedStatusMsg:  "aws service unknown: throttling error: test",
+			expectedStatusMsg:  "aws service unknown: throttling: test",
 			expectedPermission: &pb.Permission{
 				State: pb.StateType_STATE_TYPE_UNKNOWN,
 			},
@@ -93,7 +93,7 @@ func Test_ParseAWSError(t *testing.T) {
 			name:               "http-status-code-request-timeout",
 			err:                TestAwsHttpResponseError(http.StatusRequestTimeout, "request timeout"),
 			expectedStatusCode: codes.DeadlineExceeded,
-			expectedStatusMsg:  "aws service unknown: timeout error: test",
+			expectedStatusMsg:  "aws service unknown: timeout: test",
 			expectedPermission: &pb.Permission{
 				State: pb.StateType_STATE_TYPE_UNKNOWN,
 			},
@@ -102,7 +102,7 @@ func Test_ParseAWSError(t *testing.T) {
 			name:               "http-status-code-internal-server-error",
 			err:                TestAwsHttpResponseError(http.StatusInternalServerError, "internal server error"),
 			expectedStatusCode: codes.Unavailable,
-			expectedStatusMsg:  "aws service unknown: connectivity error: test",
+			expectedStatusMsg:  "aws service unknown: connectivity: test",
 			expectedPermission: &pb.Permission{
 				State: pb.StateType_STATE_TYPE_UNKNOWN,
 			},
@@ -111,7 +111,7 @@ func Test_ParseAWSError(t *testing.T) {
 			name:               "http-status-code-bad-gateway",
 			err:                TestAwsHttpResponseError(http.StatusBadGateway, "bad gateway"),
 			expectedStatusCode: codes.Unavailable,
-			expectedStatusMsg:  "aws service unknown: connectivity error: test",
+			expectedStatusMsg:  "aws service unknown: connectivity: test",
 			expectedPermission: &pb.Permission{
 				State: pb.StateType_STATE_TYPE_UNKNOWN,
 			},
@@ -120,7 +120,7 @@ func Test_ParseAWSError(t *testing.T) {
 			name:               "http-status-code-service-unavailable",
 			err:                TestAwsHttpResponseError(http.StatusServiceUnavailable, "service unavailable"),
 			expectedStatusCode: codes.Unavailable,
-			expectedStatusMsg:  "aws service unknown: connectivity error: test",
+			expectedStatusMsg:  "aws service unknown: connectivity: test",
 			expectedPermission: &pb.Permission{
 				State: pb.StateType_STATE_TYPE_UNKNOWN,
 			},
@@ -129,7 +129,7 @@ func Test_ParseAWSError(t *testing.T) {
 			name:               "http-status-code-gateway-timeout",
 			err:                TestAwsHttpResponseError(http.StatusGatewayTimeout, "gateway timeout"),
 			expectedStatusCode: codes.DeadlineExceeded,
-			expectedStatusMsg:  "aws service unknown: timeout error: test",
+			expectedStatusMsg:  "aws service unknown: timeout: test",
 			expectedPermission: &pb.Permission{
 				State: pb.StateType_STATE_TYPE_UNKNOWN,
 			},
@@ -138,7 +138,7 @@ func Test_ParseAWSError(t *testing.T) {
 			name:               "aws-throttling",
 			err:                TestAwsError("Throttling", "throttling error"),
 			expectedStatusCode: codes.Unavailable,
-			expectedStatusMsg:  "aws service unknown: throttling error: test",
+			expectedStatusMsg:  "aws service unknown: throttling: test",
 			expectedPermission: &pb.Permission{
 				State: pb.StateType_STATE_TYPE_UNKNOWN,
 			},
@@ -147,7 +147,7 @@ func Test_ParseAWSError(t *testing.T) {
 			name:               "aws-throttling-exception",
 			err:                TestAwsError("ThrottlingException", "throttling exception"),
 			expectedStatusCode: codes.Unavailable,
-			expectedStatusMsg:  "aws service unknown: throttling error: test",
+			expectedStatusMsg:  "aws service unknown: throttling: test",
 			expectedPermission: &pb.Permission{
 				State: pb.StateType_STATE_TYPE_UNKNOWN,
 			},
@@ -156,7 +156,7 @@ func Test_ParseAWSError(t *testing.T) {
 			name:               "aws-throttled-exception",
 			err:                TestAwsError("ThrottledException", "throttled exception"),
 			expectedStatusCode: codes.Unavailable,
-			expectedStatusMsg:  "aws service unknown: throttling error: test",
+			expectedStatusMsg:  "aws service unknown: throttling: test",
 			expectedPermission: &pb.Permission{
 				State: pb.StateType_STATE_TYPE_UNKNOWN,
 			},
@@ -165,7 +165,7 @@ func Test_ParseAWSError(t *testing.T) {
 			name:               "aws-request-throttled-exception",
 			err:                TestAwsError("RequestThrottledException", "request throttled exception"),
 			expectedStatusCode: codes.Unavailable,
-			expectedStatusMsg:  "aws service unknown: throttling error: test",
+			expectedStatusMsg:  "aws service unknown: throttling: test",
 			expectedPermission: &pb.Permission{
 				State: pb.StateType_STATE_TYPE_UNKNOWN,
 			},
@@ -174,7 +174,7 @@ func Test_ParseAWSError(t *testing.T) {
 			name:               "aws-request-too-many-requests-exception",
 			err:                TestAwsError("TooManyRequestsException", "too many requests exception"),
 			expectedStatusCode: codes.Unavailable,
-			expectedStatusMsg:  "aws service unknown: throttling error: test",
+			expectedStatusMsg:  "aws service unknown: throttling: test",
 			expectedPermission: &pb.Permission{
 				State: pb.StateType_STATE_TYPE_UNKNOWN,
 			},
@@ -183,7 +183,7 @@ func Test_ParseAWSError(t *testing.T) {
 			name:               "aws-request-provisioned-throughput-exceeded-exception",
 			err:                TestAwsError("ProvisionedThroughputExceededException", "provisioned throughput exceeded exception"),
 			expectedStatusCode: codes.Unavailable,
-			expectedStatusMsg:  "aws service unknown: throttling error: test",
+			expectedStatusMsg:  "aws service unknown: throttling: test",
 			expectedPermission: &pb.Permission{
 				State: pb.StateType_STATE_TYPE_UNKNOWN,
 			},
@@ -192,7 +192,7 @@ func Test_ParseAWSError(t *testing.T) {
 			name:               "aws-request-transaction-in-progress-exception",
 			err:                TestAwsError("TransactionInProgressException", "transaction in progress exception"),
 			expectedStatusCode: codes.Unavailable,
-			expectedStatusMsg:  "aws service unknown: throttling error: test",
+			expectedStatusMsg:  "aws service unknown: throttling: test",
 			expectedPermission: &pb.Permission{
 				State: pb.StateType_STATE_TYPE_UNKNOWN,
 			},
@@ -201,7 +201,7 @@ func Test_ParseAWSError(t *testing.T) {
 			name:               "aws-request-limit-exceeded",
 			err:                TestAwsError("RequestLimitExceeded", "request limit exceeded"),
 			expectedStatusCode: codes.Unavailable,
-			expectedStatusMsg:  "aws service unknown: throttling error: test",
+			expectedStatusMsg:  "aws service unknown: throttling: test",
 			expectedPermission: &pb.Permission{
 				State: pb.StateType_STATE_TYPE_UNKNOWN,
 			},
@@ -210,7 +210,7 @@ func Test_ParseAWSError(t *testing.T) {
 			name:               "aws-request-bandwidth-limit-exceeded",
 			err:                TestAwsError("BandwidthLimitExceeded", "bandwidth limit exceeded"),
 			expectedStatusCode: codes.Unavailable,
-			expectedStatusMsg:  "aws service unknown: throttling error: test",
+			expectedStatusMsg:  "aws service unknown: throttling: test",
 			expectedPermission: &pb.Permission{
 				State: pb.StateType_STATE_TYPE_UNKNOWN,
 			},
@@ -219,7 +219,7 @@ func Test_ParseAWSError(t *testing.T) {
 			name:               "aws-request-limit-exceeded-exception",
 			err:                TestAwsError("LimitExceededException", "limit exceeded exception"),
 			expectedStatusCode: codes.Unavailable,
-			expectedStatusMsg:  "aws service unknown: throttling error: test",
+			expectedStatusMsg:  "aws service unknown: throttling: test",
 			expectedPermission: &pb.Permission{
 				State: pb.StateType_STATE_TYPE_UNKNOWN,
 			},
@@ -228,7 +228,7 @@ func Test_ParseAWSError(t *testing.T) {
 			name:               "aws-request-throttled",
 			err:                TestAwsError("RequestThrottled", "request throttled"),
 			expectedStatusCode: codes.Unavailable,
-			expectedStatusMsg:  "aws service unknown: throttling error: test",
+			expectedStatusMsg:  "aws service unknown: throttling: test",
 			expectedPermission: &pb.Permission{
 				State: pb.StateType_STATE_TYPE_UNKNOWN,
 			},
@@ -237,7 +237,7 @@ func Test_ParseAWSError(t *testing.T) {
 			name:               "aws-request-slow-down",
 			err:                TestAwsError("SlowDown", "slow down"),
 			expectedStatusCode: codes.Unavailable,
-			expectedStatusMsg:  "aws service unknown: throttling error: test",
+			expectedStatusMsg:  "aws service unknown: throttling: test",
 			expectedPermission: &pb.Permission{
 				State: pb.StateType_STATE_TYPE_UNKNOWN,
 			},
@@ -246,7 +246,7 @@ func Test_ParseAWSError(t *testing.T) {
 			name:               "aws-request-prior-request-not-complete",
 			err:                TestAwsError("PriorRequestNotComplete", "prior request not complete"),
 			expectedStatusCode: codes.Unavailable,
-			expectedStatusMsg:  "aws service unknown: throttling error: test",
+			expectedStatusMsg:  "aws service unknown: throttling: test",
 			expectedPermission: &pb.Permission{
 				State: pb.StateType_STATE_TYPE_UNKNOWN,
 			},
@@ -255,7 +255,7 @@ func Test_ParseAWSError(t *testing.T) {
 			name:               "aws-request-ec2-throttled-exception",
 			err:                TestAwsError("EC2ThrottledException", "ec2 throttled exception"),
 			expectedStatusCode: codes.Unavailable,
-			expectedStatusMsg:  "aws service unknown: throttling error: test",
+			expectedStatusMsg:  "aws service unknown: throttling: test",
 			expectedPermission: &pb.Permission{
 				State: pb.StateType_STATE_TYPE_UNKNOWN,
 			},
@@ -264,7 +264,7 @@ func Test_ParseAWSError(t *testing.T) {
 			name:               "aws-request-timeout",
 			err:                TestAwsError("RequestTimeout", "request timeout"),
 			expectedStatusCode: codes.DeadlineExceeded,
-			expectedStatusMsg:  "aws unknown error: test",
+			expectedStatusMsg:  "aws service unknown: test",
 			expectedPermission: &pb.Permission{
 				State: pb.StateType_STATE_TYPE_UNKNOWN,
 			},
@@ -273,7 +273,7 @@ func Test_ParseAWSError(t *testing.T) {
 			name:               "aws-request-timeout-exception",
 			err:                TestAwsError("RequestTimeoutException", "request timeout exception"),
 			expectedStatusCode: codes.DeadlineExceeded,
-			expectedStatusMsg:  "aws unknown error: test",
+			expectedStatusMsg:  "aws service unknown: test",
 			expectedPermission: &pb.Permission{
 				State: pb.StateType_STATE_TYPE_UNKNOWN,
 			},
@@ -282,7 +282,7 @@ func Test_ParseAWSError(t *testing.T) {
 			name:               "aws-request-access-denied",
 			err:                TestAwsError(awsErrorAccessDenied, "not authorized to perform action"),
 			expectedStatusCode: codes.PermissionDenied,
-			expectedStatusMsg:  "aws service unknown: invalid credentials error: test",
+			expectedStatusMsg:  "aws service unknown: invalid credentials: test",
 			expectedPermission: &pb.Permission{
 				State:        pb.StateType_STATE_TYPE_ERROR,
 				ErrorDetails: "not authorized to perform action",
@@ -293,7 +293,7 @@ func Test_ParseAWSError(t *testing.T) {
 			name:               "aws-request-invalid-access-key-id",
 			err:                TestAwsError(awsErrorInvalidAccessKeyId, "The AWS Access Key Id you provided does not exist in our records."),
 			expectedStatusCode: codes.PermissionDenied,
-			expectedStatusMsg:  "aws service unknown: invalid credentials error: test",
+			expectedStatusMsg:  "aws service unknown: invalid credentials: test",
 			expectedPermission: &pb.Permission{
 				State:        pb.StateType_STATE_TYPE_ERROR,
 				ErrorDetails: "The AWS Access Key Id you provided does not exist in our records.",
@@ -304,7 +304,7 @@ func Test_ParseAWSError(t *testing.T) {
 			name:               "aws-request-expired-token",
 			err:                TestAwsError(awsErrorExpiredToken, "The security token included in the request is expired."),
 			expectedStatusCode: codes.PermissionDenied,
-			expectedStatusMsg:  "aws service unknown: invalid credentials error: test",
+			expectedStatusMsg:  "aws service unknown: invalid credentials: test",
 			expectedPermission: &pb.Permission{
 				State:        pb.StateType_STATE_TYPE_ERROR,
 				ErrorDetails: "The security token included in the request is expired.",
@@ -316,14 +316,14 @@ func Test_ParseAWSError(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			require, assert := require.New(t), assert.New(t)
 
-			actualStatus, permission := ParseAWSError(tt.err, "test")
+			actualStatus, permission := ParseAWSError("test", tt.err)
 			if tt.expectedStatusCode == codes.OK {
 				require.Nil(actualStatus)
 				return
 			}
 
 			require.Equal(tt.expectedStatusCode, actualStatus.Code())
-			require.Equal(tt.expectedStatusMsg, actualStatus.Message())
+			require.Contains(actualStatus.Message(), tt.expectedStatusMsg)
 			require.Len(actualStatus.Details(), 0)
 			CheckSimilarPermission(assert, tt.expectedPermission, permission, true)
 		})

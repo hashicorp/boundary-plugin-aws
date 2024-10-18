@@ -4,3 +4,7 @@ plan.tfplan
 *.log
 *.out
 *.html
+
+# IntelliJ IDEA project files
+.idea
+*.iprg
