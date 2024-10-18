@@ -114,7 +114,7 @@ func (s *AwsCredentialPersistedState) ValidateCreds(ctx context.Context) error {
 		return errors.BadRequestStatus("missing credentials config")
 	}
 	if _, err := s.CredentialsConfig.GetCallerIdentity(ctx, s.testOpts...); err != nil {
-		st, _ := errors.ParseAWSError(err, "validating credentials")
+		st, _ := errors.ParseAWSError("validating credentials", err)
 		return st.Err()
 	}
 	return nil
@@ -135,7 +135,7 @@ func (s *AwsCredentialPersistedState) RotateCreds(ctx context.Context) error {
 	if err := s.CredentialsConfig.RotateKeys(ctx, append([]awsutil.Option{
 		awsutil.WithValidityCheckTimeout(rotationWaitTimeout),
 	}, s.testOpts...)...); err != nil {
-		st, _ := errors.ParseAWSError(err, "error rotating credentials")
+		st, _ := errors.ParseAWSError("rotating credentials", err)
 		return st.Err()
 	}
 	s.CredsLastRotatedTime = time.Now()
@@ -192,7 +192,7 @@ func (s *AwsCredentialPersistedState) DeleteCreds(ctx context.Context) error {
 		}
 
 		// Otherwise treat it as an actual error.
-		st, _ := errors.ParseAWSError(err, "failed to delete access key")
+		st, _ := errors.ParseAWSError("deleting credentials", err)
 		return st.Err()
 	}
 
@@ -252,17 +252,17 @@ func AwsCredentialPersistedStateFromProto(secrets *structpb.Struct, attrs *Crede
 
 	accessKeyId, err := values.GetStringValue(secrets, ConstAccessKeyId, false)
 	if err != nil {
-		return nil, fmt.Errorf("persisted state integrity error: %w", err)
+		return nil, fmt.Errorf("persisted state integrity: %w", err)
 	}
 
 	secretAccessKey, err := values.GetStringValue(secrets, ConstSecretAccessKey, false)
 	if err != nil {
-		return nil, fmt.Errorf("persisted state integrity error: %w", err)
+		return nil, fmt.Errorf("persisted state integrity: %w", err)
 	}
 
 	credsLastRotatedTime, err := values.GetTimeValue(secrets, ConstCredsLastRotatedTime)
 	if err != nil {
-		return nil, fmt.Errorf("persisted state integrity error: %w", err)
+		return nil, fmt.Errorf("persisted state integrity: %w", err)
 	}
 
 	s, err := NewAwsCredentialPersistedState(opts...)
