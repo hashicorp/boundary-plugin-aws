@@ -51,7 +51,7 @@ func (p *HostPlugin) OnCreateCatalog(ctx context.Context, req *pb.OnCreateCatalo
 	if err != nil {
 		return nil, err
 	}
-	credConfig, err := credential.GetCredentialsConfig(catalog.GetSecrets(), catalogAttributes.CredentialAttributes)
+	credConfig, err := credential.GetCredentialsConfig(catalog.GetSecrets(), catalogAttributes.CredentialAttributes, catalogAttributes.DualStack)
 	if err != nil {
 		return nil, err
 	}
@@ -135,6 +135,7 @@ func (p *HostPlugin) OnUpdateCatalog(ctx context.Context, req *pb.OnUpdateCatalo
 	credState, err := credential.AwsCredentialPersistedStateFromProto(
 		req.GetPersisted().GetSecrets(),
 		oldCatalogAttributes.CredentialAttributes,
+		oldCatalogAttributes.DualStack,
 		p.testCredStateOpts...)
 	if err != nil {
 		return nil, errors.BadRequestStatus("error loading persisted state: %s", err)
@@ -143,7 +144,7 @@ func (p *HostPlugin) OnUpdateCatalog(ctx context.Context, req *pb.OnUpdateCatalo
 	// Verify the incoming credentials are valid and return any errors to the
 	// user if they're not. Note this doesn't validate the credentials against
 	// AWS - it only does logical validation on the fields.
-	updatedCredentials, err := credential.GetCredentialsConfig(newCatalog.GetSecrets(), newCatalogAttributes.CredentialAttributes)
+	updatedCredentials, err := credential.GetCredentialsConfig(newCatalog.GetSecrets(), newCatalogAttributes.CredentialAttributes, newCatalogAttributes.DualStack)
 	if err != nil {
 		return nil, err
 	}
@@ -260,6 +261,7 @@ func (p *HostPlugin) OnDeleteCatalog(ctx context.Context, req *pb.OnDeleteCatalo
 	credState, err := credential.AwsCredentialPersistedStateFromProto(
 		req.GetPersisted().GetSecrets(),
 		catalogAttributes.CredentialAttributes,
+		catalogAttributes.DualStack,
 		p.testCredStateOpts...)
 	if err != nil {
 		return nil, errors.BadRequestStatus("error loading persisted state: %s", err)
@@ -336,6 +338,7 @@ func (p *HostPlugin) OnCreateSet(ctx context.Context, req *pb.OnCreateSetRequest
 	credState, err := credential.AwsCredentialPersistedStateFromProto(
 		req.GetPersisted().GetSecrets(),
 		catalogAttributes.CredentialAttributes,
+		catalogAttributes.DualStack,
 		p.testCredStateOpts...)
 	if err != nil {
 		return nil, errors.BadRequestStatus("error loading persisted state: %s", err)
@@ -398,6 +401,7 @@ func (p *HostPlugin) OnUpdateSet(ctx context.Context, req *pb.OnUpdateSetRequest
 	credState, err := credential.AwsCredentialPersistedStateFromProto(
 		req.GetPersisted().GetSecrets(),
 		catalogAttributes.CredentialAttributes,
+		catalogAttributes.DualStack,
 		p.testCredStateOpts...)
 	if err != nil {
 		return nil, errors.BadRequestStatus("error loading persisted state: %s", err)
@@ -470,6 +474,7 @@ func (p *HostPlugin) ListHosts(ctx context.Context, req *pb.ListHostsRequest) (*
 	credState, err := credential.AwsCredentialPersistedStateFromProto(
 		req.GetPersisted().GetSecrets(),
 		catalogAttributes.CredentialAttributes,
+		catalogAttributes.DualStack,
 		p.testCredStateOpts...)
 	if err != nil {
 		return nil, errors.BadRequestStatus("error loading persisted state: %s", err)

@@ -37,7 +37,7 @@ type CredentialAttributes struct {
 // CredentialsConfig used for configuring an AWS session. An status error is returned
 // with an InvalidArgument code if any unrecognized fields are found in the protobuf
 // struct input.
-func GetCredentialsConfig(secrets *structpb.Struct, attrs *CredentialAttributes) (*awsutil.CredentialsConfig, error) {
+func GetCredentialsConfig(secrets *structpb.Struct, attrs *CredentialAttributes, dualStack bool) (*awsutil.CredentialsConfig, error) {
 	// initialize secrets if it is nil
 	// secrets can be nil because static credentials are optional
 	if secrets == nil {
@@ -115,6 +115,17 @@ func GetCredentialsConfig(secrets *structpb.Struct, attrs *CredentialAttributes)
 	}
 	if len(attrs.RoleTags) != 0 {
 		opts = append(opts, awsutil.WithRoleTags(attrs.RoleTags))
+	}
+
+	if dualStack {
+		opts = append(opts, []awsutil.Option{
+			awsutil.WithIamEndpointResolver(&iamEndpointResolver{
+				dualStack: dualStack,
+			}),
+			awsutil.WithStsEndpointResolver(&stsEndpointResolver{
+				dualStack: dualStack,
+			}),
+		}...)
 	}
 
 	cfg, err := awsutil.NewCredentialsConfig(opts...)

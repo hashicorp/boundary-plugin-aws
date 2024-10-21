@@ -64,7 +64,7 @@ func (p *StoragePlugin) OnCreateStorageBucket(ctx context.Context, req *pb.OnCre
 		return nil, err
 	}
 
-	credConfig, err := cred.GetCredentialsConfig(bucket.GetSecrets(), storageAttributes.CredentialAttributes)
+	credConfig, err := cred.GetCredentialsConfig(bucket.GetSecrets(), storageAttributes.CredentialAttributes, storageAttributes.DualStack)
 	if err != nil {
 		return nil, err
 	}
@@ -147,6 +147,7 @@ func (p *StoragePlugin) OnUpdateStorageBucket(ctx context.Context, req *pb.OnUpd
 	credState, err := cred.AwsCredentialPersistedStateFromProto(
 		req.GetPersisted().GetData(),
 		oldStorageAttributes.CredentialAttributes,
+		oldStorageAttributes.DualStack,
 		p.testCredStateOpts...)
 	if err != nil {
 		return nil, errors.BadRequestStatus("error loading persisted state: %s", err)
@@ -155,7 +156,7 @@ func (p *StoragePlugin) OnUpdateStorageBucket(ctx context.Context, req *pb.OnUpd
 	// Verify the incoming credentials are valid and return any errors to the
 	// user if they're not. Note this doesn't validate the credentials against
 	// AWS - it only does logical validation on the fields.
-	updatedCredentials, err := cred.GetCredentialsConfig(newBucket.GetSecrets(), newStorageAttributes.CredentialAttributes)
+	updatedCredentials, err := cred.GetCredentialsConfig(newBucket.GetSecrets(), newStorageAttributes.CredentialAttributes, newStorageAttributes.DualStack)
 	if err != nil {
 		return nil, err
 	}
@@ -264,6 +265,7 @@ func (p *StoragePlugin) OnDeleteStorageBucket(ctx context.Context, req *pb.OnDel
 	credState, err := cred.AwsCredentialPersistedStateFromProto(
 		req.GetPersisted().GetData(),
 		storageAttributes.CredentialAttributes,
+		storageAttributes.DualStack,
 		p.testCredStateOpts...)
 	if err != nil {
 		return nil, errors.BadRequestStatus("error loading persisted state: %s", err)
@@ -318,7 +320,7 @@ func (p *StoragePlugin) HeadObject(ctx context.Context, req *pb.HeadObjectReques
 		return nil, err
 	}
 
-	credConfig, err := cred.GetCredentialsConfig(bucket.GetSecrets(), storageAttributes.CredentialAttributes)
+	credConfig, err := cred.GetCredentialsConfig(bucket.GetSecrets(), storageAttributes.CredentialAttributes, storageAttributes.DualStack)
 	if err != nil {
 		return nil, err
 	}
@@ -389,7 +391,7 @@ func (p *StoragePlugin) ValidatePermissions(ctx context.Context, req *pb.Validat
 		return nil, err
 	}
 
-	credConfig, err := cred.GetCredentialsConfig(bucket.GetSecrets(), storageAttributes.CredentialAttributes)
+	credConfig, err := cred.GetCredentialsConfig(bucket.GetSecrets(), storageAttributes.CredentialAttributes, storageAttributes.DualStack)
 	if err != nil {
 		return nil, err
 	}
@@ -447,7 +449,7 @@ func (p *StoragePlugin) GetObject(req *pb.GetObjectRequest, stream pb.StoragePlu
 		return err
 	}
 
-	credConfig, err := cred.GetCredentialsConfig(bucket.GetSecrets(), storageAttributes.CredentialAttributes)
+	credConfig, err := cred.GetCredentialsConfig(bucket.GetSecrets(), storageAttributes.CredentialAttributes, storageAttributes.DualStack)
 	if err != nil {
 		return err
 	}
@@ -561,7 +563,7 @@ func (p *StoragePlugin) PutObject(ctx context.Context, req *pb.PutObjectRequest)
 		return nil, err
 	}
 
-	credConfig, err := cred.GetCredentialsConfig(bucket.GetSecrets(), storageAttributes.CredentialAttributes)
+	credConfig, err := cred.GetCredentialsConfig(bucket.GetSecrets(), storageAttributes.CredentialAttributes, storageAttributes.DualStack)
 	if err != nil {
 		return nil, err
 	}
@@ -659,7 +661,7 @@ func (p *StoragePlugin) DeleteObjects(ctx context.Context, req *pb.DeleteObjects
 		return nil, err
 	}
 
-	credConfig, err := cred.GetCredentialsConfig(bucket.GetSecrets(), storageAttributes.CredentialAttributes)
+	credConfig, err := cred.GetCredentialsConfig(bucket.GetSecrets(), storageAttributes.CredentialAttributes, storageAttributes.DualStack)
 	if err != nil {
 		return nil, err
 	}
