@@ -81,11 +81,12 @@ func InvalidArgumentError(msg string, f map[string]string) error {
 // and credentials. This method will fallback to parsing the http status code
 // when it cannot match an aws error code. This method does not handle specific
 // service type errors such as S3 or EC2.
-func ParseAWSError(err error, msg string) (st *status.Status, permission *pb.Permission) {
+func ParseAWSError(op string, err error) (st *status.Status, permission *pb.Permission) {
 	if err == nil {
 		return nil, nil
 	}
 
+	msg := fmt.Sprintf("%s: %v", op, err)
 	// find the service name of the aws api
 	serviceName := "unknown"
 	var oe *smithy.OperationError
@@ -113,7 +114,7 @@ func ParseAWSError(err error, msg string) (st *status.Status, permission *pb.Per
 		Codes: retry.DefaultThrottleErrorCodes,
 	}
 	if throttleErr.IsErrorThrottle(err).Bool() {
-		statusMsg := fmt.Sprintf("aws service %s: throttling error: %s", serviceName, msg)
+		statusMsg := fmt.Sprintf("aws service %s: throttling: %s", serviceName, msg)
 		return status.New(codes.Unavailable, statusMsg), nil
 	}
 
@@ -126,31 +127,31 @@ func ParseAWSError(err error, msg string) (st *status.Status, permission *pb.Per
 		case awsErrorInvalidAccessKeyId:
 			fallthrough
 		case awsErrorExpiredToken:
-			statusMsg := fmt.Sprintf("aws service %s: invalid credentials error: %s", serviceName, msg)
+			statusMsg := fmt.Sprintf("aws service %s: invalid credentials: %s", serviceName, msg)
 			return status.New(codes.PermissionDenied, statusMsg), &pb.Permission{
 				State:        pb.StateType_STATE_TYPE_ERROR,
 				ErrorDetails: apiErr.ErrorMessage(),
 				CheckedAt:    timestamppb.Now(),
 			}
 		case awsErrorNoSuchBucket:
-			statusMsg := fmt.Sprintf("aws %s error: %s", serviceName, msg)
+			statusMsg := fmt.Sprintf("aws service %s: %s", serviceName, msg)
 			return status.New(codes.NotFound, statusMsg), &pb.Permission{
 				State:        pb.StateType_STATE_TYPE_ERROR,
 				ErrorDetails: apiErr.ErrorMessage(),
 				CheckedAt:    timestamppb.Now(),
 			}
 		case awsErrorBadDigest:
-			statusMsg := fmt.Sprintf("aws %s error: %s", serviceName, msg)
+			statusMsg := fmt.Sprintf("aws service %s: %s", serviceName, msg)
 			return status.New(codes.Aborted, statusMsg), nil
 		case awsErrorNoSuchKey:
 			fallthrough
 		case awsErrorInvalidObjectState:
-			statusMsg := fmt.Sprintf("aws %s error: %s", serviceName, msg)
+			statusMsg := fmt.Sprintf("aws service %s: %s", serviceName, msg)
 			return status.New(codes.NotFound, statusMsg), nil
 		case awsErrorRequestTimeout:
 			fallthrough
 		case awsErrorRequestTimeoutException:
-			statusMsg := fmt.Sprintf("aws %s error: %s", serviceName, msg)
+			statusMsg := fmt.Sprintf("aws service %s: %s", serviceName, msg)
 			return status.New(codes.DeadlineExceeded, statusMsg), nil
 		}
 	}
@@ -165,39 +166,39 @@ func ParseAWSError(err error, msg string) (st *status.Status, permission *pb.Per
 		defer httpErr.Response.Body.Close()
 		switch httpErr.HTTPStatusCode() {
 		case http.StatusBadRequest:
-			statusMsg := fmt.Sprintf("aws service %s: bad request error: %s", serviceName, msg)
+			statusMsg := fmt.Sprintf("aws service %s: bad request: %s", serviceName, msg)
 			return status.New(codes.InvalidArgument, statusMsg), nil
 		case http.StatusUnauthorized:
-			statusMsg := fmt.Sprintf("aws service %s: invalid credentials error: %s", serviceName, msg)
+			statusMsg := fmt.Sprintf("aws service %s: invalid credentials: %s", serviceName, msg)
 			return status.New(codes.PermissionDenied, statusMsg), &pb.Permission{
 				State:        pb.StateType_STATE_TYPE_ERROR,
 				ErrorDetails: buf.String(),
 				CheckedAt:    timestamppb.Now(),
 			}
 		case http.StatusForbidden:
-			statusMsg := fmt.Sprintf("aws service %s: invalid credentials error: %s", serviceName, msg)
+			statusMsg := fmt.Sprintf("aws service %s: invalid credentials: %s", serviceName, msg)
 			return status.New(codes.PermissionDenied, statusMsg), &pb.Permission{
 				State:        pb.StateType_STATE_TYPE_ERROR,
 				ErrorDetails: buf.String(),
 				CheckedAt:    timestamppb.Now(),
 			}
 		case http.StatusNotFound:
-			statusMsg := fmt.Sprintf("aws service %s: resource not found error: %s", serviceName, msg)
+			statusMsg := fmt.Sprintf("aws service %s: resource not found: %s", serviceName, msg)
 			return status.New(codes.NotFound, statusMsg), nil
 		case http.StatusTooManyRequests:
-			statusMsg := fmt.Sprintf("aws service %s: throttling error: %s", serviceName, msg)
+			statusMsg := fmt.Sprintf("aws service %s: throttling: %s", serviceName, msg)
 			return status.New(codes.Unavailable, statusMsg), nil
 		case http.StatusInternalServerError:
 			fallthrough
 		case http.StatusBadGateway:
 			fallthrough
 		case http.StatusServiceUnavailable:
-			statusMsg := fmt.Sprintf("aws service %s: connectivity error: %s", serviceName, msg)
+			statusMsg := fmt.Sprintf("aws service %s: connectivity: %s", serviceName, msg)
 			return status.New(codes.Unavailable, statusMsg), nil
 		case http.StatusRequestTimeout:
 			fallthrough
 		case http.StatusGatewayTimeout:
-			statusMsg := fmt.Sprintf("aws service %s: timeout error: %s", serviceName, msg)
+			statusMsg := fmt.Sprintf("aws service %s: timeout: %s", serviceName, msg)
 			return status.New(codes.DeadlineExceeded, statusMsg), nil
 		}
 	}

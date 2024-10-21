@@ -50,12 +50,12 @@ func setStatePermission(req any, permission *pb.Permission) *pb.StorageBucketCre
 // credentials, and connectivity error types.
 //
 // https://docs.aws.amazon.com/AmazonS3/latest/API/ErrorResponses.html
-func parseS3Error(err error, msg string, req any) *status.Status {
+func parseS3Error(op string, err error, req any) *status.Status {
 	if err == nil {
 		return nil
 	}
 
-	st, p := errors.ParseAWSError(err, msg)
+	st, p := errors.ParseAWSError(op, err)
 	if p != nil {
 		state := setStatePermission(req, p)
 		if st, err = st.WithDetails(state); err != nil {

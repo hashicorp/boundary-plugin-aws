@@ -34,7 +34,7 @@ func Test_ParseS3Error(t *testing.T) {
 			req:                &pb.GetObjectRequest{},
 			err:                TestAwsS3Error("NoSuchBucket", "GetObject", "no such bucket"),
 			expectedStatusCode: codes.NotFound,
-			expectedStatusMsg:  "aws s3 error: test",
+			expectedStatusMsg:  "aws service s3: test:",
 			expectedDetails: &pb.StorageBucketCredentialState{
 				State: &pb.Permissions{
 					Read: &pb.Permission{
@@ -50,7 +50,7 @@ func Test_ParseS3Error(t *testing.T) {
 			req:                &pb.GetObjectRequest{},
 			err:                TestAwsS3Error("NoSuchKey", "GetObject", "no such key"),
 			expectedStatusCode: codes.NotFound,
-			expectedStatusMsg:  "aws s3 error: test",
+			expectedStatusMsg:  "aws service s3: test:",
 			expectedDetails: &pb.StorageBucketCredentialState{
 				State: &pb.Permissions{
 					Read: &pb.Permission{
@@ -66,7 +66,7 @@ func Test_ParseS3Error(t *testing.T) {
 			err:                errors.TestAwsHttpResponseError(404, "not found"),
 			expectedStatusCode: codes.NotFound,
 			// cannot embed services within mock http errors, therefore unknown service
-			expectedStatusMsg: "aws service unknown: resource not found error: test",
+			expectedStatusMsg: "aws service unknown: resource not found: test:",
 			expectedDetails: &pb.StorageBucketCredentialState{
 				State: &pb.Permissions{
 					Read: &pb.Permission{
@@ -81,7 +81,7 @@ func Test_ParseS3Error(t *testing.T) {
 			req:                &pb.GetObjectRequest{},
 			err:                TestAwsS3Error("InvalidObjectState", "GetObject", "invalid object state"),
 			expectedStatusCode: codes.NotFound,
-			expectedStatusMsg:  "aws s3 error: test",
+			expectedStatusMsg:  "aws service s3: test:",
 			expectedDetails: &pb.StorageBucketCredentialState{
 				State: &pb.Permissions{
 					Read: &pb.Permission{
@@ -96,7 +96,7 @@ func Test_ParseS3Error(t *testing.T) {
 			req:                &pb.PutObjectRequest{},
 			err:                TestAwsS3Error(s3ErrorBadDigest, "PutObject", "checksum mismatch"),
 			expectedStatusCode: codes.Aborted,
-			expectedStatusMsg:  "aws s3 error: test",
+			expectedStatusMsg:  "aws service s3: test:",
 			expectedDetails: &pb.StorageBucketCredentialState{
 				State: &pb.Permissions{
 					Write: &pb.Permission{
@@ -111,7 +111,7 @@ func Test_ParseS3Error(t *testing.T) {
 			req:                &pb.GetObjectRequest{},
 			err:                TestAwsS3Error("Throttling", "action", "throttling exception"),
 			expectedStatusCode: codes.Unavailable,
-			expectedStatusMsg:  "aws service s3: throttling error: test",
+			expectedStatusMsg:  "aws service s3: throttling: test:",
 			expectedDetails: &pb.StorageBucketCredentialState{
 				State: &pb.Permissions{
 					Read: &pb.Permission{
@@ -126,7 +126,7 @@ func Test_ParseS3Error(t *testing.T) {
 			req:                &pb.GetObjectRequest{},
 			err:                TestAwsS3Error("RequestTimeout", "action", "request timeout"),
 			expectedStatusCode: codes.DeadlineExceeded,
-			expectedStatusMsg:  "aws s3 error: test",
+			expectedStatusMsg:  "aws service s3: test:",
 			expectedDetails: &pb.StorageBucketCredentialState{
 				State: &pb.Permissions{
 					Read: &pb.Permission{
@@ -141,7 +141,7 @@ func Test_ParseS3Error(t *testing.T) {
 			req:                &pb.GetObjectRequest{},
 			err:                TestAwsS3Error("AccessDenied", "action", "access denied"),
 			expectedStatusCode: codes.PermissionDenied,
-			expectedStatusMsg:  "aws service s3: invalid credentials error: test",
+			expectedStatusMsg:  "aws service s3: invalid credentials: test:",
 			expectedDetails: &pb.StorageBucketCredentialState{
 				State: &pb.Permissions{
 					Read: &pb.Permission{
@@ -157,14 +157,14 @@ func Test_ParseS3Error(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			require, assert := require.New(t), assert.New(t)
 
-			actualStatus := parseS3Error(tt.err, "test", tt.req)
+			actualStatus := parseS3Error("test", tt.err, tt.req)
 			if tt.expectedStatusCode == codes.OK {
 				require.Nil(actualStatus)
 				return
 			}
 
 			require.Equal(tt.expectedStatusCode, actualStatus.Code())
-			require.Equal(tt.expectedStatusMsg, actualStatus.Message())
+			require.Contains(actualStatus.Message(), tt.expectedStatusMsg)
 			require.Len(actualStatus.Details(), 1)
 
 			foundDetail := false

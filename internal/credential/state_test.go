@@ -186,7 +186,7 @@ func TestAwsCredentialPersistedStateFromProto(t *testing.T) {
 			attrs: &CredentialAttributes{
 				Region: "us-west-2",
 			},
-			expectedErr: "persisted state integrity error: could not parse time in value \"creds_last_rotated_time\": parsing time \"notatime\" as \"2006-01-02T15:04:05.999999999Z07:00\": cannot parse \"notatime\" as \"2006\"",
+			expectedErr: "persisted state integrity: could not parse time in value \"creds_last_rotated_time\": parsing time \"notatime\" as \"2006-01-02T15:04:05.999999999Z07:00\": cannot parse \"notatime\" as \"2006\"",
 		},
 		{
 			name: "option error",
@@ -458,7 +458,7 @@ func TestAwsCatalogPersistedState_RotateCreds(t *testing.T) {
 					),
 				},
 			},
-			expectedErr:        "aws service unknown: unknown error: error rotating credentials",
+			expectedErr:        "aws service unknown: unknown error: rotating credentials",
 			expectedStatusCode: codes.Unknown,
 		},
 		{
@@ -568,7 +568,7 @@ func TestAwsCatalogPersistedState_ReplaceCreds(t *testing.T) {
 				},
 			},
 			credentialConfig:   &awsutil.CredentialsConfig{},
-			expectedErr:        "aws service unknown: unknown error: failed to delete access key",
+			expectedErr:        "aws service unknown: unknown error: deleting credentials",
 			expectedStatusCode: codes.Unknown,
 		},
 		{
@@ -693,7 +693,7 @@ func TestAwsCatalogPersistedState_DeleteCreds(t *testing.T) {
 					),
 				},
 			},
-			expectedErr:        "aws service unknown: unknown error: failed to delete access key",
+			expectedErr:        "aws service unknown: unknown error: deleting credentials",
 			expectedStatusCode: codes.Unknown,
 		},
 		{
