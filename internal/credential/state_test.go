@@ -112,6 +112,7 @@ func TestAwsCredentialPersistedStateFromProto(t *testing.T) {
 		name        string
 		secrets     *structpb.Struct
 		attrs       *CredentialAttributes
+		dualStack   bool
 		opts        []AwsCredentialPersistedStateOption
 		expected    *AwsCredentialPersistedState
 		expectedErr string
@@ -163,6 +164,26 @@ func TestAwsCredentialPersistedStateFromProto(t *testing.T) {
 					ConstSecretAccessKey: structpb.NewStringValue("bazqux"),
 				},
 			},
+			attrs: &CredentialAttributes{
+				Region: "us-west-2",
+			},
+			expected: &AwsCredentialPersistedState{
+				CredentialsConfig: &awsutil.CredentialsConfig{
+					Region:    "us-west-2",
+					AccessKey: "foobar",
+					SecretKey: "bazqux",
+				},
+			},
+		},
+		{
+			name: "with dualstack static credentials",
+			secrets: &structpb.Struct{
+				Fields: map[string]*structpb.Value{
+					ConstAccessKeyId:     structpb.NewStringValue("foobar"),
+					ConstSecretAccessKey: structpb.NewStringValue("bazqux"),
+				},
+			},
+			dualStack: true,
 			attrs: &CredentialAttributes{
 				Region: "us-west-2",
 			},
@@ -318,7 +339,7 @@ func TestAwsCredentialPersistedStateFromProto(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			require := require.New(t)
 
-			actual, err := AwsCredentialPersistedStateFromProto(tc.secrets, tc.attrs, tc.opts...)
+			actual, err := AwsCredentialPersistedStateFromProto(tc.secrets, tc.attrs, tc.dualStack, tc.opts...)
 			if tc.expectedErr != "" {
 				require.EqualError(err, tc.expectedErr)
 				return
@@ -336,6 +357,13 @@ func TestAwsCredentialPersistedStateFromProto(t *testing.T) {
 				require.Equal(tc.expected.CredentialsConfig.RoleExternalId, actual.CredentialsConfig.RoleExternalId)
 				require.Equal(tc.expected.CredentialsConfig.RoleSessionName, actual.CredentialsConfig.RoleSessionName)
 				require.Equal(tc.expected.CredentialsConfig.RoleTags, actual.CredentialsConfig.RoleTags)
+				if tc.dualStack {
+					require.NotNil(actual.CredentialsConfig.STSEndpointResolver)
+					require.NotNil(actual.CredentialsConfig.IAMEndpointResolver)
+				} else {
+					require.Nil(actual.CredentialsConfig.STSEndpointResolver)
+					require.Nil(actual.CredentialsConfig.IAMEndpointResolver)
+				}
 			}
 		})
 	}
