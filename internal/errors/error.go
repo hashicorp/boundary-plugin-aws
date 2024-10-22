@@ -101,7 +101,7 @@ func ParseAWSError(op string, err error) (st *status.Status, permission *pb.Perm
 
 	defer func() {
 		if st == nil {
-			statusMsg := fmt.Sprintf("aws service %s: unknown error: %s", serviceName, msg)
+			statusMsg := fmt.Sprintf("aws service %s: unknown error: %s: debug(%v)", serviceName, msg, err)
 			st = status.New(codes.Unknown, statusMsg)
 		}
 		if permission == nil {
