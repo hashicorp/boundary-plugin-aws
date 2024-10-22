@@ -100,7 +100,7 @@ func ParseAWSError(err error, msg string) (st *status.Status, permission *pb.Per
 
 	defer func() {
 		if st == nil {
-			statusMsg := fmt.Sprintf("aws service %s: unknown error: %s", serviceName, msg)
+			statusMsg := fmt.Sprintf("aws service %s: unknown error: %s: debug(%v)", serviceName, msg, err)
 			st = status.New(codes.Unknown, statusMsg)
 		}
 		if permission == nil {
@@ -199,9 +199,6 @@ func ParseAWSError(err error, msg string) (st *status.Status, permission *pb.Per
 		case http.StatusGatewayTimeout:
 			statusMsg := fmt.Sprintf("aws service %s: timeout error: %s", serviceName, msg)
 			return status.New(codes.DeadlineExceeded, statusMsg), nil
-		default:
-			statusMsg := fmt.Sprintf("aws service %s: %s", serviceName, buf.String())
-			return status.New(codes.Unknown, statusMsg), nil
 		}
 	}
 
