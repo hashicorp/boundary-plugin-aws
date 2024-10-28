@@ -44,6 +44,22 @@ func TestGetCatalogAttributes(t *testing.T) {
 			expectedErrContains: "attributes.bar: unrecognized field, attributes.foo: unrecognized field",
 		},
 		{
+			name: "with dual stack",
+			in: &structpb.Struct{
+				Fields: map[string]*structpb.Value{
+					"region":     structpb.NewStringValue("us-west-2"),
+					"dual_stack": structpb.NewBoolValue(true),
+				},
+			},
+			expected: &CatalogAttributes{
+				CredentialAttributes: &credential.CredentialAttributes{
+					Region:                    "us-west-2",
+					DisableCredentialRotation: false,
+				},
+				DualStack: true,
+			},
+		},
+		{
 			name: "default",
 			in: &structpb.Struct{
 				Fields: map[string]*structpb.Value{

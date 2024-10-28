@@ -11,7 +11,10 @@ import (
 	"time"
 
 	"github.com/aws/aws-sdk-go-v2/aws"
+	"github.com/aws/aws-sdk-go-v2/service/iam"
 	iamTypes "github.com/aws/aws-sdk-go-v2/service/iam/types"
+	"github.com/aws/aws-sdk-go-v2/service/sts"
+	smithyEndpoints "github.com/aws/smithy-go/endpoints"
 	"github.com/hashicorp/boundary-plugin-aws/internal/errors"
 	"github.com/hashicorp/boundary-plugin-aws/internal/values"
 	"github.com/hashicorp/go-secure-stdlib/awsutil/v2"
@@ -237,7 +240,7 @@ func (s *AwsCredentialPersistedState) ToMap() map[string]any {
 
 // AwsCredentialPersistedStateFromProto parses values out of a protobuf struct input
 // and returns a AwsCredentialPersistedState used for configuring an AWS session.
-func AwsCredentialPersistedStateFromProto(secrets *structpb.Struct, attrs *CredentialAttributes, opts ...AwsCredentialPersistedStateOption) (*AwsCredentialPersistedState, error) {
+func AwsCredentialPersistedStateFromProto(secrets *structpb.Struct, attrs *CredentialAttributes, dualStack bool, opts ...AwsCredentialPersistedStateOption) (*AwsCredentialPersistedState, error) {
 	// initialize secrets if it is nil
 	// secrets can be nil because static credentials are optional
 	if secrets == nil {
@@ -292,6 +295,17 @@ func AwsCredentialPersistedStateFromProto(secrets *structpb.Struct, attrs *Crede
 	if len(attrs.RoleTags) != 0 {
 		awsOpts = append(awsOpts, awsutil.WithRoleTags(attrs.RoleTags))
 	}
+	if dualStack {
+		awsOpts = append(awsOpts, []awsutil.Option{
+			awsutil.WithIamEndpointResolver(&iamEndpointResolver{
+				dualStack: dualStack,
+			}),
+			awsutil.WithStsEndpointResolver(&stsEndpointResolver{
+				dualStack: dualStack,
+			}),
+		}...)
+	}
+
 	credentialsConfig, err := awsutil.NewCredentialsConfig(awsOpts...)
 	if err != nil {
 		return nil, err
@@ -320,4 +334,24 @@ func GetCredentialType(cc *awsutil.CredentialsConfig) CredentialType {
 	}
 
 	return Unknown
+}
+
+type iamEndpointResolver struct {
+	dualStack bool
+}
+
+func (e *iamEndpointResolver) ResolveEndpoint(ctx context.Context, params iam.EndpointParameters) (resolver smithyEndpoints.Endpoint, err error) {
+	params.UseDualStack = aws.Bool(e.dualStack)
+	resolver, err = iam.NewDefaultEndpointResolverV2().ResolveEndpoint(ctx, params)
+	return
+}
+
+type stsEndpointResolver struct {
+	dualStack bool
+}
+
+func (e *stsEndpointResolver) ResolveEndpoint(ctx context.Context, params sts.EndpointParameters) (resolver smithyEndpoints.Endpoint, err error) {
+	params.UseDualStack = aws.Bool(e.dualStack)
+	resolver, err = sts.NewDefaultEndpointResolverV2().ResolveEndpoint(ctx, params)
+	return
 }

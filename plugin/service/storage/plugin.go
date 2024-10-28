@@ -64,7 +64,7 @@ func (p *StoragePlugin) OnCreateStorageBucket(ctx context.Context, req *pb.OnCre
 		return nil, err
 	}
 
-	credConfig, err := cred.GetCredentialsConfig(bucket.GetSecrets(), storageAttributes.CredentialAttributes)
+	credConfig, err := cred.GetCredentialsConfig(bucket.GetSecrets(), storageAttributes.CredentialAttributes, storageAttributes.DualStack)
 	if err != nil {
 		return nil, err
 	}
@@ -147,6 +147,7 @@ func (p *StoragePlugin) OnUpdateStorageBucket(ctx context.Context, req *pb.OnUpd
 	credState, err := cred.AwsCredentialPersistedStateFromProto(
 		req.GetPersisted().GetData(),
 		oldStorageAttributes.CredentialAttributes,
+		oldStorageAttributes.DualStack,
 		p.testCredStateOpts...)
 	if err != nil {
 		return nil, errors.BadRequestStatus("error loading persisted state: %s", err)
@@ -155,7 +156,7 @@ func (p *StoragePlugin) OnUpdateStorageBucket(ctx context.Context, req *pb.OnUpd
 	// Verify the incoming credentials are valid and return any errors to the
 	// user if they're not. Note this doesn't validate the credentials against
 	// AWS - it only does logical validation on the fields.
-	updatedCredentials, err := cred.GetCredentialsConfig(newBucket.GetSecrets(), newStorageAttributes.CredentialAttributes)
+	updatedCredentials, err := cred.GetCredentialsConfig(newBucket.GetSecrets(), newStorageAttributes.CredentialAttributes, newStorageAttributes.DualStack)
 	if err != nil {
 		return nil, err
 	}
@@ -264,6 +265,7 @@ func (p *StoragePlugin) OnDeleteStorageBucket(ctx context.Context, req *pb.OnDel
 	credState, err := cred.AwsCredentialPersistedStateFromProto(
 		req.GetPersisted().GetData(),
 		storageAttributes.CredentialAttributes,
+		storageAttributes.DualStack,
 		p.testCredStateOpts...)
 	if err != nil {
 		return nil, errors.BadRequestStatus("error loading persisted state: %s", err)
@@ -318,7 +320,7 @@ func (p *StoragePlugin) HeadObject(ctx context.Context, req *pb.HeadObjectReques
 		return nil, err
 	}
 
-	credConfig, err := cred.GetCredentialsConfig(bucket.GetSecrets(), storageAttributes.CredentialAttributes)
+	credConfig, err := cred.GetCredentialsConfig(bucket.GetSecrets(), storageAttributes.CredentialAttributes, storageAttributes.DualStack)
 	if err != nil {
 		return nil, err
 	}
@@ -346,6 +348,9 @@ func (p *StoragePlugin) HeadObject(ctx context.Context, req *pb.HeadObjectReques
 	if storageAttributes.EndpointUrl != "" {
 		opts = append(opts, WithEndpoint(storageAttributes.EndpointUrl))
 	}
+	if storageAttributes.DualStack {
+		opts = append(opts, WithDualStack(storageAttributes.DualStack))
+	}
 	s3Client, err := storageState.S3Client(ctx, opts...)
 	if err != nil {
 		return nil, errors.BadRequestStatus("error getting S3 client: %s", err)
@@ -360,7 +365,7 @@ func (p *StoragePlugin) HeadObject(ctx context.Context, req *pb.HeadObjectReques
 		return nil, parseS3Error("head object", err, req).Err()
 	}
 	return &pb.HeadObjectResponse{
-		ContentLength: resp.ContentLength,
+		ContentLength: aws.ToInt64(resp.ContentLength),
 		LastModified:  timestamppb.New(*resp.LastModified),
 	}, nil
 }
@@ -386,7 +391,7 @@ func (p *StoragePlugin) ValidatePermissions(ctx context.Context, req *pb.Validat
 		return nil, err
 	}
 
-	credConfig, err := cred.GetCredentialsConfig(bucket.GetSecrets(), storageAttributes.CredentialAttributes)
+	credConfig, err := cred.GetCredentialsConfig(bucket.GetSecrets(), storageAttributes.CredentialAttributes, storageAttributes.DualStack)
 	if err != nil {
 		return nil, err
 	}
@@ -444,7 +449,7 @@ func (p *StoragePlugin) GetObject(req *pb.GetObjectRequest, stream pb.StoragePlu
 		return err
 	}
 
-	credConfig, err := cred.GetCredentialsConfig(bucket.GetSecrets(), storageAttributes.CredentialAttributes)
+	credConfig, err := cred.GetCredentialsConfig(bucket.GetSecrets(), storageAttributes.CredentialAttributes, storageAttributes.DualStack)
 	if err != nil {
 		return err
 	}
@@ -471,6 +476,9 @@ func (p *StoragePlugin) GetObject(req *pb.GetObjectRequest, stream pb.StoragePlu
 	opts := []s3Option{}
 	if storageAttributes.EndpointUrl != "" {
 		opts = append(opts, WithEndpoint(storageAttributes.EndpointUrl))
+	}
+	if storageAttributes.DualStack {
+		opts = append(opts, WithDualStack(storageAttributes.DualStack))
 	}
 	s3Client, err := storageState.S3Client(stream.Context(), opts...)
 	if err != nil {
@@ -555,7 +563,7 @@ func (p *StoragePlugin) PutObject(ctx context.Context, req *pb.PutObjectRequest)
 		return nil, err
 	}
 
-	credConfig, err := cred.GetCredentialsConfig(bucket.GetSecrets(), storageAttributes.CredentialAttributes)
+	credConfig, err := cred.GetCredentialsConfig(bucket.GetSecrets(), storageAttributes.CredentialAttributes, storageAttributes.DualStack)
 	if err != nil {
 		return nil, err
 	}
@@ -582,6 +590,9 @@ func (p *StoragePlugin) PutObject(ctx context.Context, req *pb.PutObjectRequest)
 	opts := []s3Option{}
 	if storageAttributes.EndpointUrl != "" {
 		opts = append(opts, WithEndpoint(storageAttributes.EndpointUrl))
+	}
+	if storageAttributes.DualStack {
+		opts = append(opts, WithDualStack(storageAttributes.DualStack))
 	}
 	s3Client, err := storageState.S3Client(ctx, opts...)
 	if err != nil {
@@ -650,7 +661,7 @@ func (p *StoragePlugin) DeleteObjects(ctx context.Context, req *pb.DeleteObjects
 		return nil, err
 	}
 
-	credConfig, err := cred.GetCredentialsConfig(bucket.GetSecrets(), storageAttributes.CredentialAttributes)
+	credConfig, err := cred.GetCredentialsConfig(bucket.GetSecrets(), storageAttributes.CredentialAttributes, storageAttributes.DualStack)
 	if err != nil {
 		return nil, err
 	}
@@ -712,13 +723,13 @@ func (p *StoragePlugin) DeleteObjects(ctx context.Context, req *pb.DeleteObjects
 		res, err := client.ListObjectsV2(ctx, &s3.ListObjectsV2Input{
 			Bucket:            aws.String(bucket.GetBucketName()),
 			Prefix:            aws.String(prefix),
-			MaxKeys:           maxkeys,
+			MaxKeys:           aws.Int32(maxkeys),
 			ContinuationToken: conToken,
 		})
 		if err != nil {
 			return nil, parseS3Error("list objects", err, req).Err()
 		}
-		truncated = res.IsTruncated
+		truncated = aws.ToBool(res.IsTruncated)
 		conToken = res.NextContinuationToken
 		for _, o := range res.Contents {
 			objects = append(objects, types.ObjectIdentifier{
@@ -768,6 +779,9 @@ func dryRunValidation(ctx context.Context, state *awsStoragePersistedState, attr
 	opts := []s3Option{}
 	if attrs.EndpointUrl != "" {
 		opts = append(opts, WithEndpoint(attrs.EndpointUrl))
+	}
+	if attrs.DualStack {
+		opts = append(opts, WithDualStack(attrs.DualStack))
 	}
 
 	client, err := state.S3Client(ctx, opts...)
