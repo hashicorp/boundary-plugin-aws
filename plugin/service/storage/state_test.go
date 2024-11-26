@@ -64,7 +64,7 @@ func TestAwsStoragePersistedStateS3Client(t *testing.T) {
 			)
 			require.NoError(err)
 
-			clientRaw, err := state.S3Client(context.Background(), tc.s3Opts...)
+			clientRaw, err := state.s3Client(context.Background(), tc.s3Opts...)
 			require.NoError(err)
 			require.NotNil(clientRaw)
 			client, ok := clientRaw.(*testMockS3)

@@ -32,6 +32,6 @@ type AwsPlugin struct {
 func NewAwsPlugin() *AwsPlugin {
 	return &AwsPlugin{
 		HostPlugin:    &host.HostPlugin{},
-		StoragePlugin: &storage.StoragePlugin{},
+		StoragePlugin: storage.New(),
 	}
 }

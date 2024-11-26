@@ -14,6 +14,7 @@ import (
 	"os"
 	"path"
 	"strings"
+	"sync"
 
 	"github.com/aws/aws-sdk-go-v2/aws"
 	"github.com/aws/aws-sdk-go-v2/service/s3"
@@ -32,6 +33,14 @@ import (
 // Ensure that we are implementing StoragePluginServiceServer
 var _ pb.StoragePluginServiceServer = (*StoragePlugin)(nil)
 
+// clientCache caches previously initialized S3API clients created with a RoleARN attribute.
+type clientCache struct {
+	// cache is a map of cached s3 clients. The key of the map
+	// is the public id of the storage bucket
+	cache map[string]S3API
+	sync.RWMutex
+}
+
 // StoragePlugin implements the StoragePluginServiceServer interface for the
 // AWS storage service plugin.
 type StoragePlugin struct {
@@ -42,6 +51,112 @@ type StoragePlugin struct {
 
 	// testStorageStateOpts are passed in to the stored state to control test behavior
 	testStorageStateOpts []awsStoragePersistedStateOption
+
+	clients *clientCache
+}
+
+// New creates a new StoragePlugin
+func New() *StoragePlugin {
+	c := &clientCache{
+		cache: make(map[string]S3API),
+	}
+	return &StoragePlugin{
+		clients: c,
+	}
+}
+
+// getClient returns an S3API client for the given storage bucket id.
+func (p *StoragePlugin) getClient(ctx context.Context,
+	storageBucketId string,
+	storageState *awsStoragePersistedState,
+	opt ...s3Option) (S3API, error) {
+	if storageBucketId == "" {
+		// No storage bucket ID to key cache on, create new client and return
+		client, err := storageState.s3Client(ctx, opt...)
+		if err != nil {
+			return nil, errors.BadRequestStatus("error creating S3 client: %s", err)
+		}
+		return client, nil
+	}
+
+	opts, err := getOpts(opt...)
+	if err != nil {
+		return nil, fmt.Errorf("error parsing options in cache: %w", err)
+	}
+
+	if opts.withCacheRefresh {
+		// Forced cache refresh
+		p.clients.Lock()
+		defer p.clients.Unlock()
+		client, err := storageState.s3Client(ctx, opt...)
+		if err != nil {
+			return nil, errors.BadRequestStatus("error creating S3 client: %s", err)
+		}
+		p.clients.cache[storageBucketId] = client
+		return client, nil
+	}
+
+	p.clients.RLock()
+	client, ok := p.clients.cache[storageBucketId]
+	p.clients.RUnlock()
+
+	if !ok || client.Credentials().Expired() {
+		// We got a cache miss or the credentials has expired, time to refresh
+		p.clients.Lock()
+		defer p.clients.Unlock()
+
+		// Check cache again in case another caller updated it since we got the lock
+		client, ok = p.clients.cache[storageBucketId]
+		if ok && !client.Credentials().Expired() {
+			// Got a cache hit with valid credentials, return cached client
+			return client, nil
+		}
+
+		// Create new client and cache it
+		var err error
+		client, err = storageState.s3Client(ctx, opt...)
+		if err != nil {
+			return nil, errors.BadRequestStatus("error creating S3 client: %s", err)
+		}
+		p.clients.cache[storageBucketId] = client
+	}
+	return client, nil
+}
+
+type s3Caller func(client S3API) (any, error)
+
+// call gets the s3client and passes it to the s3caller function, if a permission error is returned
+// it forces a cache refresh and tries again.
+func (p *StoragePlugin) call(
+	ctx context.Context,
+	fn s3Caller,
+	storageBucketId string,
+	storageState *awsStoragePersistedState,
+	opts ...s3Option) (any, error) {
+
+	s3Client, err := p.getClient(ctx, storageBucketId, storageState, opts...)
+	if err != nil {
+		return nil, errors.BadRequestStatus("error getting S3 client: %s", err)
+	}
+	firstAttempt := true
+	for {
+		resp, err := fn(s3Client)
+		if err != nil {
+			st, _ := errors.ParseAWSError("", err)
+			if st.Code() == codes.PermissionDenied && firstAttempt {
+				// We got a permission error, this is the first time so refresh cache and try again
+				firstAttempt = false
+				opts = append(opts, WithCacheRefresh(true))
+				s3Client, err = p.getClient(ctx, storageBucketId, storageState, opts...)
+				if err != nil {
+					return nil, errors.BadRequestStatus("error refreshing S3 client: %s", err)
+				}
+				continue
+			}
+			return nil, err
+		}
+		return resp, nil
+	}
 }
 
 // OnCreateStorageBucket is called when a storage bucket is created.
@@ -351,19 +466,20 @@ func (p *StoragePlugin) HeadObject(ctx context.Context, req *pb.HeadObjectReques
 	if storageAttributes.DualStack {
 		opts = append(opts, WithDualStack(storageAttributes.DualStack))
 	}
-	s3Client, err := storageState.S3Client(ctx, opts...)
-	if err != nil {
-		return nil, errors.BadRequestStatus("error getting S3 client: %s", err)
-	}
 
 	objectKey := path.Join(bucket.GetBucketPrefix(), req.GetKey())
-	resp, err := s3Client.HeadObject(ctx, &s3.HeadObjectInput{
-		Bucket: aws.String(bucket.GetBucketName()),
-		Key:    aws.String(objectKey),
-	})
+	headCall := func(s3Client S3API) (any, error) {
+		return s3Client.HeadObject(ctx, &s3.HeadObjectInput{
+			Bucket: aws.String(bucket.GetBucketName()),
+			Key:    aws.String(objectKey),
+		})
+	}
+	headResp, err := p.call(ctx, headCall, bucket.GetId(), storageState, opts...)
 	if err != nil {
 		return nil, parseS3Error("head object", err, req).Err()
 	}
+	resp := headResp.(*s3.HeadObjectOutput)
+
 	return &pb.HeadObjectResponse{
 		ContentLength: aws.ToInt64(resp.ContentLength),
 		LastModified:  timestamppb.New(*resp.LastModified),
@@ -480,19 +596,19 @@ func (p *StoragePlugin) GetObject(req *pb.GetObjectRequest, stream pb.StoragePlu
 	if storageAttributes.DualStack {
 		opts = append(opts, WithDualStack(storageAttributes.DualStack))
 	}
-	s3Client, err := storageState.S3Client(stream.Context(), opts...)
-	if err != nil {
-		return errors.BadRequestStatus("error getting S3 client: %s", err)
-	}
 
 	objectKey := path.Join(bucket.GetBucketPrefix(), req.GetKey())
-	resp, err := s3Client.GetObject(stream.Context(), &s3.GetObjectInput{
-		Bucket: aws.String(bucket.GetBucketName()),
-		Key:    aws.String(objectKey),
-	})
+	getCall := func(s3Client S3API) (any, error) {
+		return s3Client.GetObject(stream.Context(), &s3.GetObjectInput{
+			Bucket: aws.String(bucket.GetBucketName()),
+			Key:    aws.String(objectKey),
+		})
+	}
+	getResp, err := p.call(stream.Context(), getCall, bucket.GetId(), storageState, opts...)
 	if err != nil {
 		return parseS3Error("get object", err, req).Err()
 	}
+	resp := getResp.(*s3.GetObjectOutput)
 
 	defer resp.Body.Close()
 	reader := bufio.NewReader(resp.Body)
@@ -594,10 +710,6 @@ func (p *StoragePlugin) PutObject(ctx context.Context, req *pb.PutObjectRequest)
 	if storageAttributes.DualStack {
 		opts = append(opts, WithDualStack(storageAttributes.DualStack))
 	}
-	s3Client, err := storageState.S3Client(ctx, opts...)
-	if err != nil {
-		return nil, errors.BadRequestStatus("error getting S3 client: %s", err)
-	}
 
 	hash := sha256.New()
 	if _, err := io.Copy(hash, file); err != nil {
@@ -609,18 +721,23 @@ func (p *StoragePlugin) PutObject(ctx context.Context, req *pb.PutObjectRequest)
 	if err != nil {
 		return nil, errors.UnknownStatus("failed to rewind file pointer")
 	}
-
 	objectKey := path.Join(bucket.GetBucketPrefix(), req.GetKey())
-	resp, err := s3Client.PutObject(ctx, &s3.PutObjectInput{
-		Bucket:            aws.String(bucket.GetBucketName()),
-		Key:               aws.String(objectKey),
-		Body:              file,
-		ChecksumAlgorithm: types.ChecksumAlgorithmSha256,
-		ChecksumSHA256:    aws.String(checksum),
-	})
+
+	putCall := func(s3Client S3API) (any, error) {
+		return s3Client.PutObject(ctx, &s3.PutObjectInput{
+			Bucket:            aws.String(bucket.GetBucketName()),
+			Key:               aws.String(objectKey),
+			Body:              file,
+			ChecksumAlgorithm: types.ChecksumAlgorithmSha256,
+			ChecksumSHA256:    aws.String(checksum),
+		})
+	}
+	putResp, err := p.call(ctx, putCall, bucket.GetId(), storageState, opts...)
 	if err != nil {
 		return nil, parseS3Error("put object", err, req).Err()
 	}
+	resp := putResp.(*s3.PutObjectOutput)
+
 	if resp.ChecksumSHA256 == nil {
 		return nil, errors.UnknownStatus("missing checksum response from aws")
 	}
@@ -689,10 +806,6 @@ func (p *StoragePlugin) DeleteObjects(ctx context.Context, req *pb.DeleteObjects
 	if storageAttributes.EndpointUrl != "" {
 		opts = append(opts, WithEndpoint(storageAttributes.EndpointUrl))
 	}
-	client, err := storageState.S3Client(ctx, opts...)
-	if err != nil {
-		return nil, errors.BadRequestStatus("error getting S3 client: %s", err)
-	}
 
 	prefix := path.Join(bucket.GetBucketPrefix(), req.GetKeyPrefix())
 	if strings.HasSuffix(req.GetKeyPrefix(), "/") {
@@ -702,10 +815,17 @@ func (p *StoragePlugin) DeleteObjects(ctx context.Context, req *pb.DeleteObjects
 	}
 
 	if !req.Recursive {
-		_, err := client.DeleteObject(ctx, &s3.DeleteObjectInput{
-			Bucket: aws.String(bucket.GetBucketName()),
-			Key:    aws.String(prefix),
-		})
+		deleteCall := func(s3Client S3API) (any, error) {
+			return s3Client.DeleteObject(ctx, &s3.DeleteObjectInput{
+				Bucket: aws.String(bucket.GetBucketName()),
+				Key:    aws.String(prefix),
+			})
+		}
+		_, err := p.call(ctx, deleteCall, bucket.GetId(), storageState, opts...)
+		if err != nil {
+			return nil, parseS3Error("delete object", err, req).Err()
+		}
+
 		if err != nil {
 			return nil, parseS3Error("delete object", err, req).Err()
 		}
@@ -715,10 +835,13 @@ func (p *StoragePlugin) DeleteObjects(ctx context.Context, req *pb.DeleteObjects
 	}
 
 	const maxkeys = 1000
-
 	objects := []types.ObjectIdentifier{}
+	client, err := p.getClient(ctx, bucket.GetId(), storageState, opts...)
+	if err != nil {
+		return nil, errors.BadRequestStatus("error getting S3 client: %s", err)
+	}
 	var conToken *string
-	truncated := true
+	truncated, firstAttempt := true, true
 	for truncated {
 		res, err := client.ListObjectsV2(ctx, &s3.ListObjectsV2Input{
 			Bucket:            aws.String(bucket.GetBucketName()),
@@ -727,6 +850,18 @@ func (p *StoragePlugin) DeleteObjects(ctx context.Context, req *pb.DeleteObjects
 			ContinuationToken: conToken,
 		})
 		if err != nil {
+			st, _ := errors.ParseAWSError("", err)
+			if st.Code() == codes.PermissionDenied && firstAttempt {
+				// This is first attempt and we get a permission error, refresh cache and try again
+				firstAttempt = false
+				opts = append(opts, WithCacheRefresh(true))
+				client, err = p.getClient(ctx, bucket.GetId(), storageState, opts...)
+				if err != nil {
+					return nil, errors.BadRequestStatus("error refreshing S3 client: %s", err)
+				}
+				continue
+			}
+
 			return nil, parseS3Error("list objects", err, req).Err()
 		}
 		truncated = aws.ToBool(res.IsTruncated)
@@ -784,7 +919,7 @@ func dryRunValidation(ctx context.Context, state *awsStoragePersistedState, attr
 		opts = append(opts, WithDualStack(attrs.DualStack))
 	}
 
-	client, err := state.S3Client(ctx, opts...)
+	client, err := state.s3Client(ctx, opts...)
 	if err != nil {
 		return status.New(codes.InvalidArgument, fmt.Sprintf("error getting S3 client: %s", err))
 	}

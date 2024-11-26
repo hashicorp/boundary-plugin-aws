@@ -3917,3 +3917,89 @@ func TestStoragePlugin_DeleteObjects(t *testing.T) {
 		})
 	}
 }
+
+func TestS3ClientCache(t *testing.T) {
+	ctx := context.Background()
+	assert, require := assert.New(t), require.New(t)
+
+	cred1, err := awsutil.NewCredentialsConfig(
+		awsutil.WithRegion("us-east-1"),
+		awsutil.WithAccessKey("cred1"),
+		awsutil.WithSecretKey("secret1"),
+	)
+	require.NoError(err)
+	cred2, err := awsutil.NewCredentialsConfig(
+		awsutil.WithRegion("us-east-1"),
+		awsutil.WithAccessKey("cred2"),
+		awsutil.WithSecretKey("secret2"),
+	)
+	require.NoError(err)
+	cred3, err := awsutil.NewCredentialsConfig(
+		awsutil.WithRegion("us-east-1"),
+		awsutil.WithAccessKey("cred3"),
+		awsutil.WithSecretKey("secret3"),
+	)
+	require.NoError(err)
+
+	p := New()
+	cred, err := credential.NewAwsCredentialPersistedState(
+		credential.WithCredentialsConfig(cred1),
+	)
+	require.NoError(err)
+
+	state, err := newAwsStoragePersistedState(withCredentials(cred))
+	require.NoError(err)
+
+	// Cache should be empty before first call
+	assert.Empty(p.clients.cache)
+
+	client, err := p.getClient(ctx, "id", state)
+	require.NoError(err)
+	require.NotNil(client)
+	assert.Equal(cred1.AccessKey, client.Credentials().AccessKeyID)
+	assert.Equal(cred1.SecretKey, client.Credentials().SecretAccessKey)
+
+	// Update state with new credentials
+	cred, err = credential.NewAwsCredentialPersistedState(
+		credential.WithCredentialsConfig(cred2),
+	)
+	require.NoError(err)
+	state, err = newAwsStoragePersistedState(withCredentials(cred))
+	require.NoError(err)
+
+	// Client is cached and creds valid so it should still grab initial client
+	client, err = p.getClient(ctx, "id", state)
+	require.NoError(err)
+	require.NotNil(client)
+	assert.Equal(cred1.AccessKey, client.Credentials().AccessKeyID)
+	assert.Equal(cred1.SecretKey, client.Credentials().SecretAccessKey)
+
+	// Force credentials to expire
+	c := client.(*s3Client)
+	c.creds.CanExpire = true
+	p.clients.Lock()
+	p.clients.cache["id"] = c
+	p.clients.Unlock()
+
+	// Getting client should now create new client on cred2 since the credentials have expired
+	client, err = p.getClient(ctx, "id", state)
+	require.NoError(err)
+	require.NotNil(client)
+	assert.Equal(cred2.AccessKey, client.Credentials().AccessKeyID)
+	assert.Equal(cred2.SecretKey, client.Credentials().SecretAccessKey)
+
+	// Update state with new credentials again
+	cred, err = credential.NewAwsCredentialPersistedState(
+		credential.WithCredentialsConfig(cred3),
+	)
+	require.NoError(err)
+	state, err = newAwsStoragePersistedState(withCredentials(cred))
+	require.NoError(err)
+
+	// Getting client and force cache refresh should return cred3 based client
+	client, err = p.getClient(ctx, "id", state, WithCacheRefresh(true))
+	require.NoError(err)
+	require.NotNil(client)
+	assert.Equal(cred3.AccessKey, client.Credentials().AccessKeyID)
+	assert.Equal(cred3.SecretKey, client.Credentials().SecretAccessKey)
+}
