@@ -24,6 +24,16 @@ type S3API interface {
 	PutObject(ctx context.Context, params *s3.PutObjectInput, optFns ...func(*s3.Options)) (*s3.PutObjectOutput, error)
 	DeleteObjects(ctx context.Context, params *s3.DeleteObjectsInput, optFns ...func(*s3.Options)) (*s3.DeleteObjectsOutput, error)
 	ListObjectsV2(ctx context.Context, params *s3.ListObjectsV2Input, optFns ...func(*s3.Options)) (*s3.ListObjectsV2Output, error)
+	Credentials() aws.Credentials
+}
+
+type s3Client struct {
+	*s3.Client
+	creds aws.Credentials
+}
+
+func (c *s3Client) Credentials() aws.Credentials {
+	return c.creds
 }
 
 type awsStoragePersistedState struct {
@@ -77,9 +87,9 @@ func (s *awsStoragePersistedState) toProto() (*storagebuckets.StorageBucketPersi
 	return &storagebuckets.StorageBucketPersisted{Data: data}, nil
 }
 
-// S3Client returns a configured S3 client based on the session
+// s3Client returns a configured S3 client based on the session
 // information stored in the state.
-func (s *awsStoragePersistedState) S3Client(ctx context.Context, opt ...s3Option) (S3API, error) {
+func (s *awsStoragePersistedState) s3Client(ctx context.Context, opt ...s3Option) (S3API, error) {
 	opts, err := getOpts(opt...)
 	if err != nil {
 		return nil, fmt.Errorf("error parsing options when fetching S3 client: %w", err)
@@ -101,7 +111,16 @@ func (s *awsStoragePersistedState) S3Client(ctx context.Context, opt ...s3Option
 	if s.testS3APIFunc != nil {
 		return s.testS3APIFunc(*awsCfg)
 	}
-	return s3.NewFromConfig(*awsCfg, s3Opts...), nil
+
+	// Retrieve the credentials provider from the client
+	credsProvider := awsCfg.Credentials
+	creds, err := credsProvider.Retrieve(ctx)
+	if err != nil {
+		return nil, fmt.Errorf("failed to retrieve credentials: %v\n", err)
+	}
+
+	c := s3.NewFromConfig(*awsCfg, s3Opts...)
+	return &s3Client{Client: c, creds: creds}, nil
 }
 
 // getOpts iterates the inbound s3Options and returns a struct
@@ -123,12 +142,21 @@ type s3Option func(*s3Options) error
 
 // options = how options are represented
 type s3Options struct {
-	withEndpoint  string
-	withDualStack bool
+	withEndpoint     string
+	withDualStack    bool
+	withCacheRefresh bool
 }
 
 func getDefaultS3Options() s3Options {
 	return s3Options{}
+}
+
+// WithCacheRefresh controls if the cache should be forced to refresh
+func WithCacheRefresh(refresh bool) s3Option {
+	return func(o *s3Options) error {
+		o.withCacheRefresh = refresh
+		return nil
+	}
 }
 
 // WithEndpoint contains the endpoint to use

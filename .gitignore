@@ -8,3 +8,5 @@ plan.tfplan
 # IntelliJ IDEA project files
 .idea
 *.iprg
+
+.DS_Store
