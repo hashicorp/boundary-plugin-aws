@@ -1,6 +1,6 @@
 module github.com/hashicorp/boundary-plugin-aws
 
-go 1.21
+go 1.23.3
 
 require (
 	github.com/aws/aws-sdk-go-v2 v1.20.1
@@ -11,7 +11,7 @@ require (
 	github.com/aws/smithy-go v1.14.1
 	github.com/google/go-cmp v0.6.0
 	github.com/google/uuid v1.4.0
-	github.com/hashicorp/boundary/sdk v0.0.43-0.20240717182311-a20aae98794a
+	github.com/hashicorp/boundary/sdk v0.0.49
 	github.com/hashicorp/go-multierror v1.1.1
 	github.com/hashicorp/go-secure-stdlib/awsutil/v2 v2.0.0
 	github.com/hashicorp/terraform-json v0.14.0
