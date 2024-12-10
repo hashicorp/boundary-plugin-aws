@@ -106,7 +106,6 @@ func TestGetCredentialsConfig(t *testing.T) {
 		name                string
 		secrets             *structpb.Struct
 		attrs               *CredentialAttributes
-		dualStack           bool
 		expected            *awsutil.CredentialsConfig
 		expectedErrContains string
 	}{
@@ -127,24 +126,6 @@ func TestGetCredentialsConfig(t *testing.T) {
 					ConstSecretAccessKey: structpb.NewStringValue("bazqux"),
 				},
 			},
-			attrs: &CredentialAttributes{
-				Region: "us-west-2",
-			},
-			expected: &awsutil.CredentialsConfig{
-				AccessKey: "AKIAfoobar",
-				SecretKey: "bazqux",
-				Region:    "us-west-2",
-			},
-		},
-		{
-			name: "with dualstack",
-			secrets: &structpb.Struct{
-				Fields: map[string]*structpb.Value{
-					ConstAccessKeyId:     structpb.NewStringValue("AKIAfoobar"),
-					ConstSecretAccessKey: structpb.NewStringValue("bazqux"),
-				},
-			},
-			dualStack: true,
 			attrs: &CredentialAttributes{
 				Region: "us-west-2",
 			},
@@ -252,7 +233,7 @@ func TestGetCredentialsConfig(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			require := require.New(t)
 
-			actual, err := GetCredentialsConfig(tc.secrets, tc.attrs, tc.dualStack)
+			actual, err := GetCredentialsConfig(tc.secrets, tc.attrs)
 			if tc.expectedErrContains != "" {
 				require.Error(err)
 				require.Contains(err.Error(), tc.expectedErrContains)
@@ -268,13 +249,6 @@ func TestGetCredentialsConfig(t *testing.T) {
 			require.Equal(tc.expected.RoleExternalId, actual.RoleExternalId)
 			require.Equal(tc.expected.RoleSessionName, actual.RoleSessionName)
 			require.Equal(tc.expected.RoleTags, actual.RoleTags)
-			if tc.dualStack {
-				require.NotNil(actual.IAMEndpointResolver)
-				require.NotNil(actual.STSEndpointResolver)
-			} else {
-				require.Nil(actual.IAMEndpointResolver)
-				require.Nil(actual.STSEndpointResolver)
-			}
 		})
 	}
 }

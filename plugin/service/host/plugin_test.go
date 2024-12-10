@@ -2747,8 +2747,8 @@ func TestAppendDistinct(t *testing.T) {
 }
 
 func TestDryRunValidation(t *testing.T) {
-	t.Run("nil credential state", func(t *testing.T) {
-		st := dryRunValidation(context.Background(), nil, nil)
+	t.Run("nilState", func(t *testing.T) {
+		st := dryRunValidation(context.Background(), nil)
 		require.NotNil(t, st)
 		require.Equal(t, codes.InvalidArgument.String(), st.Code().String())
 		require.Equal(t, "persisted state is required", st.Message())
@@ -2762,7 +2762,7 @@ func TestDryRunValidation(t *testing.T) {
 			testEC2APIFunc: func(...aws.Config) (EC2API, error) {
 				return nil, fmt.Errorf("oops ec2 client err")
 			},
-		}, []ec2Option{})
+		})
 		require.NotNil(t, st)
 		require.Equal(t, codes.InvalidArgument.String(), st.Code().String())
 		require.Equal(t, "error getting EC2 client: oops ec2 client err", st.Message())
@@ -2777,7 +2777,7 @@ func TestDryRunValidation(t *testing.T) {
 				},
 			},
 			testEC2APIFunc: newTestMockEC2(nil, testMockEC2WithDescribeInstancesError(fmt.Errorf("oops describe instances error"))),
-		}, []ec2Option{})
+		})
 		require.NotNil(t, st)
 		require.Equal(t, codes.FailedPrecondition.String(), st.Code().String())
 		require.Equal(t, "aws describe instances failed: oops describe instances error", st.Message())
@@ -2792,7 +2792,7 @@ func TestDryRunValidation(t *testing.T) {
 				},
 			},
 			testEC2APIFunc: newTestMockEC2(nil, testMockEC2WithDescribeInstancesOutput(&ec2.DescribeInstancesOutput{})),
-		}, []ec2Option{})
+		})
 		require.Nil(t, st)
 	})
 }

@@ -42,21 +42,6 @@ func TestGetStorageAttributes(t *testing.T) {
 			expectedErrContains: "attributes.bar: unrecognized field, attributes.foo: unrecognized field",
 		},
 		{
-			name: "good w/ dualstack",
-			in: &structpb.Struct{
-				Fields: map[string]*structpb.Value{
-					"region":     structpb.NewStringValue("us-west-2"),
-					"dual_stack": structpb.NewBoolValue(true),
-				},
-			},
-			expected: &StorageAttributes{
-				CredentialAttributes: &cred.CredentialAttributes{
-					Region: "us-west-2",
-				},
-				DualStack: true,
-			},
-		},
-		{
 			name: "good w/ endpoint",
 			in: &structpb.Struct{
 				Fields: map[string]*structpb.Value{

@@ -7,7 +7,10 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"net"
+	"net/http"
 	"net/url"
+	"time"
 
 	"github.com/aws/aws-sdk-go-v2/aws"
 	"github.com/aws/aws-sdk-go-v2/service/s3"
@@ -34,6 +37,17 @@ type s3Client struct {
 
 func (c *s3Client) Credentials() aws.Credentials {
 	return c.creds
+}
+
+var customClient = &http.Client{
+	Transport: &http.Transport{
+		Proxy: http.ProxyFromEnvironment,
+		DialContext: (&net.Dialer{
+			Timeout:   30 * time.Second,
+			KeepAlive: 30 * time.Second,
+			DualStack: true,
+		}).DialContext,
+	},
 }
 
 type awsStoragePersistedState struct {
@@ -102,10 +116,9 @@ func (s *awsStoragePersistedState) s3Client(ctx context.Context, opt ...s3Option
 		return nil, fmt.Errorf("nil aws configuration")
 	}
 	var s3Opts []func(*s3.Options)
-	if opts.withEndpoint != "" || opts.withDualStack {
+	if opts.withEndpoint != "" {
 		s3Opts = append(s3Opts, s3.WithEndpointResolverV2(&endpointResolver{
-			endpoint:  opts.withEndpoint,
-			dualStack: opts.withDualStack,
+			endpoint: opts.withEndpoint,
 		}))
 	}
 	if s.testS3APIFunc != nil {
@@ -143,7 +156,6 @@ type s3Option func(*s3Options) error
 // options = how options are represented
 type s3Options struct {
 	withEndpoint     string
-	withDualStack    bool
 	withCacheRefresh bool
 }
 
@@ -167,27 +179,18 @@ func WithEndpoint(with string) s3Option {
 	}
 }
 
-// WithDualStack sets the dual stack resolver
-func WithDualStack(with bool) s3Option {
-	return func(o *s3Options) error {
-		o.withDualStack = with
-		return nil
-	}
-}
-
 type endpointResolver struct {
-	endpoint  string
-	dualStack bool
+	endpoint string
 }
 
 func (e *endpointResolver) ResolveEndpoint(ctx context.Context, params s3.EndpointParameters) (resolver smithyEndpoints.Endpoint, err error) {
 	var uri *url.URL
-	params.UseDualStack = aws.Bool(e.dualStack)
 	resolver, err = s3.NewDefaultEndpointResolverV2().ResolveEndpoint(ctx, params)
 	if err != nil {
 		return
 	}
 	if e.endpoint == "" {
+		// TODO: not sure if we should set an error or ignore the missing endpoint value and continue with the default resolver
 		return
 	}
 	uri, err = url.Parse(e.endpoint)
@@ -195,6 +198,7 @@ func (e *endpointResolver) ResolveEndpoint(ctx context.Context, params s3.Endpoi
 		return
 	}
 	if uri == nil {
+		// TODO: not sure if we should set an error or ignore the missing uri value and continue with the default resolver
 		return
 	}
 	resolver = smithyEndpoints.Endpoint{

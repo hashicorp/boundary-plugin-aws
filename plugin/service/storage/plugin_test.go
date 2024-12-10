@@ -2241,7 +2241,7 @@ func TestStoragePlugin_HeadObject(t *testing.T) {
 					newTestMockS3(
 						nil,
 						testMockS3WithHeadObjectOutput(&s3.HeadObjectOutput{
-							ContentLength: aws.Int64(1024),
+							ContentLength: 1024,
 							LastModified:  aws.Time(createTime(t, "2006-01-02T15:04:05Z")),
 						}),
 					),
@@ -2272,7 +2272,7 @@ func TestStoragePlugin_HeadObject(t *testing.T) {
 					newTestMockS3(
 						nil,
 						testMockS3WithHeadObjectOutput(&s3.HeadObjectOutput{
-							ContentLength: aws.Int64(1024),
+							ContentLength: 1024,
 							LastModified:  aws.Time(createTime(t, "2006-01-02T15:04:05Z")),
 						}),
 					),
@@ -3685,7 +3685,7 @@ func TestStoragePlugin_DeleteObjects(t *testing.T) {
 					newTestMockS3(
 						nil,
 						testMockS3WithListObjectsV2Output(&s3.ListObjectsV2Output{
-							IsTruncated: aws.Bool(false),
+							IsTruncated: false,
 							Contents: []s3types.Object{
 								{
 									Key: aws.String("abc/abc"),
@@ -3763,7 +3763,7 @@ func TestStoragePlugin_DeleteObjects(t *testing.T) {
 					newTestMockS3(
 						nil,
 						testMockS3WithListObjectsV2Output(&s3.ListObjectsV2Output{
-							IsTruncated: aws.Bool(false),
+							IsTruncated: false,
 							Contents: []s3types.Object{
 								s3types.Object{
 									Key: aws.String("abc/abc"),
@@ -3808,7 +3808,7 @@ func TestStoragePlugin_DeleteObjects(t *testing.T) {
 					newTestMockS3(
 						nil,
 						testMockS3WithListObjectsV2Output(&s3.ListObjectsV2Output{
-							IsTruncated: aws.Bool(false),
+							IsTruncated: false,
 							Contents: []s3types.Object{
 								{Key: aws.String("abc/abc1")},
 								{Key: aws.String("abc/abc2")},
@@ -3836,7 +3836,7 @@ func TestStoragePlugin_DeleteObjects(t *testing.T) {
 					newTestMockS3(
 						nil,
 						testMockS3WithListObjectsV2Output(&s3.ListObjectsV2Output{
-							IsTruncated: aws.Bool(false),
+							IsTruncated: false,
 							Contents:    []s3types.Object{},
 						}),
 						// no deleted response since it shouldn't be called

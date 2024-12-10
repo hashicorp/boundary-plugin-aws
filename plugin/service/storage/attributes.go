@@ -19,9 +19,6 @@ type StorageAttributes struct {
 
 	// EndpointUrl is used for configuring how the aws client will resolve requests.
 	EndpointUrl string
-
-	// DualStack is used for configuring how the aws client will resolve requests.
-	DualStack bool
 }
 
 func getStorageAttributes(in *structpb.Struct) (*StorageAttributes, error) {
@@ -39,12 +36,6 @@ func getStorageAttributes(in *structpb.Struct) (*StorageAttributes, error) {
 		badFields[fmt.Sprintf("attributes.%s", ConstAwsEndpointUrl)] = err.Error()
 	}
 	delete(unknownFields, ConstAwsEndpointUrl)
-
-	dualStack, err := values.GetBoolValue(in, ConstAwsDualStack, false)
-	if err != nil {
-		badFields[fmt.Sprintf("attributes.%s", ConstAwsDualStack)] = err.Error()
-	}
-	delete(unknownFields, ConstAwsDualStack)
 
 	for s := range unknownFields {
 		switch s {
@@ -73,6 +64,5 @@ func getStorageAttributes(in *structpb.Struct) (*StorageAttributes, error) {
 	return &StorageAttributes{
 		CredentialAttributes: credAttributes,
 		EndpointUrl:          endpointUrl,
-		DualStack:            dualStack,
 	}, nil
 }

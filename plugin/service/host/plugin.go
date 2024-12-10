@@ -51,7 +51,7 @@ func (p *HostPlugin) OnCreateCatalog(ctx context.Context, req *pb.OnCreateCatalo
 	if err != nil {
 		return nil, err
 	}
-	credConfig, err := credential.GetCredentialsConfig(catalog.GetSecrets(), catalogAttributes.CredentialAttributes, catalogAttributes.DualStack)
+	credConfig, err := credential.GetCredentialsConfig(catalog.GetSecrets(), catalogAttributes.CredentialAttributes)
 	if err != nil {
 		return nil, err
 	}
@@ -83,11 +83,7 @@ func (p *HostPlugin) OnCreateCatalog(ctx context.Context, req *pb.OnCreateCatalo
 	}
 
 	// perform dry run to ensure we can interact with AWS as expected.
-	opts := []ec2Option{}
-	if catalogAttributes.DualStack {
-		opts = append(opts, WithDualStack(catalogAttributes.DualStack))
-	}
-	if st := dryRunValidation(ctx, catalogState, opts); st != nil {
+	if st := dryRunValidation(ctx, catalogState); st != nil {
 		return nil, st.Err()
 	}
 
@@ -135,7 +131,6 @@ func (p *HostPlugin) OnUpdateCatalog(ctx context.Context, req *pb.OnUpdateCatalo
 	credState, err := credential.AwsCredentialPersistedStateFromProto(
 		req.GetPersisted().GetSecrets(),
 		oldCatalogAttributes.CredentialAttributes,
-		oldCatalogAttributes.DualStack,
 		p.testCredStateOpts...)
 	if err != nil {
 		return nil, errors.BadRequestStatus("error loading persisted state: %s", err)
@@ -144,7 +139,7 @@ func (p *HostPlugin) OnUpdateCatalog(ctx context.Context, req *pb.OnUpdateCatalo
 	// Verify the incoming credentials are valid and return any errors to the
 	// user if they're not. Note this doesn't validate the credentials against
 	// AWS - it only does logical validation on the fields.
-	updatedCredentials, err := credential.GetCredentialsConfig(newCatalog.GetSecrets(), newCatalogAttributes.CredentialAttributes, newCatalogAttributes.DualStack)
+	updatedCredentials, err := credential.GetCredentialsConfig(newCatalog.GetSecrets(), newCatalogAttributes.CredentialAttributes)
 	if err != nil {
 		return nil, err
 	}
@@ -171,11 +166,7 @@ func (p *HostPlugin) OnUpdateCatalog(ctx context.Context, req *pb.OnUpdateCatalo
 		if err != nil {
 			return nil, errors.BadRequestStatus("error loading persisted state: %s", err)
 		}
-		opts := []ec2Option{}
-		if newCatalogAttributes.DualStack {
-			opts = append(opts, WithDualStack(newCatalogAttributes.DualStack))
-		}
-		if st := dryRunValidation(ctx, newCatalogState, opts); st != nil {
+		if st := dryRunValidation(ctx, newCatalogState); st != nil {
 			return nil, st.Err()
 		}
 
@@ -217,11 +208,7 @@ func (p *HostPlugin) OnUpdateCatalog(ctx context.Context, req *pb.OnUpdateCatalo
 	}
 
 	// perform dry run to ensure we can interact with AWS as expected.
-	opts := []ec2Option{}
-	if newCatalogAttributes.DualStack {
-		opts = append(opts, WithDualStack(newCatalogAttributes.DualStack))
-	}
-	if st := dryRunValidation(ctx, catalogState, opts); st != nil {
+	if st := dryRunValidation(ctx, catalogState); st != nil {
 		return nil, st.Err()
 	}
 
@@ -261,7 +248,6 @@ func (p *HostPlugin) OnDeleteCatalog(ctx context.Context, req *pb.OnDeleteCatalo
 	credState, err := credential.AwsCredentialPersistedStateFromProto(
 		req.GetPersisted().GetSecrets(),
 		catalogAttributes.CredentialAttributes,
-		catalogAttributes.DualStack,
 		p.testCredStateOpts...)
 	if err != nil {
 		return nil, errors.BadRequestStatus("error loading persisted state: %s", err)
@@ -338,7 +324,6 @@ func (p *HostPlugin) OnCreateSet(ctx context.Context, req *pb.OnCreateSetRequest
 	credState, err := credential.AwsCredentialPersistedStateFromProto(
 		req.GetPersisted().GetSecrets(),
 		catalogAttributes.CredentialAttributes,
-		catalogAttributes.DualStack,
 		p.testCredStateOpts...)
 	if err != nil {
 		return nil, errors.BadRequestStatus("error loading persisted state: %s", err)
@@ -371,11 +356,7 @@ func (p *HostPlugin) OnCreateSet(ctx context.Context, req *pb.OnCreateSetRequest
 		return nil, errors.BadRequestStatus("error building set filters: %s", err)
 	}
 
-	opts := []ec2Option{}
-	if catalogAttributes.DualStack {
-		opts = append(opts, WithDualStack(catalogAttributes.DualStack))
-	}
-	if st := dryRunValidation(ctx, catalogState, opts, describeInstanceFilters...); st != nil {
+	if st := dryRunValidation(ctx, catalogState, describeInstanceFilters...); st != nil {
 		return nil, st.Err()
 	}
 	return &pb.OnCreateSetResponse{}, nil
@@ -401,7 +382,6 @@ func (p *HostPlugin) OnUpdateSet(ctx context.Context, req *pb.OnUpdateSetRequest
 	credState, err := credential.AwsCredentialPersistedStateFromProto(
 		req.GetPersisted().GetSecrets(),
 		catalogAttributes.CredentialAttributes,
-		catalogAttributes.DualStack,
 		p.testCredStateOpts...)
 	if err != nil {
 		return nil, errors.BadRequestStatus("error loading persisted state: %s", err)
@@ -436,11 +416,7 @@ func (p *HostPlugin) OnUpdateSet(ctx context.Context, req *pb.OnUpdateSetRequest
 		return nil, errors.BadRequestStatus("error building set filters: %s", err)
 	}
 
-	opts := []ec2Option{}
-	if catalogAttributes.DualStack {
-		opts = append(opts, WithDualStack(catalogAttributes.DualStack))
-	}
-	if st := dryRunValidation(ctx, catalogState, opts, describeInstanceFilters...); st != nil {
+	if st := dryRunValidation(ctx, catalogState, describeInstanceFilters...); st != nil {
 		return nil, st.Err()
 	}
 
@@ -474,7 +450,6 @@ func (p *HostPlugin) ListHosts(ctx context.Context, req *pb.ListHostsRequest) (*
 	credState, err := credential.AwsCredentialPersistedStateFromProto(
 		req.GetPersisted().GetSecrets(),
 		catalogAttributes.CredentialAttributes,
-		catalogAttributes.DualStack,
 		p.testCredStateOpts...)
 	if err != nil {
 		return nil, errors.BadRequestStatus("error loading persisted state: %s", err)
@@ -527,11 +502,7 @@ func (p *HostPlugin) ListHosts(ctx context.Context, req *pb.ListHostsRequest) (*
 		}
 	}
 
-	opts := []ec2Option{}
-	if catalogAttributes.DualStack {
-		opts = append(opts, WithDualStack(catalogAttributes.DualStack))
-	}
-	ec2Client, err := catalogState.EC2Client(ctx, opts...)
+	ec2Client, err := catalogState.EC2Client(ctx)
 	if err != nil {
 		return nil, errors.BadRequestStatus("error getting EC2 client: %s", err)
 	}
@@ -702,12 +673,12 @@ func awsInstanceToHost(instance types.Instance) (*pb.ListHostsResponseHost, erro
 // credentials, the host listing functionality as well as the filters, if any
 // are passed in. This function can therefore be used for both host catalog and
 // host set validation.
-func dryRunValidation(ctx context.Context, state *awsCatalogPersistedState, ec2Opts []ec2Option, filters ...types.Filter) *status.Status {
+func dryRunValidation(ctx context.Context, state *awsCatalogPersistedState, filters ...types.Filter) *status.Status {
 	if state == nil {
 		return status.New(codes.InvalidArgument, "persisted state is required")
 	}
 
-	ec2Client, err := state.EC2Client(ctx, ec2Opts...)
+	ec2Client, err := state.EC2Client(ctx)
 	if err != nil {
 		return status.New(codes.InvalidArgument, fmt.Sprintf("error getting EC2 client: %s", err))
 	}

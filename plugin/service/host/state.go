@@ -7,10 +7,12 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"net"
+	"net/http"
+	"time"
 
 	"github.com/aws/aws-sdk-go-v2/aws"
 	"github.com/aws/aws-sdk-go-v2/service/ec2"
-	smithyEndpoints "github.com/aws/smithy-go/endpoints"
 	"github.com/hashicorp/boundary-plugin-aws/internal/credential"
 	pb "github.com/hashicorp/boundary/sdk/pbs/plugin"
 	"google.golang.org/protobuf/types/known/structpb"
@@ -18,6 +20,17 @@ import (
 
 type EC2API interface {
 	DescribeInstances(context.Context, *ec2.DescribeInstancesInput, ...func(*ec2.Options)) (*ec2.DescribeInstancesOutput, error)
+}
+
+var customClient = &http.Client{
+	Transport: &http.Transport{
+		Proxy: http.ProxyFromEnvironment,
+		DialContext: (&net.Dialer{
+			Timeout:   30 * time.Second,
+			KeepAlive: 30 * time.Second,
+			DualStack: true,
+		}).DialContext,
+	},
 }
 
 type awsCatalogPersistedState struct {
@@ -73,11 +86,7 @@ func (s *awsCatalogPersistedState) toProto() (*pb.HostCatalogPersisted, error) {
 
 // EC2Client returns a configured EC2 client based on the session
 // information stored in the state.
-func (s *awsCatalogPersistedState) EC2Client(ctx context.Context, opt ...ec2Option) (EC2API, error) {
-	opts, err := getOpts(opt...)
-	if err != nil {
-		return nil, fmt.Errorf("error parsing options when fetching EC2 client: %w", err)
-	}
+func (s *awsCatalogPersistedState) EC2Client(ctx context.Context) (EC2API, error) {
 	awsCfg, err := s.GenerateCredentialChain(ctx)
 	if err != nil {
 		return nil, fmt.Errorf("error getting AWS configuration when fetching EC2 client: %w", err)
@@ -85,58 +94,8 @@ func (s *awsCatalogPersistedState) EC2Client(ctx context.Context, opt ...ec2Opti
 	if awsCfg == nil {
 		return nil, fmt.Errorf("nil aws configuration")
 	}
-	var ec2Opts []func(*ec2.Options)
-	if opts.withDualStack {
-		ec2Opts = append(ec2Opts, ec2.WithEndpointResolverV2(&endpointResolver{
-			dualStack: opts.withDualStack,
-		}))
-	}
 	if s.testEC2APIFunc != nil {
 		return s.testEC2APIFunc(*awsCfg)
 	}
-	return ec2.NewFromConfig(*awsCfg, ec2Opts...), nil
-}
-
-// getOpts iterates the inbound ec2Options and returns a struct
-func getOpts(opt ...ec2Option) (ec2Options, error) {
-	opts := getDefaultEc2Options()
-	for _, o := range opt {
-		if o == nil {
-			continue
-		}
-		if err := o(&opts); err != nil {
-			return ec2Options{}, err
-		}
-	}
-	return opts, nil
-}
-
-// ec2Option - how ec2Options are passed as arguments
-type ec2Option func(*ec2Options) error
-
-// options = how options are represented
-type ec2Options struct {
-	withDualStack bool
-}
-
-func getDefaultEc2Options() ec2Options {
-	return ec2Options{}
-}
-
-// WithDualStack sets the dual stack resolver
-func WithDualStack(with bool) ec2Option {
-	return func(o *ec2Options) error {
-		o.withDualStack = with
-		return nil
-	}
-}
-
-type endpointResolver struct {
-	dualStack bool
-}
-
-func (e *endpointResolver) ResolveEndpoint(ctx context.Context, params ec2.EndpointParameters) (resolver smithyEndpoints.Endpoint, err error) {
-	params.UseDualStack = aws.Bool(e.dualStack)
-	resolver, err = ec2.NewDefaultEndpointResolverV2().ResolveEndpoint(ctx, params)
-	return
+	return ec2.NewFromConfig(*awsCfg), nil
 }
