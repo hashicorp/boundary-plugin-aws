@@ -172,10 +172,12 @@ func (sp *StoragePlugin) NormalizeStorageBucketData(ctx context.Context, req *pb
 	}
 
 	fields := req.GetAttributes().GetFields()
-	if sa.EndpointUrl, err = parseutil.NormalizeAddr(sa.EndpointUrl); err != nil {
-		return nil, status.New(codes.InvalidArgument, fmt.Sprintf("failed to normalize provided %s: %s", ConstAwsEndpointUrl, err.Error())).Err()
+	if _, ok := fields[ConstAwsEndpointUrl]; ok {
+		if sa.EndpointUrl, err = parseutil.NormalizeAddr(sa.EndpointUrl); err != nil {
+			return nil, status.New(codes.InvalidArgument, fmt.Sprintf("failed to normalize provided %s: %s", ConstAwsEndpointUrl, err.Error())).Err()
+		}
+		fields[ConstAwsEndpointUrl] = structpb.NewStringValue(sa.EndpointUrl)
 	}
-	fields[ConstAwsEndpointUrl] = structpb.NewStringValue(sa.EndpointUrl)
 
 	return &pb.NormalizeStorageBucketDataResponse{
 		Attributes: &structpb.Struct{

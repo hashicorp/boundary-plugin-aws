@@ -70,6 +70,23 @@ func TestStoragePlugin_NormalizeStorageBucketData(t *testing.T) {
 			err: "attributes.region: missing required value \"region\"",
 		},
 		{
+			name: "missing endpoint_url",
+			req: &plugin.NormalizeStorageBucketDataRequest{
+				Attributes: &structpb.Struct{
+					Fields: map[string]*structpb.Value{
+						credential.ConstRegion: structpb.NewStringValue("somewhere"),
+					},
+				},
+			},
+			expected: &plugin.NormalizeStorageBucketDataResponse{
+				Attributes: &structpb.Struct{
+					Fields: map[string]*structpb.Value{
+						credential.ConstRegion: structpb.NewStringValue("somewhere"),
+					},
+				},
+			},
+		},
+		{
 			name: "valid endpoint_url returned unchanged",
 			req: &plugin.NormalizeStorageBucketDataRequest{
 				Attributes: &structpb.Struct{
