@@ -218,7 +218,6 @@ func TestStoragePlugin_NormalizeStorageBucketData(t *testing.T) {
 				require.ErrorContains(err, tt.err)
 				return
 			}
-
 			if err != nil {
 				if st, ok := status.FromError(err); ok {
 					require.Nil(err, st.Message())
