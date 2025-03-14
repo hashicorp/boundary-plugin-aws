@@ -11,7 +11,7 @@ require (
 	github.com/aws/smithy-go v1.22.1
 	github.com/google/go-cmp v0.6.0
 	github.com/google/uuid v1.6.0
-	github.com/hashicorp/boundary/sdk v0.0.50-0.20250311192106-15e4e92bdfd2
+	github.com/hashicorp/boundary/sdk v0.0.51
 	github.com/hashicorp/go-multierror v1.1.1
 	github.com/hashicorp/go-secure-stdlib/awsutil/v2 v2.1.0
 	github.com/hashicorp/go-secure-stdlib/parseutil v0.2.0
