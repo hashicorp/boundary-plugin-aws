@@ -25,8 +25,10 @@ import (
 	"github.com/hashicorp/boundary/sdk/pbs/controller/api/resources/storagebuckets"
 	pb "github.com/hashicorp/boundary/sdk/pbs/plugin"
 	"github.com/hashicorp/go-multierror"
+	"github.com/hashicorp/go-secure-stdlib/parseutil"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
+	"google.golang.org/protobuf/types/known/structpb"
 	"google.golang.org/protobuf/types/known/timestamppb"
 )
 
@@ -157,6 +159,31 @@ func (p *StoragePlugin) call(
 		}
 		return resp, nil
 	}
+}
+
+// NormalizeStorageBucketData is called by boundary before calling OnCreate or OnUpdate
+//
+// aws storage supports a total of 8 attributes, 6 as part of credential.CredentialAttributes
+// and 2 more from storage.StorageAttributes. of these, only endpoint_url is normalized.
+func (sp *StoragePlugin) NormalizeStorageBucketData(ctx context.Context, req *pb.NormalizeStorageBucketDataRequest) (*pb.NormalizeStorageBucketDataResponse, error) {
+	sa, err := getStorageAttributes(req.GetAttributes())
+	if err != nil {
+		return nil, err
+	}
+
+	fields := req.GetAttributes().GetFields()
+	if _, ok := fields[ConstAwsEndpointUrl]; ok {
+		if sa.EndpointUrl, err = parseutil.NormalizeAddr(sa.EndpointUrl); err != nil {
+			return nil, status.New(codes.InvalidArgument, fmt.Sprintf("failed to normalize provided %s: %s", ConstAwsEndpointUrl, err.Error())).Err()
+		}
+		fields[ConstAwsEndpointUrl] = structpb.NewStringValue(sa.EndpointUrl)
+	}
+
+	return &pb.NormalizeStorageBucketDataResponse{
+		Attributes: &structpb.Struct{
+			Fields: fields,
+		},
+	}, nil
 }
 
 // OnCreateStorageBucket is called when a storage bucket is created.
@@ -822,10 +849,6 @@ func (p *StoragePlugin) DeleteObjects(ctx context.Context, req *pb.DeleteObjects
 			})
 		}
 		_, err := p.call(ctx, deleteCall, bucket.GetId(), storageState, opts...)
-		if err != nil {
-			return nil, parseS3Error("delete object", err, req).Err()
-		}
-
 		if err != nil {
 			return nil, parseS3Error("delete object", err, req).Err()
 		}

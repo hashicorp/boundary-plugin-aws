@@ -26,6 +26,7 @@ import (
 	"github.com/hashicorp/boundary-plugin-aws/internal/credential"
 	internal "github.com/hashicorp/boundary-plugin-aws/internal/errors"
 	"github.com/hashicorp/boundary/sdk/pbs/controller/api/resources/storagebuckets"
+	"github.com/hashicorp/boundary/sdk/pbs/plugin"
 	pb "github.com/hashicorp/boundary/sdk/pbs/plugin"
 	"github.com/hashicorp/go-secure-stdlib/awsutil/v2"
 	"github.com/stretchr/testify/assert"
@@ -35,6 +36,204 @@ import (
 	"google.golang.org/protobuf/types/known/structpb"
 	"google.golang.org/protobuf/types/known/timestamppb"
 )
+
+func TestStoragePlugin_NormalizeStorageBucketData(t *testing.T) {
+	ctx := context.Background()
+
+	tests := []struct {
+		name     string
+		req      *plugin.NormalizeStorageBucketDataRequest
+		expected *plugin.NormalizeStorageBucketDataResponse
+		err      string
+	}{
+		{
+			name: "missing attributes",
+			req:  &plugin.NormalizeStorageBucketDataRequest{},
+			err:  "attributes.region: missing required value \"region\"",
+		},
+		{
+			name: "empty attributes",
+			req: &plugin.NormalizeStorageBucketDataRequest{
+				Attributes: &structpb.Struct{},
+			},
+			err: "attributes.region: missing required value \"region\"",
+		},
+		{
+			name: "missing required field",
+			req: &plugin.NormalizeStorageBucketDataRequest{
+				Attributes: &structpb.Struct{
+					Fields: map[string]*structpb.Value{
+						ConstAwsEndpointUrl: structpb.NewStringValue("http://127.0.0.1:9000"),
+					},
+				},
+			},
+			err: "attributes.region: missing required value \"region\"",
+		},
+		{
+			name: "missing endpoint_url",
+			req: &plugin.NormalizeStorageBucketDataRequest{
+				Attributes: &structpb.Struct{
+					Fields: map[string]*structpb.Value{
+						credential.ConstRegion: structpb.NewStringValue("somewhere"),
+					},
+				},
+			},
+			expected: &plugin.NormalizeStorageBucketDataResponse{
+				Attributes: &structpb.Struct{
+					Fields: map[string]*structpb.Value{
+						credential.ConstRegion: structpb.NewStringValue("somewhere"),
+					},
+				},
+			},
+		},
+		{
+			name: "valid endpoint_url returned unchanged",
+			req: &plugin.NormalizeStorageBucketDataRequest{
+				Attributes: &structpb.Struct{
+					Fields: map[string]*structpb.Value{
+						ConstAwsEndpointUrl:    structpb.NewStringValue("http://127.0.0.1:9000"),
+						credential.ConstRegion: structpb.NewStringValue("somewhere"),
+					},
+				},
+			},
+			expected: &plugin.NormalizeStorageBucketDataResponse{
+				Attributes: &structpb.Struct{
+					Fields: map[string]*structpb.Value{
+						ConstAwsEndpointUrl:    structpb.NewStringValue("http://127.0.0.1:9000"),
+						credential.ConstRegion: structpb.NewStringValue("somewhere"),
+					},
+				},
+			},
+		},
+		{
+			name: "valid ipv6 endpoint_url returned normalized",
+			req: &plugin.NormalizeStorageBucketDataRequest{
+				Attributes: &structpb.Struct{
+					Fields: map[string]*structpb.Value{
+						ConstAwsEndpointUrl:    structpb.NewStringValue("https://[2001:BEEF:0:0:0:1:0:0001]"),
+						credential.ConstRegion: structpb.NewStringValue("somewhere"),
+					},
+				},
+			},
+			expected: &plugin.NormalizeStorageBucketDataResponse{
+				Attributes: &structpb.Struct{
+					Fields: map[string]*structpb.Value{
+						ConstAwsEndpointUrl:    structpb.NewStringValue("https://[2001:beef::1:0:1]"),
+						credential.ConstRegion: structpb.NewStringValue("somewhere"),
+					},
+				},
+			},
+		},
+		{
+			name: "valid ipv6 endpoint_url with port returned normalized",
+			req: &plugin.NormalizeStorageBucketDataRequest{
+				Attributes: &structpb.Struct{
+					Fields: map[string]*structpb.Value{
+						ConstAwsEndpointUrl:    structpb.NewStringValue("https://[2001:BEEF:0:0:0:1:0:0001]:9000"),
+						credential.ConstRegion: structpb.NewStringValue("somewhere"),
+					},
+				},
+			},
+			expected: &plugin.NormalizeStorageBucketDataResponse{
+				Attributes: &structpb.Struct{
+					Fields: map[string]*structpb.Value{
+						ConstAwsEndpointUrl:    structpb.NewStringValue("https://[2001:beef::1:0:1]:9000"),
+						credential.ConstRegion: structpb.NewStringValue("somewhere"),
+					},
+				},
+			},
+		},
+		{
+			name: "invalid ipv6 endpoint_url returns normalization error",
+			req: &plugin.NormalizeStorageBucketDataRequest{
+				Attributes: &structpb.Struct{
+					Fields: map[string]*structpb.Value{
+						ConstAwsEndpointUrl:    structpb.NewStringValue("https://[2001:BEEF:0:0:0:1:0:0001"),
+						credential.ConstRegion: structpb.NewStringValue("somewhere"),
+					},
+				},
+			},
+			err: "failed to normalize provided endpoint_url: failed to parse address",
+		},
+		{
+			name: "invalid ipv6 endpoint_url returns normalization error 2",
+			req: &plugin.NormalizeStorageBucketDataRequest{
+				Attributes: &structpb.Struct{
+					Fields: map[string]*structpb.Value{
+						ConstAwsEndpointUrl:    structpb.NewStringValue("https://[2001:BEEF:0:0:0:1:0:0001]:"),
+						credential.ConstRegion: structpb.NewStringValue("somewhere"),
+					},
+				},
+			},
+			err: "failed to normalize provided endpoint_url: url has malformed host: missing port value after colon",
+		},
+		{
+			name: "valid all fields returns normalized",
+			req: &plugin.NormalizeStorageBucketDataRequest{
+				Attributes: &structpb.Struct{
+					Fields: map[string]*structpb.Value{
+						ConstAwsEndpointUrl:                       structpb.NewStringValue("http://[2001:BEEF:0:0:0:1:0:0001]:9000/test/path"),
+						credential.ConstRegion:                    structpb.NewStringValue("somewhere ❤"),
+						credential.ConstDisableCredentialRotation: structpb.NewBoolValue(false),
+						credential.ConstRoleArn:                   structpb.NewStringValue("an arn"),
+						credential.ConstRoleExternalId:            structpb.NewStringValue("id"),
+						credential.ConstRoleSessionName:           structpb.NewStringValue("sesh"),
+						ConstAwsDualStack:                         structpb.NewBoolValue(false),
+						credential.ConstRoleTags: structpb.NewStructValue(&structpb.Struct{
+							Fields: map[string]*structpb.Value{
+								"foo": structpb.NewStringValue("bar"),
+							},
+						}),
+					},
+				},
+			},
+			expected: &plugin.NormalizeStorageBucketDataResponse{
+				Attributes: &structpb.Struct{
+					Fields: map[string]*structpb.Value{
+						ConstAwsEndpointUrl:                       structpb.NewStringValue("http://[2001:beef::1:0:1]:9000/test/path"),
+						credential.ConstRegion:                    structpb.NewStringValue("somewhere ❤"),
+						credential.ConstDisableCredentialRotation: structpb.NewBoolValue(false),
+						credential.ConstRoleArn:                   structpb.NewStringValue("an arn"),
+						credential.ConstRoleExternalId:            structpb.NewStringValue("id"),
+						credential.ConstRoleSessionName:           structpb.NewStringValue("sesh"),
+						ConstAwsDualStack:                         structpb.NewBoolValue(false),
+						credential.ConstRoleTags: structpb.NewStructValue(&structpb.Struct{
+							Fields: map[string]*structpb.Value{
+								"foo": structpb.NewStringValue("bar"),
+							},
+						}),
+					},
+				},
+			},
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			assert := assert.New(t)
+			require := require.New(t)
+			sp := new(StoragePlugin)
+			res, err := sp.NormalizeStorageBucketData(ctx, tt.req)
+
+			if tt.err != "" {
+				require.ErrorContains(err, tt.err)
+				return
+			}
+			if err != nil {
+				if st, ok := status.FromError(err); ok {
+					require.Nil(err, st.Message())
+				}
+			}
+			require.Nil(err)
+			for key, val := range tt.expected.GetAttributes().GetFields() {
+				v, ok := res.GetAttributes().GetFields()[key]
+				assert.True(ok, "missing expected value: %q", key)
+				if ok {
+					assert.Equal(val, v, "expected[%q]: %v, but got: %v", key, val, v)
+				}
+			}
+		})
+	}
+}
 
 func TestStoragePlugin_OnCreateStorageBucket(t *testing.T) {
 	validRequest := func() *pb.OnCreateStorageBucketRequest {
