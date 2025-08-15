@@ -34,10 +34,18 @@ resource "aws_iam_policy" "valid" {
         "s3:GetObject",
         "s3:DeleteObject",
         "s3:GetObjectAttributes",
-        "s3:ListBucket"
+        "s3:ListBucket",
+        "s3:DeleteObject"
       ],
       "Effect": "Allow",
       "Resource": "${aws_s3_bucket.test.arn}*"
+    },
+    {
+      "Action": [
+        "s3:ListBucket"
+      ],
+      "Effect": "Allow",
+      "Resource": "${aws_s3_bucket.test.arn}"
     }
   ]
 
@@ -196,7 +204,7 @@ resource "aws_iam_role_policy_attachment" "missing_delete_obj" {
 # Static Credential Testing
 resource "random_id" "user_name" {
   count       = var.iam_user_count
-  prefix      = "demo-${local.hashicorp_email}-boundary-iam-user"
+  prefix      = "demo-${local.hashicorp_email}" # Do Not Remove/Edit. This is a requirement to obtain access in creating a iam user in the dev account.
   byte_length = 4
 }
 
@@ -204,10 +212,8 @@ resource "aws_iam_user" "test" {
   count                = var.iam_user_count
   name                 = random_id.user_name[count.index].dec
   force_destroy        = true
-  permissions_boundary = "arn:aws:iam::${data.aws_caller_identity.current.account_id}:policy/DemoUser"
-  tags = {
-    "boundary-demo" = local.hashicorp_email
-  }
+  permissions_boundary = "arn:aws:iam::${data.aws_caller_identity.current.account_id}:policy/DemoUser" # Do Not Remove/Edit. This is a requirement to obtain access in creating a iam user in the dev account.
+  tags                 = local.tags
 }
 
 resource "aws_iam_access_key" "test" {
@@ -277,17 +283,15 @@ resource "aws_iam_user_policy_attachment" "missing_delete_obj" {
 # Edge case for missing GetObject permission
 
 resource "random_id" "missing_get_obj" {
-  prefix      =  "demo-${local.hashicorp_email}-boundary-iam-user"
+  prefix      = "demo-${local.hashicorp_email}" # Do Not Remove/Edit. This is a requirement to obtain access in creating a iam user in the dev account.
   byte_length = 4
 }
 
 resource "aws_iam_user" "missing_get_obj" {
-  name          = random_id.missing_get_obj.dec
-  force_destroy = true
-  permissions_boundary = "arn:aws:iam::${data.aws_caller_identity.current.account_id}:policy/DemoUser"
-  tags = {
-    "boundary-demo" = local.hashicorp_email
-  }
+  name                 = random_id.missing_get_obj.dec
+  force_destroy        = true
+  permissions_boundary = "arn:aws:iam::${data.aws_caller_identity.current.account_id}:policy/DemoUser" # Do Not Remove/Edit. This is a requirement to obtain access in creating a iam user in the dev account.
+  tags                 = local.tags
 }
 
 resource "aws_iam_access_key" "missing_get_obj" {
@@ -302,17 +306,15 @@ resource "aws_iam_user_policy_attachment" "missing_get_obj" {
 # Edge case for missing PutObject permission
 
 resource "random_id" "missing_put_obj" {
-  prefix      =  "demo-${local.hashicorp_email}-boundary-iam-user"
+  prefix      = "demo-${local.hashicorp_email}" # Do Not Remove/Edit. This is a requirement to obtain access in creating a iam user in the dev account.
   byte_length = 4
 }
 
 resource "aws_iam_user" "missing_put_obj" {
-  name          = random_id.missing_put_obj.dec
-  force_destroy = true
-  permissions_boundary = "arn:aws:iam::${data.aws_caller_identity.current.account_id}:policy/DemoUser"
-  tags = {
-    "boundary-demo" = local.hashicorp_email
-  }
+  name                 = random_id.missing_put_obj.dec
+  force_destroy        = true
+  permissions_boundary = "arn:aws:iam::${data.aws_caller_identity.current.account_id}:policy/DemoUser" # Do Not Remove/Edit. This is a requirement to obtain access in creating a iam user in the dev account.
+  tags                 = local.tags
 }
 
 resource "aws_iam_access_key" "missing_put_obj" {

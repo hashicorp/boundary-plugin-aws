@@ -16,6 +16,7 @@ import (
 
 	"github.com/aws/aws-sdk-go-v2/aws/retry"
 	awshttp "github.com/aws/aws-sdk-go-v2/aws/transport/http"
+	"github.com/aws/aws-sdk-go-v2/service/s3/types"
 	"github.com/aws/smithy-go"
 	pb "github.com/hashicorp/boundary/sdk/pbs/plugin"
 	"google.golang.org/protobuf/types/known/timestamppb"
@@ -52,6 +53,10 @@ const (
 	// whose key does not exist
 	awsErrorNoSuchKey = "NoSuchKey"
 
+	// NotFound is returned when attempting to interact with an S3 object
+	// whose key does not exist
+	awsErrorNotFound = "NotFound"
+
 	// The InvalidObjectState error is returned when trying to
 	// access an object that was moved into cold storage.
 	awsErrorInvalidObjectState = "InvalidObjectState"
@@ -73,7 +78,7 @@ func InvalidArgumentError(msg string, f map[string]string) error {
 		sort.Strings(fieldMsgs)
 		msg = fmt.Sprintf("%s: [%s]", msg, strings.Join(fieldMsgs, ", "))
 	}
-	return BadRequestStatus("%s", msg)
+	return BadRequestStatus(msg)
 }
 
 // ParseAWSError converts an aws service error into a RPC status. This method
@@ -118,7 +123,50 @@ func ParseAWSError(op string, err error) (st *status.Status, permission *pb.Perm
 		return status.New(codes.Unavailable, statusMsg), nil
 	}
 
-	// parse some specific aws error codes that we have special cred states for
+	// match error type against NotFound
+	var notFoundErr *types.NotFound
+	if errors.As(err, &notFoundErr) {
+		statusMsg := fmt.Sprintf("aws service %s: %s", serviceName, msg)
+		return status.New(codes.NotFound, statusMsg), nil
+	}
+
+	// match error type against NoSuchkey
+	var noSuchKeyErr *types.NoSuchKey
+	if errors.As(err, &noSuchKeyErr) {
+		statusMsg := fmt.Sprintf("aws service %s: %s", serviceName, msg)
+		return status.New(codes.NotFound, statusMsg), nil
+	}
+
+	// match error type against InvalidObjectState
+	var invalidObjectStateErr *types.InvalidObjectState
+	if errors.As(err, &invalidObjectStateErr) {
+		statusMsg := fmt.Sprintf("aws service %s: %s", serviceName, msg)
+		return status.New(codes.NotFound, statusMsg), nil
+	}
+
+	// match error type against NoSuchBucket
+	var noSuchBucketErr *types.NoSuchBucket
+	if errors.As(err, &noSuchBucketErr) {
+		statusMsg := fmt.Sprintf("aws service %s: %s", serviceName, msg)
+		return status.New(codes.NotFound, statusMsg), &pb.Permission{
+			State:        pb.StateType_STATE_TYPE_ERROR,
+			ErrorDetails: noSuchBucketErr.ErrorMessage(),
+			CheckedAt:    timestamppb.Now(),
+		}
+	}
+
+	// match error type against AccessDenied
+	var accessDeniedErr *types.AccessDenied
+	if errors.As(err, &accessDeniedErr) {
+		statusMsg := fmt.Sprintf("aws service %s: invalid credentials: %s", serviceName, msg)
+		return status.New(codes.PermissionDenied, statusMsg), &pb.Permission{
+			State:        pb.StateType_STATE_TYPE_ERROR,
+			ErrorDetails: accessDeniedErr.ErrorMessage(),
+			CheckedAt:    timestamppb.Now(),
+		}
+	}
+
+	// fallback to evaluating the smithy APIError code
 	var apiErr smithy.APIError
 	if errors.As(err, &apiErr) {
 		switch apiErr.ErrorCode() {
@@ -145,6 +193,8 @@ func ParseAWSError(op string, err error) (st *status.Status, permission *pb.Perm
 			return status.New(codes.Aborted, statusMsg), nil
 		case awsErrorNoSuchKey:
 			fallthrough
+		case awsErrorNotFound:
+			fallthrough
 		case awsErrorInvalidObjectState:
 			statusMsg := fmt.Sprintf("aws service %s: %s", serviceName, msg)
 			return status.New(codes.NotFound, statusMsg), nil
@@ -156,8 +206,9 @@ func ParseAWSError(op string, err error) (st *status.Status, permission *pb.Perm
 		}
 	}
 
-	// default to evaluating the http status code
-	if httpErr, ok := err.(*awshttp.ResponseError); ok {
+	// fallback to evaluating the http status code
+	var httpErr *awshttp.ResponseError
+	if errors.As(err, &httpErr) {
 		buf := new(bytes.Buffer)
 		_, err = buf.ReadFrom(httpErr.Response.Body)
 		if err != nil {
@@ -206,14 +257,26 @@ func ParseAWSError(op string, err error) (st *status.Status, permission *pb.Perm
 	return st, nil
 }
 
-// BadRequestStatus returns a status error with an invalid
-// argument code
-func BadRequestStatus(format string, args ...any) error {
+// BadRequestStatusf returns a status error with an invalid
+// argument code and a formatted error message.
+func BadRequestStatusf(format string, args ...any) error {
 	return status.New(codes.InvalidArgument, fmt.Sprintf(format, args...)).Err()
 }
 
-// UnknownStatus returns a status error with an internal
-// error code
-func UnknownStatus(format string, args ...any) error {
+// BadRequestStatus returns a status error with an invalid
+// argument code and the provided message.
+func BadRequestStatus(msg string) error {
+	return status.New(codes.InvalidArgument, msg).Err()
+}
+
+// UnknownStatusf returns a status error with an internal
+// error code and a formatted error message.
+func UnknownStatusf(format string, args ...any) error {
 	return status.New(codes.Internal, fmt.Sprintf(format, args...)).Err()
+}
+
+// UnknownStatus returns a status error with an internal
+// error code and the provided message.
+func UnknownStatus(msg string) error {
+	return status.New(codes.Internal, msg).Err()
 }

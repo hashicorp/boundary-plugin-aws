@@ -4202,3 +4202,391 @@ func TestS3ClientCache(t *testing.T) {
 	assert.Equal(cred3.AccessKey, client.Credentials().AccessKeyID)
 	assert.Equal(cred3.SecretKey, client.Credentials().SecretAccessKey)
 }
+
+func TestStoragePlugin_ListObjects(t *testing.T) {
+	validRequest := func() *pb.ListObjectsRequest {
+		return &pb.ListObjectsRequest{
+			KeyPrefix: "foo/bar/",
+			Bucket: &storagebuckets.StorageBucket{
+				BucketName: "foo",
+				Secrets:    credential.MockStaticCredentialSecrets(),
+				Attributes: &structpb.Struct{
+					Fields: map[string]*structpb.Value{
+						credential.ConstRegion: structpb.NewStringValue("us-west-2"),
+					},
+				},
+			},
+		}
+	}
+
+	cases := []struct {
+		name                string
+		req                 *pb.ListObjectsRequest
+		credOpts            []credential.AwsCredentialPersistedStateOption
+		storageOpts         []awsStoragePersistedStateOption
+		ctx                 context.Context
+		expectedObjects     []*pb.Object
+		expectedErrContains string
+		expectedErrCode     codes.Code
+		expectedDetails     *pb.StorageBucketCredentialState
+	}{
+		{
+			name:                "nil bucket",
+			req:                 &pb.ListObjectsRequest{KeyPrefix: "foo/bar"},
+			expectedErrContains: "bucket is required",
+			expectedErrCode:     codes.InvalidArgument,
+		},
+		{
+			name: "empty bucket name",
+			req: &pb.ListObjectsRequest{
+				KeyPrefix: "foo/bar",
+				Bucket:    &storagebuckets.StorageBucket{},
+			},
+			expectedErrContains: "bucketName is required",
+			expectedErrCode:     codes.InvalidArgument,
+		},
+		{
+			name: "nil attributes",
+			req: &pb.ListObjectsRequest{
+				KeyPrefix: "foo/bar",
+				Bucket: &storagebuckets.StorageBucket{
+					BucketName: "foo",
+				},
+			},
+			expectedErrContains: "attributes is required",
+			expectedErrCode:     codes.InvalidArgument,
+		},
+		{
+			name: "error reading attributes",
+			req: &pb.ListObjectsRequest{
+				KeyPrefix: "foo/bar",
+				Bucket: &storagebuckets.StorageBucket{
+					BucketName: "foo",
+					Attributes: new(structpb.Struct),
+				},
+			},
+			expectedErrContains: "missing required value \"region\"",
+			expectedErrCode:     codes.InvalidArgument,
+		},
+		{
+			name: "credential persisted state setup error",
+			req:  validRequest(),
+			credOpts: []credential.AwsCredentialPersistedStateOption{
+				func(s *credential.AwsCredentialPersistedState) error {
+					return errors.New(testOptionErr)
+				},
+			},
+			expectedErrContains: fmt.Sprintf("error setting up persisted state: %s", testOptionErr),
+			expectedErrCode:     codes.InvalidArgument,
+		},
+		{
+			name: "storage persisted state setup error",
+			req:  validRequest(),
+			storageOpts: []awsStoragePersistedStateOption{
+				func(s *awsStoragePersistedState) error {
+					return errors.New(testOptionErr)
+				},
+			},
+			expectedErrContains: fmt.Sprintf("error setting up persisted state: %s", testOptionErr),
+			expectedErrCode:     codes.InvalidArgument,
+		},
+		{
+			name:     "listObjectsV2 access denied error",
+			req:      validRequest(),
+			credOpts: validSTSMock(),
+			storageOpts: []awsStoragePersistedStateOption{
+				withTestS3APIFunc(
+					newTestMockS3(
+						nil,
+						testMockS3WithListObjectsV2Error(TestAwsS3Error("AccessDenied", "ListObjectsV2", "not authorized")),
+					),
+				),
+			},
+			expectedErrContains: "aws service s3: invalid credentials: failed to list objects",
+			expectedErrCode:     codes.PermissionDenied,
+			expectedDetails: &pb.StorageBucketCredentialState{
+				State: &pb.Permissions{
+					Read: &pb.Permission{
+						State:        pb.StateType_STATE_TYPE_ERROR,
+						ErrorDetails: "not authorized",
+						CheckedAt:    timestamppb.Now(),
+					},
+				},
+			},
+		},
+		{
+			name:     "listObjectsV2 throttling error",
+			req:      validRequest(),
+			credOpts: validSTSMock(),
+			storageOpts: []awsStoragePersistedStateOption{
+				withTestS3APIFunc(
+					newTestMockS3(
+						nil,
+						testMockS3WithListObjectsV2Error(TestAwsS3Error("ThrottlingException", "ListObjectsV2", "throttling exception")),
+					),
+				),
+			},
+			expectedErrContains: "aws service s3: throttling: failed to list objects",
+			expectedErrCode:     codes.Unavailable,
+			expectedDetails: &pb.StorageBucketCredentialState{
+				State: &pb.Permissions{
+					Read: &pb.Permission{
+						State:     pb.StateType_STATE_TYPE_UNKNOWN,
+						CheckedAt: timestamppb.Now(),
+					},
+				},
+			},
+		},
+		{
+			name: "context canceled - non recursive",
+			req:  validRequest(),
+			ctx: func() context.Context {
+				c, cancel := context.WithCancel(context.Background())
+				cancel()
+				return c
+			}(),
+			credOpts: validSTSMock(),
+			storageOpts: []awsStoragePersistedStateOption{
+				withTestS3APIFunc(
+					newTestMockS3(
+						nil,
+						// Return an error that simulates context cancellation being detected at the AWS level
+						testMockS3WithListObjectsV2Error(context.Canceled),
+					),
+				),
+			},
+			expectedErrContains: "request canceled",
+			expectedErrCode:     codes.Canceled,
+		},
+		{
+			name: "context deadline exceeded - non recursive",
+			req:  validRequest(),
+			ctx: func() context.Context {
+				c, cancel := context.WithTimeout(context.Background(), 1*time.Nanosecond)
+				time.Sleep(2 * time.Nanosecond) // Ensure deadline is exceeded
+				cancel()
+				return c
+			}(),
+			credOpts: validSTSMock(),
+			storageOpts: []awsStoragePersistedStateOption{
+				withTestS3APIFunc(
+					newTestMockS3(
+						nil,
+						// Return an error that simulates deadline exceeded being detected at the AWS level
+						testMockS3WithListObjectsV2Error(context.DeadlineExceeded),
+					),
+				),
+			},
+			expectedErrContains: "request deadline exceeded",
+			expectedErrCode:     codes.DeadlineExceeded,
+		},
+		{
+			name: "context canceled - recursive",
+			req: func() *pb.ListObjectsRequest {
+				r := validRequest()
+				r.Recursive = true
+				return r
+			}(),
+			ctx: func() context.Context {
+				c, cancel := context.WithCancel(context.Background())
+				cancel() // Cancel immediately
+				return c
+			}(),
+			credOpts: validSTSMock(),
+			storageOpts: []awsStoragePersistedStateOption{
+				withTestS3APIFunc(
+					newTestMockS3(
+						nil,
+						// Return an error that simulates context cancellation being detected at the AWS level
+						testMockS3WithListObjectsV2Error(context.Canceled),
+					),
+				),
+			},
+			expectedErrContains: "request canceled",
+			expectedErrCode:     codes.Canceled,
+		},
+		{
+			name: "context deadline exceeded - recursive",
+			req: func() *pb.ListObjectsRequest {
+				r := validRequest()
+				r.Recursive = true
+				return r
+			}(),
+			ctx: func() context.Context {
+				c, cancel := context.WithTimeout(context.Background(), 1*time.Nanosecond)
+				// Ensure the deadline is exceeded
+				time.Sleep(2 * time.Nanosecond)
+				cancel()
+				return c
+			}(),
+			credOpts: validSTSMock(),
+			storageOpts: []awsStoragePersistedStateOption{
+				withTestS3APIFunc(
+					newTestMockS3(
+						nil,
+						// Return an error that simulates deadline exceeded being detected at the AWS level
+						testMockS3WithListObjectsV2Error(context.DeadlineExceeded),
+					),
+				),
+			},
+			expectedErrContains: "request deadline exceeded",
+			expectedErrCode:     codes.DeadlineExceeded,
+		},
+		{
+			name:     "success - single page top-level",
+			req:      validRequest(),
+			credOpts: validSTSMock(),
+			storageOpts: []awsStoragePersistedStateOption{
+				withTestS3APIFunc(
+					newTestMockS3(
+						nil,
+						testMockS3WithListObjectsV2Output(&s3.ListObjectsV2Output{
+							CommonPrefixes: []s3types.CommonPrefix{
+								{Prefix: aws.String("foo/bar/key/")},
+							},
+							Contents: []s3types.Object{
+								{Key: aws.String("foo/bar/file1.bsr")},
+								{Key: aws.String("foo/bar/file2.bsr")},
+							},
+						}),
+					),
+				),
+			},
+			expectedObjects: []*pb.Object{
+				{Key: "foo/bar/key/", IsDir: true},
+				{Key: "foo/bar/file1.bsr", IsDir: false},
+				{Key: "foo/bar/file2.bsr", IsDir: false},
+			},
+		},
+		{
+			name: "success - recursive listing with nested dirs",
+			req: func() *pb.ListObjectsRequest {
+				r := validRequest()
+				r.Recursive = true
+				return r
+			}(),
+			credOpts: validSTSMock(),
+			storageOpts: []awsStoragePersistedStateOption{
+				withTestS3APIFunc(
+					newTestMockS3(
+						nil,
+						testMockS3WithListObjectsV2Output(&s3.ListObjectsV2Output{
+							Contents: []s3types.Object{
+								{Key: aws.String("foo/bar/file1.bsr")},
+								{Key: aws.String("foo/bar/nested/file2.bsr")},
+								{Key: aws.String("foo/bar/nested/deeper/file3.bsr")},
+							},
+						}),
+					),
+				),
+			},
+			expectedObjects: []*pb.Object{
+				{Key: "foo/bar/file1.bsr", IsDir: false},
+				{Key: "foo/bar/nested/", IsDir: true},
+				{Key: "foo/bar/nested/file2.bsr", IsDir: false},
+				{Key: "foo/bar/nested/deeper/", IsDir: true},
+				{Key: "foo/bar/nested/deeper/file3.bsr", IsDir: false},
+			},
+		},
+		{
+			name: "success - recursive multi-page",
+			req: func() *pb.ListObjectsRequest {
+				r := validRequest()
+				r.Recursive = true
+				return r
+			}(),
+			credOpts: validSTSMock(),
+			storageOpts: []awsStoragePersistedStateOption{
+				withTestS3APIFunc(
+					newTestMockS3(
+						nil,
+						testMockS3WithListObjectsV2OutputFunc(func(input *s3.ListObjectsV2Input) *s3.ListObjectsV2Output {
+							if input.ContinuationToken == nil {
+								return &s3.ListObjectsV2Output{
+									Contents: []s3types.Object{
+										{Key: aws.String("foo/bar/page1/file1.bsr")},
+									},
+									NextContinuationToken: aws.String("token123"),
+									IsTruncated:           aws.Bool(true),
+								}
+							}
+							if aws.ToString(input.ContinuationToken) == "token123" {
+								return &s3.ListObjectsV2Output{
+									Contents: []s3types.Object{
+										{Key: aws.String("foo/bar/page2/file2.bsr")},
+									},
+								}
+							}
+							return &s3.ListObjectsV2Output{}
+						}),
+					),
+				),
+			},
+			expectedObjects: []*pb.Object{
+				{Key: "foo/bar/page1/", IsDir: true},
+				{Key: "foo/bar/page1/file1.bsr", IsDir: false},
+				{Key: "foo/bar/page2/", IsDir: true},
+				{Key: "foo/bar/page2/file2.bsr", IsDir: false},
+			},
+		},
+		{
+			name: "success - recursive empty",
+			req: func() *pb.ListObjectsRequest {
+				r := validRequest()
+				r.Recursive = true
+				return r
+			}(),
+			credOpts: validSTSMock(),
+			storageOpts: []awsStoragePersistedStateOption{
+				withTestS3APIFunc(
+					newTestMockS3(nil, testMockS3WithListObjectsV2Output(&s3.ListObjectsV2Output{})),
+				),
+			},
+			expectedObjects: []*pb.Object(nil),
+		},
+	}
+
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			require, assert := require.New(t), assert.New(t)
+			p := &StoragePlugin{
+				testCredStateOpts:    tc.credOpts,
+				testStorageStateOpts: tc.storageOpts,
+			}
+			ctx := tc.ctx
+			if ctx == nil {
+				ctx = context.Background()
+			}
+			resp, err := p.ListObjects(ctx, tc.req)
+
+			if tc.expectedErrContains != "" {
+				require.Error(err)
+				assert.Contains(err.Error(), tc.expectedErrContains)
+				assert.Equal(tc.expectedErrCode, status.Code(err))
+
+				st, ok := status.FromError(err)
+				require.True(ok)
+				if tc.expectedDetails != nil {
+					var state *pb.StorageBucketCredentialState
+					for _, detail := range st.Details() {
+						if errDetail, ok := detail.(*pb.StorageBucketCredentialState); ok {
+							state = errDetail
+							break
+						}
+					}
+					require.NotNil(state)
+					internal.CheckSimilarPermission(assert, tc.expectedDetails.State.Read, state.State.Read, false)
+					internal.CheckSimilarPermission(assert, tc.expectedDetails.State.Write, state.State.Write, false)
+					internal.CheckSimilarPermission(assert, tc.expectedDetails.State.Delete, state.State.Delete, false)
+				} else {
+					assert.Len(st.Details(), 0)
+				}
+				return
+			}
+
+			require.NoError(err)
+			require.NotNil(resp)
+			require.ElementsMatch(resp.Objects, tc.expectedObjects)
+		})
+	}
+}

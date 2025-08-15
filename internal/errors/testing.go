@@ -9,6 +9,7 @@ import (
 	"strings"
 
 	awshttp "github.com/aws/aws-sdk-go-v2/aws/transport/http"
+	"github.com/aws/aws-sdk-go-v2/service/s3/types"
 	"github.com/aws/smithy-go"
 	smithyhttp "github.com/aws/smithy-go/transport/http"
 	pb "github.com/hashicorp/boundary/sdk/pbs/plugin"
@@ -37,6 +38,31 @@ func TestAwsError(code, msg string) error {
 		Message: msg,
 		Fault:   smithy.FaultServer,
 	}
+}
+
+// TestAwsS3NotFoundError returns an S3 NotFound error.
+func TestAwsS3NotFoundError(msg string) error {
+	return &types.NotFound{Message: &msg}
+}
+
+// TestAwsS3NoSuchKeyError returns an S3 NoSuchKey error.
+func TestAwsS3NoSuchKeyError(msg string) error {
+	return &types.NoSuchKey{Message: &msg}
+}
+
+// TestAwsS3InvalidObjectStateError returns an S3 InvalidObjectState error.
+func TestAwsS3InvalidObjectStateError(msg string) error {
+	return &types.InvalidObjectState{Message: &msg}
+}
+
+// TestAwsS3NoSuchBucketError returns an S3 NoSuchBucket error.
+func TestAwsS3NoSuchBucketError(msg string) error {
+	return &types.NoSuchBucket{Message: &msg}
+}
+
+// TestAwsS3AccessDeniedError returns an S3 AccessDenied error.
+func TestAwsS3AccessDeniedError(msg string) error {
+	return &types.AccessDenied{Message: &msg}
 }
 
 func CheckSimilarPermission(assert *assert.Assertions, expected, actual *pb.Permission, substituteNilWithDefaultOk bool) {

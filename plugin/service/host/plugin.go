@@ -63,7 +63,7 @@ func (p *HostPlugin) OnCreateCatalog(ctx context.Context, req *pb.OnCreateCatalo
 		}, p.testCredStateOpts...)...,
 	)
 	if err != nil {
-		return nil, errors.BadRequestStatus("error setting up persisted state: %s", err)
+		return nil, errors.BadRequestStatusf("error setting up persisted state: %s", err)
 	}
 
 	// Try to rotate AWS static credentials
@@ -79,7 +79,7 @@ func (p *HostPlugin) OnCreateCatalog(ctx context.Context, req *pb.OnCreateCatalo
 		}, p.testCatalogStateOpts...)...,
 	)
 	if err != nil {
-		return nil, errors.BadRequestStatus("error setting up persisted state: %s", err)
+		return nil, errors.BadRequestStatusf("error setting up persisted state: %s", err)
 	}
 
 	// perform dry run to ensure we can interact with AWS as expected.
@@ -93,7 +93,7 @@ func (p *HostPlugin) OnCreateCatalog(ctx context.Context, req *pb.OnCreateCatalo
 
 	persistedProto, err := catalogState.toProto()
 	if err != nil {
-		return nil, errors.BadRequestStatus("%s", err.Error())
+		return nil, errors.BadRequestStatusf("error converting persisted state to proto: %s", err)
 	}
 
 	return &pb.OnCreateCatalogResponse{
@@ -138,7 +138,7 @@ func (p *HostPlugin) OnUpdateCatalog(ctx context.Context, req *pb.OnUpdateCatalo
 		oldCatalogAttributes.DualStack,
 		p.testCredStateOpts...)
 	if err != nil {
-		return nil, errors.BadRequestStatus("error loading persisted state: %s", err)
+		return nil, errors.BadRequestStatusf("error loading persisted state: %s", err)
 	}
 
 	// Verify the incoming credentials are valid and return any errors to the
@@ -161,7 +161,7 @@ func (p *HostPlugin) OnUpdateCatalog(ctx context.Context, req *pb.OnUpdateCatalo
 			}, p.testCredStateOpts...)...,
 		)
 		if err != nil {
-			return nil, errors.BadRequestStatus("error setting up new credential persisted state: %s", err)
+			return nil, errors.BadRequestStatusf("error setting up new credential persisted state: %s", err)
 		}
 		newCatalogState, err := newAwsCatalogPersistedState(
 			append([]awsCatalogPersistedStateOption{
@@ -169,7 +169,7 @@ func (p *HostPlugin) OnUpdateCatalog(ctx context.Context, req *pb.OnUpdateCatalo
 			}, p.testCatalogStateOpts...)...,
 		)
 		if err != nil {
-			return nil, errors.BadRequestStatus("error loading persisted state: %s", err)
+			return nil, errors.BadRequestStatusf("error loading persisted state: %s", err)
 		}
 		opts := []ec2Option{}
 		if newCatalogAttributes.DualStack {
@@ -213,7 +213,7 @@ func (p *HostPlugin) OnUpdateCatalog(ctx context.Context, req *pb.OnUpdateCatalo
 		}, p.testCatalogStateOpts...)...,
 	)
 	if err != nil {
-		return nil, errors.BadRequestStatus("error loading persisted state: %s", err)
+		return nil, errors.BadRequestStatusf("error loading persisted state: %s", err)
 	}
 
 	// perform dry run to ensure we can interact with AWS as expected.
@@ -227,7 +227,7 @@ func (p *HostPlugin) OnUpdateCatalog(ctx context.Context, req *pb.OnUpdateCatalo
 
 	persistedProto, err := catalogState.toProto()
 	if err != nil {
-		return nil, errors.BadRequestStatus("%s", err.Error())
+		return nil, errors.BadRequestStatusf("error converting persisted state to proto: %s", err)
 	}
 
 	return &pb.OnUpdateCatalogResponse{
@@ -264,7 +264,7 @@ func (p *HostPlugin) OnDeleteCatalog(ctx context.Context, req *pb.OnDeleteCatalo
 		catalogAttributes.DualStack,
 		p.testCredStateOpts...)
 	if err != nil {
-		return nil, errors.BadRequestStatus("error loading persisted state: %s", err)
+		return nil, errors.BadRequestStatusf("error loading persisted state: %s", err)
 	}
 
 	_, err = newAwsCatalogPersistedState(
@@ -273,7 +273,7 @@ func (p *HostPlugin) OnDeleteCatalog(ctx context.Context, req *pb.OnDeleteCatalo
 		}, p.testCatalogStateOpts...)...,
 	)
 	if err != nil {
-		return nil, errors.BadRequestStatus("error loading persisted state: %s", err)
+		return nil, errors.BadRequestStatusf("error loading persisted state: %s", err)
 	}
 
 	// try to delete static credentials
@@ -341,7 +341,7 @@ func (p *HostPlugin) OnCreateSet(ctx context.Context, req *pb.OnCreateSetRequest
 		catalogAttributes.DualStack,
 		p.testCredStateOpts...)
 	if err != nil {
-		return nil, errors.BadRequestStatus("error loading persisted state: %s", err)
+		return nil, errors.BadRequestStatusf("error loading persisted state: %s", err)
 	}
 
 	catalogState, err := newAwsCatalogPersistedState(
@@ -350,7 +350,7 @@ func (p *HostPlugin) OnCreateSet(ctx context.Context, req *pb.OnCreateSetRequest
 		}, p.testCatalogStateOpts...)...,
 	)
 	if err != nil {
-		return nil, errors.BadRequestStatus("error loading persisted state: %s", err)
+		return nil, errors.BadRequestStatusf("error loading persisted state: %s", err)
 	}
 
 	set := req.GetSet()
@@ -368,7 +368,7 @@ func (p *HostPlugin) OnCreateSet(ctx context.Context, req *pb.OnCreateSetRequest
 
 	describeInstanceFilters, err := buildFilters(setAttrs)
 	if err != nil {
-		return nil, errors.BadRequestStatus("error building set filters: %s", err)
+		return nil, errors.BadRequestStatusf("error building set filters: %s", err)
 	}
 
 	opts := []ec2Option{}
@@ -404,7 +404,7 @@ func (p *HostPlugin) OnUpdateSet(ctx context.Context, req *pb.OnUpdateSetRequest
 		catalogAttributes.DualStack,
 		p.testCredStateOpts...)
 	if err != nil {
-		return nil, errors.BadRequestStatus("error loading persisted state: %s", err)
+		return nil, errors.BadRequestStatusf("error loading persisted state: %s", err)
 	}
 
 	catalogState, err := newAwsCatalogPersistedState(
@@ -413,7 +413,7 @@ func (p *HostPlugin) OnUpdateSet(ctx context.Context, req *pb.OnUpdateSetRequest
 		}, p.testCatalogStateOpts...)...,
 	)
 	if err != nil {
-		return nil, errors.BadRequestStatus("error loading persisted state: %s", err)
+		return nil, errors.BadRequestStatusf("error loading persisted state: %s", err)
 	}
 
 	// As with catalog, we don't need to really look at the old host
@@ -433,7 +433,7 @@ func (p *HostPlugin) OnUpdateSet(ctx context.Context, req *pb.OnUpdateSetRequest
 
 	describeInstanceFilters, err := buildFilters(setAttrs)
 	if err != nil {
-		return nil, errors.BadRequestStatus("error building set filters: %s", err)
+		return nil, errors.BadRequestStatusf("error building set filters: %s", err)
 	}
 
 	opts := []ec2Option{}
@@ -477,7 +477,7 @@ func (p *HostPlugin) ListHosts(ctx context.Context, req *pb.ListHostsRequest) (*
 		catalogAttributes.DualStack,
 		p.testCredStateOpts...)
 	if err != nil {
-		return nil, errors.BadRequestStatus("error loading persisted state: %s", err)
+		return nil, errors.BadRequestStatusf("error loading persisted state: %s", err)
 	}
 
 	catalogState, err := newAwsCatalogPersistedState(
@@ -486,7 +486,7 @@ func (p *HostPlugin) ListHosts(ctx context.Context, req *pb.ListHostsRequest) (*
 		}, p.testCatalogStateOpts...)...,
 	)
 	if err != nil {
-		return nil, errors.BadRequestStatus("error loading persisted state: %s", err)
+		return nil, errors.BadRequestStatusf("error loading persisted state: %s", err)
 	}
 
 	sets := req.GetSets()
@@ -510,7 +510,7 @@ func (p *HostPlugin) ListHosts(ctx context.Context, req *pb.ListHostsRequest) (*
 		}
 
 		if set.GetAttributes() == nil {
-			return nil, errors.BadRequestStatus("set %s attributes are required", set.GetId())
+			return nil, errors.BadRequestStatusf("set %s attributes are required", set.GetId())
 		}
 		setAttrs, err := getSetAttributes(set.GetAttributes())
 		if err != nil {
@@ -519,7 +519,7 @@ func (p *HostPlugin) ListHosts(ctx context.Context, req *pb.ListHostsRequest) (*
 
 		input, err := buildDescribeInstancesInput(setAttrs, false)
 		if err != nil {
-			return nil, errors.BadRequestStatus("error building DescribeInstances parameters for host set id %q: %s", set.GetId(), err)
+			return nil, errors.BadRequestStatusf("error building DescribeInstances parameters for host set id %q: %s", set.GetId(), err)
 		}
 		queries[i] = hostSetQuery{
 			Id:    set.GetId(),
@@ -533,7 +533,7 @@ func (p *HostPlugin) ListHosts(ctx context.Context, req *pb.ListHostsRequest) (*
 	}
 	ec2Client, err := catalogState.EC2Client(ctx, opts...)
 	if err != nil {
-		return nil, errors.BadRequestStatus("error getting EC2 client: %s", err)
+		return nil, errors.BadRequestStatusf("error getting EC2 client: %s", err)
 	}
 
 	// Run all queries now and assemble output.
@@ -541,7 +541,7 @@ func (p *HostPlugin) ListHosts(ctx context.Context, req *pb.ListHostsRequest) (*
 	for i, query := range queries {
 		output, err := ec2Client.DescribeInstances(ctx, query.Input)
 		if err != nil {
-			return nil, errors.BadRequestStatus("error running DescribeInstances for host set id %q: %s", query.Id, err)
+			return nil, errors.BadRequestStatusf("error running DescribeInstances for host set id %q: %s", query.Id, err)
 		}
 
 		queries[i].Output = output
@@ -552,7 +552,7 @@ func (p *HostPlugin) ListHosts(ctx context.Context, req *pb.ListHostsRequest) (*
 			for _, instance := range reservation.Instances {
 				host, err := awsInstanceToHost(instance)
 				if err != nil {
-					return nil, errors.BadRequestStatus("error processing host results for host set id %q: %s", query.Id, err)
+					return nil, errors.BadRequestStatusf("error processing host results for host set id %q: %s", query.Id, err)
 				}
 
 				queries[i].OutputHosts = append(queries[i].OutputHosts, host)

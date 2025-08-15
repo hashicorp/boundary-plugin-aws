@@ -135,6 +135,17 @@ func Test_ParseAWSError(t *testing.T) {
 			},
 		},
 		{
+			name:               "wrapped-http-status-code-forbidden",
+			err:                fmt.Errorf("wrap: %w", TestAwsHttpResponseError(http.StatusForbidden, "forbidden request")),
+			expectedStatusCode: codes.PermissionDenied,
+			expectedStatusMsg:  "aws service unknown: invalid credentials: test",
+			expectedPermission: &pb.Permission{
+				State:        pb.StateType_STATE_TYPE_ERROR,
+				ErrorDetails: "forbidden request",
+				CheckedAt:    timestamppb.Now(),
+			},
+		},
+		{
 			name:               "aws-throttling",
 			err:                TestAwsError("Throttling", "throttling error"),
 			expectedStatusCode: codes.Unavailable,
@@ -311,6 +322,55 @@ func Test_ParseAWSError(t *testing.T) {
 				CheckedAt:    timestamppb.Now(),
 			},
 		},
+		{
+			name:               "aws-s3-typed-not-found",
+			err:                TestAwsS3NotFoundError("object was not found"),
+			expectedStatusCode: codes.NotFound,
+			expectedStatusMsg:  "aws service unknown: test",
+			expectedPermission: &pb.Permission{
+				State: pb.StateType_STATE_TYPE_UNKNOWN,
+			},
+		},
+		{
+			name:               "aws-s3-typed-no-such-key",
+			err:                TestAwsS3NoSuchKeyError("key does not exist"),
+			expectedStatusCode: codes.NotFound,
+			expectedStatusMsg:  "aws service unknown: test",
+			expectedPermission: &pb.Permission{
+				State: pb.StateType_STATE_TYPE_UNKNOWN,
+			},
+		},
+		{
+			name:               "aws-s3-typed-invalid-object-state",
+			err:                TestAwsS3InvalidObjectStateError("object is archived"),
+			expectedStatusCode: codes.NotFound,
+			expectedStatusMsg:  "aws service unknown: test",
+			expectedPermission: &pb.Permission{
+				State: pb.StateType_STATE_TYPE_UNKNOWN,
+			},
+		},
+		{
+			name:               "aws-s3-typed-no-such-bucket",
+			err:                TestAwsS3NoSuchBucketError("bucket does not exist"),
+			expectedStatusCode: codes.NotFound,
+			expectedStatusMsg:  "aws service unknown: test",
+			expectedPermission: &pb.Permission{
+				State:        pb.StateType_STATE_TYPE_ERROR,
+				ErrorDetails: "bucket does not exist",
+				CheckedAt:    timestamppb.Now(),
+			},
+		},
+		{
+			name:               "aws-s3-typed-access-denied",
+			err:                TestAwsS3AccessDeniedError("access denied"),
+			expectedStatusCode: codes.PermissionDenied,
+			expectedStatusMsg:  "aws service unknown: invalid credentials: test",
+			expectedPermission: &pb.Permission{
+				State:        pb.StateType_STATE_TYPE_ERROR,
+				ErrorDetails: "access denied",
+				CheckedAt:    timestamppb.Now(),
+			},
+		},
 	}
 	for _, tt := range cases {
 		t.Run(tt.name, func(t *testing.T) {
@@ -330,18 +390,36 @@ func Test_ParseAWSError(t *testing.T) {
 	}
 }
 
-func Test_BadRequestStatus(t *testing.T) {
+func Test_BadRequestStatusf(t *testing.T) {
 	require, assert := require.New(t), assert.New(t)
-	err := BadRequestStatus("test: %s", "hello world")
+	err := BadRequestStatusf("test: %s", "hello world")
 	assert.ErrorContains(err, "test: hello world")
 	assert.Equal(status.Code(err), codes.InvalidArgument)
 	_, ok := status.FromError(err)
 	require.True(ok)
 }
 
+func Test_BadRequestStatus(t *testing.T) {
+	require, assert := require.New(t), assert.New(t)
+	err := BadRequestStatus("test: hello world")
+	assert.ErrorContains(err, "test: hello world")
+	assert.Equal(status.Code(err), codes.InvalidArgument)
+	_, ok := status.FromError(err)
+	require.True(ok)
+}
+
+func Test_UnknownStatusf(t *testing.T) {
+	require, assert := require.New(t), assert.New(t)
+	err := UnknownStatusf("test: %s", "hello world")
+	assert.ErrorContains(err, "test: hello world")
+	assert.Equal(status.Code(err), codes.Internal)
+	_, ok := status.FromError(err)
+	require.True(ok)
+}
+
 func Test_UnknownStatus(t *testing.T) {
 	require, assert := require.New(t), assert.New(t)
-	err := UnknownStatus("test: %s", "hello world")
+	err := UnknownStatusf("test: hello world")
 	assert.ErrorContains(err, "test: hello world")
 	assert.Equal(status.Code(err), codes.Internal)
 	_, ok := status.FromError(err)

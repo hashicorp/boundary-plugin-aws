@@ -5,6 +5,7 @@ package testing
 
 import (
 	"context"
+	"fmt"
 	"io"
 	"net"
 	"os"
@@ -85,6 +86,12 @@ func TestStoragePlugin(t *testing.T) {
 	iamSecretAccessKeyMissingDeleteObject, err := tf.GetOutputString("iam_secret_access_key_missing_delete_obj")
 	require.NoError(err)
 
+	s3PaginationTestObjectCount, err := tf.GetOutput("s3_pagination_test_object_count")
+	require.NoError(err)
+	objectCountFloat, ok := s3PaginationTestObjectCount.(float64)
+	require.True(ok)
+	objectCount := int(objectCountFloat)
+
 	// Start the workflow now. Set up the storage bucket. Note that this
 	// will cause the state to go out of drift above in the sense that
 	// the access key ID/secret access key will no longer be valid. We
@@ -137,6 +144,11 @@ func TestStoragePlugin(t *testing.T) {
 	// Reassign the keyid and secret first.
 	keyid, secret = iamAccessKeyIds[5].(string), iamSecretAccessKeys[5].(string)
 	testPluginObjectMethods(ctx, t, p, bucketName, region, keyid, secret)
+
+	// ********************
+	// * ListObjects
+	// ********************
+	testListObjects(ctx, t, p, objectCount, bucketName, region, keyid, secret)
 
 	// ********************
 	// * Validate Permissions
@@ -513,4 +525,199 @@ func testPluginObjectMethods(ctx context.Context, t *testing.T, p *storage.Stora
 	require.Equal(expectedData, actualData)
 	require.NoError(conn.Close())
 	grpcServer.Stop()
+}
+
+// testListObjects verifies top-level and recursive listing by matching the exact keys and types of returned objects.
+func testListObjects(ctx context.Context, t *testing.T, p *storage.StoragePlugin, objectCount int, bucketName, region, accessKeyId, secretAccessKey string) {
+	t.Helper()
+	t.Logf("testing ListObjects (bucket=%s, region=%s, expectedObjects=%d, creds=%t)",
+		bucketName,
+		region,
+		objectCount,
+		accessKeyId != "" && secretAccessKey != "",
+	)
+	r := require.New(t)
+
+	reqAttrs, err := structpb.NewStruct(map[string]any{
+		credential.ConstRegion:                    region,
+		credential.ConstDisableCredentialRotation: true,
+	})
+	r.NoError(err)
+	reqSecrets, err := structpb.NewStruct(map[string]any{
+		credential.ConstAccessKeyId:     accessKeyId,
+		credential.ConstSecretAccessKey: secretAccessKey,
+	})
+	r.NoError(err)
+
+	bucket := &storagebuckets.StorageBucket{
+		BucketName: bucketName,
+		Attributes: reqAttrs,
+		Secrets:    reqSecrets,
+	}
+
+	// Test Scenario 1: Non-Paginated Listing
+	t.Run("NonPaginatedListing", func(t *testing.T) {
+
+		// Subtest for the non-recursive (top-level) option
+		t.Run("TopLevel", func(t *testing.T) {
+			r := require.New(t)
+			t.Logf("testing ListObjects for a small set with recursive=false")
+			req := &pb.ListObjectsRequest{
+				Bucket:    bucket,
+				KeyPrefix: "list-objects/",
+				Recursive: false,
+			}
+			resp, err := p.ListObjects(ctx, req)
+			r.NoError(err)
+			r.NotNil(resp)
+
+			expectedObjects := []*pb.Object{
+				{Key: "list-objects/file1.txt", IsDir: false},
+				{Key: "list-objects/data.json", IsDir: false},
+				{Key: "list-objects/nested-dir/", IsDir: true},
+				{Key: "list-objects/empty-nested-dir/", IsDir: true},
+			}
+			r.ElementsMatch(resp.Objects, expectedObjects)
+		})
+
+		// Subtest for the recursive option
+		t.Run("Recursive", func(t *testing.T) {
+			r := require.New(t)
+			t.Logf("testing ListObjects for a small set with recursive=true")
+			req := &pb.ListObjectsRequest{
+				Bucket:    bucket,
+				KeyPrefix: "list-objects/",
+				Recursive: true,
+			}
+			resp, err := p.ListObjects(ctx, req)
+			r.NoError(err)
+			r.NotNil(resp)
+
+			expectedObjects := []*pb.Object{
+				{Key: "list-objects/file1.txt", IsDir: false},
+				{Key: "list-objects/data.json", IsDir: false},
+				{Key: "list-objects/nested-dir/file2.txt", IsDir: false},
+				{Key: "list-objects/nested-dir/", IsDir: true},
+				{Key: "list-objects/empty-nested-dir/", IsDir: true},
+			}
+
+			r.ElementsMatch(resp.Objects, expectedObjects)
+		})
+	})
+
+	// Test Scenario 2: Paginated Top-Level Listing
+	t.Run("TopLevelListing", func(t *testing.T) {
+		// Subtest for the root prefix
+		t.Run("AtRoot", func(t *testing.T) {
+			r := require.New(t)
+			t.Logf("testing ListObjects with recursive=false at root prefix")
+			req := &pb.ListObjectsRequest{
+				Bucket:    bucket,
+				KeyPrefix: "list-objects-paginated/",
+				Recursive: false,
+			}
+			resp, err := p.ListObjects(ctx, req)
+			r.NoError(err)
+			r.NotNil(resp)
+
+			var expectedObjects []*pb.Object
+			for i := 0; i < objectCount; i++ {
+				key := fmt.Sprintf("list-objects-paginated/root-file-%d.txt", i)
+				expectedObjects = append(expectedObjects, &pb.Object{Key: key, IsDir: false})
+			}
+			for i := 0; i < objectCount; i++ {
+				keyEmpty := fmt.Sprintf("list-objects-paginated/empty-dir-%d/", i)
+				expectedObjects = append(expectedObjects, &pb.Object{Key: keyEmpty, IsDir: true})
+				keyNested := fmt.Sprintf("list-objects-paginated/nested-dir-%d/", i)
+				expectedObjects = append(expectedObjects, &pb.Object{Key: keyNested, IsDir: true})
+			}
+
+			r.ElementsMatch(resp.Objects, expectedObjects)
+		})
+
+		// Subtest for a nested prefix
+		t.Run("AtNestedPrefix", func(t *testing.T) {
+			r := require.New(t)
+			t.Logf("testing ListObjects with recursive=false at a nested prefix")
+			req := &pb.ListObjectsRequest{
+				Bucket:    bucket,
+				KeyPrefix: "list-objects-paginated/nested-dir-7/",
+				Recursive: false,
+			}
+			resp, err := p.ListObjects(ctx, req)
+			r.NoError(err)
+			r.NotNil(resp)
+
+			expectedObjects := []*pb.Object{
+				{Key: "list-objects-paginated/nested-dir-7/data-file-7.json", IsDir: false},
+			}
+
+			r.ElementsMatch(resp.Objects, expectedObjects)
+		})
+	})
+
+	// Test Scenario 3: Paginated Recursive Listing
+	t.Run("RecursiveListing", func(t *testing.T) {
+		r := require.New(t)
+		t.Logf("testing ListObjects with recursive=true")
+		req := &pb.ListObjectsRequest{
+			Bucket:    bucket,
+			KeyPrefix: "list-objects-paginated/",
+			Recursive: true,
+		}
+		resp, err := p.ListObjects(ctx, req)
+		r.NoError(err)
+		r.NotNil(resp)
+
+		var expectedObjects []*pb.Object
+		for i := 0; i < objectCount; i++ {
+			keyFile := fmt.Sprintf("list-objects-paginated/root-file-%d.txt", i)
+			expectedObjects = append(expectedObjects, &pb.Object{Key: keyFile, IsDir: false})
+			keyNestedFile := fmt.Sprintf("list-objects-paginated/nested-dir-%d/data-file-%d.json", i, i)
+			expectedObjects = append(expectedObjects, &pb.Object{Key: keyNestedFile, IsDir: false})
+		}
+		for i := 0; i < objectCount; i++ {
+			keyNestedDir := fmt.Sprintf("list-objects-paginated/nested-dir-%d/", i)
+			expectedObjects = append(expectedObjects, &pb.Object{Key: keyNestedDir, IsDir: true})
+			keyEmptyDir := fmt.Sprintf("list-objects-paginated/empty-dir-%d/", i)
+			expectedObjects = append(expectedObjects, &pb.Object{Key: keyEmptyDir, IsDir: true})
+			keyNestedEmptyDir := fmt.Sprintf("list-objects-paginated/empty-dir-%d/dir-%d/", i, i)
+			expectedObjects = append(expectedObjects, &pb.Object{Key: keyNestedEmptyDir, IsDir: true})
+		}
+
+		r.ElementsMatch(resp.Objects, expectedObjects)
+	})
+
+	// Test Scenario 4: Edge cases
+	t.Run("EdgeCases", func(t *testing.T) {
+		// Subtest for a prefix that doesn't exist
+		t.Run("NonExistentPrefix", func(t *testing.T) {
+			r := require.New(t)
+			t.Logf("testing ListObjects for a non-existent prefix")
+			req := &pb.ListObjectsRequest{
+				Bucket:    bucket,
+				KeyPrefix: "this/prefix/does/not/exist/",
+				Recursive: false,
+			}
+			resp, err := p.ListObjects(ctx, req)
+			r.NoError(err)
+			r.NotNil(resp)
+			r.Empty(resp.Objects)
+		})
+
+		// Subtest for listing inside a known empty directory
+		t.Run("InsideEmptyDirectory", func(t *testing.T) {
+			r := require.New(t)
+			t.Logf("testing ListObjects inside an empty directory")
+			req := &pb.ListObjectsRequest{
+				Bucket:    bucket,
+				KeyPrefix: "list-objects-paginated/empty-dirs/dir-10/",
+				Recursive: false,
+			}
+			resp, err := p.ListObjects(ctx, req)
+			r.NoError(err)
+			r.NotNil(resp)
+			r.Empty(resp.Objects)
+		})
+	})
 }

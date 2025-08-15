@@ -9,6 +9,7 @@ import (
 	"context"
 	"crypto/sha256"
 	"encoding/base64"
+	stderr "errors"
 	"fmt"
 	"io"
 	"os"
@@ -76,7 +77,7 @@ func (p *StoragePlugin) getClient(ctx context.Context,
 		// No storage bucket ID to key cache on, create new client and return
 		client, err := storageState.s3Client(ctx, opt...)
 		if err != nil {
-			return nil, errors.BadRequestStatus("error creating S3 client: %s", err)
+			return nil, errors.BadRequestStatusf("error creating S3 client: %s", err)
 		}
 		return client, nil
 	}
@@ -92,7 +93,7 @@ func (p *StoragePlugin) getClient(ctx context.Context,
 		defer p.clients.Unlock()
 		client, err := storageState.s3Client(ctx, opt...)
 		if err != nil {
-			return nil, errors.BadRequestStatus("error creating S3 client: %s", err)
+			return nil, errors.BadRequestStatusf("error creating S3 client: %s", err)
 		}
 		p.clients.cache[storageBucketId] = client
 		return client, nil
@@ -118,7 +119,7 @@ func (p *StoragePlugin) getClient(ctx context.Context,
 		var err error
 		client, err = storageState.s3Client(ctx, opt...)
 		if err != nil {
-			return nil, errors.BadRequestStatus("error creating S3 client: %s", err)
+			return nil, errors.BadRequestStatusf("error creating S3 client: %s", err)
 		}
 		p.clients.cache[storageBucketId] = client
 	}
@@ -138,7 +139,7 @@ func (p *StoragePlugin) call(
 
 	s3Client, err := p.getClient(ctx, storageBucketId, storageState, opts...)
 	if err != nil {
-		return nil, errors.BadRequestStatus("error getting S3 client: %s", err)
+		return nil, errors.BadRequestStatusf("error getting S3 client: %s", err)
 	}
 	firstAttempt := true
 	for {
@@ -151,7 +152,7 @@ func (p *StoragePlugin) call(
 				opts = append(opts, WithCacheRefresh(true))
 				s3Client, err = p.getClient(ctx, storageBucketId, storageState, opts...)
 				if err != nil {
-					return nil, errors.BadRequestStatus("error refreshing S3 client: %s", err)
+					return nil, errors.BadRequestStatusf("error refreshing S3 client: %s", err)
 				}
 				continue
 			}
@@ -218,7 +219,7 @@ func (p *StoragePlugin) OnCreateStorageBucket(ctx context.Context, req *pb.OnCre
 		}, p.testCredStateOpts...)...,
 	)
 	if err != nil {
-		return nil, errors.BadRequestStatus("error setting up persisted state: %s", err)
+		return nil, errors.BadRequestStatusf("error setting up persisted state: %s", err)
 	}
 
 	// Try to rotate AWS static credentials
@@ -234,7 +235,7 @@ func (p *StoragePlugin) OnCreateStorageBucket(ctx context.Context, req *pb.OnCre
 		}, p.testStorageStateOpts...)...,
 	)
 	if err != nil {
-		return nil, errors.BadRequestStatus("error setting up persisted state: %s", err)
+		return nil, errors.BadRequestStatusf("error setting up persisted state: %s", err)
 	}
 
 	// perform dry run to ensure we can interact with the bucket as expected.
@@ -244,7 +245,7 @@ func (p *StoragePlugin) OnCreateStorageBucket(ctx context.Context, req *pb.OnCre
 
 	persistedProto, err := storageState.toProto()
 	if err != nil {
-		return nil, errors.BadRequestStatus("%s", err.Error())
+		return nil, errors.BadRequestStatus(err.Error())
 	}
 
 	return &pb.OnCreateStorageBucketResponse{
@@ -292,7 +293,7 @@ func (p *StoragePlugin) OnUpdateStorageBucket(ctx context.Context, req *pb.OnUpd
 		oldStorageAttributes.DualStack,
 		p.testCredStateOpts...)
 	if err != nil {
-		return nil, errors.BadRequestStatus("error loading persisted state: %s", err)
+		return nil, errors.BadRequestStatusf("error loading persisted state: %s", err)
 	}
 
 	// Verify the incoming credentials are valid and return any errors to the
@@ -315,7 +316,7 @@ func (p *StoragePlugin) OnUpdateStorageBucket(ctx context.Context, req *pb.OnUpd
 			}, p.testCredStateOpts...)...,
 		)
 		if err != nil {
-			return nil, errors.BadRequestStatus("error setting up new credential persisted state: %s", err)
+			return nil, errors.BadRequestStatusf("error setting up new credential persisted state: %s", err)
 		}
 		newStorageState, err := newAwsStoragePersistedState(
 			append([]awsStoragePersistedStateOption{
@@ -323,7 +324,7 @@ func (p *StoragePlugin) OnUpdateStorageBucket(ctx context.Context, req *pb.OnUpd
 			}, p.testStorageStateOpts...)...,
 		)
 		if err != nil {
-			return nil, errors.BadRequestStatus("error loading persisted state: %s", err)
+			return nil, errors.BadRequestStatusf("error loading persisted state: %s", err)
 		}
 		if st := dryRunValidation(ctx, newStorageState, newStorageAttributes, newBucket); st != nil {
 			return nil, st.Err()
@@ -363,7 +364,7 @@ func (p *StoragePlugin) OnUpdateStorageBucket(ctx context.Context, req *pb.OnUpd
 		}, p.testStorageStateOpts...)...,
 	)
 	if err != nil {
-		return nil, errors.BadRequestStatus("error loading persisted state: %s", err)
+		return nil, errors.BadRequestStatusf("error loading persisted state: %s", err)
 	}
 
 	// perform dry run to ensure we can interact with the bucket as expected.
@@ -373,7 +374,7 @@ func (p *StoragePlugin) OnUpdateStorageBucket(ctx context.Context, req *pb.OnUpd
 
 	persistedProto, err := storageState.toProto()
 	if err != nil {
-		return nil, errors.BadRequestStatus("%s", err.Error())
+		return nil, errors.BadRequestStatus(err.Error())
 	}
 
 	return &pb.OnUpdateStorageBucketResponse{
@@ -410,7 +411,7 @@ func (p *StoragePlugin) OnDeleteStorageBucket(ctx context.Context, req *pb.OnDel
 		storageAttributes.DualStack,
 		p.testCredStateOpts...)
 	if err != nil {
-		return nil, errors.BadRequestStatus("error loading persisted state: %s", err)
+		return nil, errors.BadRequestStatusf("error loading persisted state: %s", err)
 	}
 
 	_, err = newAwsStoragePersistedState(
@@ -419,7 +420,7 @@ func (p *StoragePlugin) OnDeleteStorageBucket(ctx context.Context, req *pb.OnDel
 		}, p.testStorageStateOpts...)...,
 	)
 	if err != nil {
-		return nil, errors.BadRequestStatus("error loading persisted state: %s", err)
+		return nil, errors.BadRequestStatusf("error loading persisted state: %s", err)
 	}
 
 	// try to delete static credentials
@@ -474,7 +475,7 @@ func (p *StoragePlugin) HeadObject(ctx context.Context, req *pb.HeadObjectReques
 		}, p.testCredStateOpts...)...,
 	)
 	if err != nil {
-		return nil, errors.BadRequestStatus("error setting up persisted state: %s", err)
+		return nil, errors.BadRequestStatusf("error setting up persisted state: %s", err)
 	}
 
 	storageState, err := newAwsStoragePersistedState(
@@ -483,7 +484,7 @@ func (p *StoragePlugin) HeadObject(ctx context.Context, req *pb.HeadObjectReques
 		}, p.testStorageStateOpts...)...,
 	)
 	if err != nil {
-		return nil, errors.BadRequestStatus("error setting up persisted state: %s", err)
+		return nil, errors.BadRequestStatusf("error setting up persisted state: %s", err)
 	}
 
 	opts := []s3Option{}
@@ -546,7 +547,7 @@ func (p *StoragePlugin) ValidatePermissions(ctx context.Context, req *pb.Validat
 		}, p.testCredStateOpts...)...,
 	)
 	if err != nil {
-		return nil, errors.BadRequestStatus("error setting up persisted state: %s", err)
+		return nil, errors.BadRequestStatusf("error setting up persisted state: %s", err)
 	}
 
 	storageState, err := newAwsStoragePersistedState(
@@ -555,7 +556,7 @@ func (p *StoragePlugin) ValidatePermissions(ctx context.Context, req *pb.Validat
 		}, p.testStorageStateOpts...)...,
 	)
 	if err != nil {
-		return nil, errors.BadRequestStatus("error setting up persisted state: %s", err)
+		return nil, errors.BadRequestStatusf("error setting up persisted state: %s", err)
 	}
 
 	// perform dry run to ensure we can interact with the bucket as expected.
@@ -604,7 +605,7 @@ func (p *StoragePlugin) GetObject(req *pb.GetObjectRequest, stream pb.StoragePlu
 		}, p.testCredStateOpts...)...,
 	)
 	if err != nil {
-		return errors.BadRequestStatus("error setting up persisted state: %s", err)
+		return errors.BadRequestStatusf("error setting up persisted state: %s", err)
 	}
 
 	storageState, err := newAwsStoragePersistedState(
@@ -613,7 +614,7 @@ func (p *StoragePlugin) GetObject(req *pb.GetObjectRequest, stream pb.StoragePlu
 		}, p.testStorageStateOpts...)...,
 	)
 	if err != nil {
-		return errors.BadRequestStatus("error setting up persisted state: %s", err)
+		return errors.BadRequestStatusf("error setting up persisted state: %s", err)
 	}
 
 	opts := []s3Option{}
@@ -647,13 +648,13 @@ func (p *StoragePlugin) GetObject(req *pb.GetObjectRequest, stream pb.StoragePlu
 		buffer := make([]byte, chunkSize)
 		n, err := reader.Read(buffer)
 		if err != nil && err != io.EOF {
-			return errors.UnknownStatus("error reading chunk from s3: %s", err)
+			return errors.UnknownStatusf("error reading chunk from s3: %s", err)
 		}
 		if n > 0 {
 			if err := stream.Send(&pb.GetObjectResponse{
 				FileChunk: buffer[:n],
 			}); err != nil {
-				return errors.UnknownStatus("error sending chunk to client: %s", err)
+				return errors.UnknownStatusf("error sending chunk to client: %s", err)
 			}
 		}
 		if err == io.EOF {
@@ -718,7 +719,7 @@ func (p *StoragePlugin) PutObject(ctx context.Context, req *pb.PutObjectRequest)
 		}, p.testCredStateOpts...)...,
 	)
 	if err != nil {
-		return nil, errors.BadRequestStatus("error setting up persisted state: %s", err)
+		return nil, errors.BadRequestStatusf("error setting up persisted state: %s", err)
 	}
 
 	storageState, err := newAwsStoragePersistedState(
@@ -727,7 +728,7 @@ func (p *StoragePlugin) PutObject(ctx context.Context, req *pb.PutObjectRequest)
 		}, p.testStorageStateOpts...)...,
 	)
 	if err != nil {
-		return nil, errors.BadRequestStatus("error setting up persisted state: %s", err)
+		return nil, errors.BadRequestStatusf("error setting up persisted state: %s", err)
 	}
 
 	opts := []s3Option{}
@@ -817,7 +818,7 @@ func (p *StoragePlugin) DeleteObjects(ctx context.Context, req *pb.DeleteObjects
 		}, p.testCredStateOpts...)...,
 	)
 	if err != nil {
-		return nil, errors.BadRequestStatus("error setting up persisted state: %s", err)
+		return nil, errors.BadRequestStatusf("error setting up persisted state: %s", err)
 	}
 
 	storageState, err := newAwsStoragePersistedState(
@@ -826,7 +827,7 @@ func (p *StoragePlugin) DeleteObjects(ctx context.Context, req *pb.DeleteObjects
 		}, p.testStorageStateOpts...)...,
 	)
 	if err != nil {
-		return nil, errors.BadRequestStatus("error setting up persisted state: %s", err)
+		return nil, errors.BadRequestStatusf("error setting up persisted state: %s", err)
 	}
 
 	opts := []s3Option{}
@@ -861,7 +862,7 @@ func (p *StoragePlugin) DeleteObjects(ctx context.Context, req *pb.DeleteObjects
 	objects := []types.ObjectIdentifier{}
 	client, err := p.getClient(ctx, bucket.GetId(), storageState, opts...)
 	if err != nil {
-		return nil, errors.BadRequestStatus("error getting S3 client: %s", err)
+		return nil, errors.BadRequestStatusf("error getting S3 client: %s", err)
 	}
 	var conToken *string
 	truncated, firstAttempt := true, true
@@ -880,7 +881,7 @@ func (p *StoragePlugin) DeleteObjects(ctx context.Context, req *pb.DeleteObjects
 				opts = append(opts, WithCacheRefresh(true))
 				client, err = p.getClient(ctx, bucket.GetId(), storageState, opts...)
 				if err != nil {
-					return nil, errors.BadRequestStatus("error refreshing S3 client: %s", err)
+					return nil, errors.BadRequestStatusf("error refreshing S3 client: %s", err)
 				}
 				continue
 			}
@@ -915,6 +916,191 @@ func (p *StoragePlugin) DeleteObjects(ctx context.Context, req *pb.DeleteObjects
 	return &pb.DeleteObjectsResponse{
 		ObjectsDeleted: uint32(deleted),
 	}, nil
+}
+
+// ListObjects retrieves files and directories from an S3 bucket under a given prefix.
+// If the "recursive" flag in the request is false (default), it returns only the top-level objects directly under the prefix.
+// If the "recursive" is true, it returns all objects under the prefix recursively.
+func (p *StoragePlugin) ListObjects(ctx context.Context, req *pb.ListObjectsRequest) (*pb.ListObjectsResponse, error) {
+	bucket := req.GetBucket()
+	if bucket == nil {
+		return nil, errors.BadRequestStatus("bucket is required")
+	}
+
+	if bucket.BucketName == "" {
+		return nil, errors.BadRequestStatus("bucketName is required")
+	}
+
+	attrs := bucket.GetAttributes()
+	if attrs == nil {
+		return nil, errors.BadRequestStatus("attributes is required")
+	}
+
+	storageAttributes, err := getStorageAttributes(attrs)
+	if err != nil {
+		return nil, err
+	}
+
+	credConfig, err := cred.GetCredentialsConfig(bucket.GetSecrets(), storageAttributes.CredentialAttributes, false)
+	if err != nil {
+		return nil, err
+	}
+
+	// Set up the creds in our persisted state.
+	credState, err := cred.NewAwsCredentialPersistedState(
+		append([]cred.AwsCredentialPersistedStateOption{
+			cred.WithCredentialsConfig(credConfig),
+		}, p.testCredStateOpts...)...,
+	)
+	if err != nil {
+		return nil, errors.BadRequestStatusf("error setting up persisted state: %s", err)
+	}
+
+	storageState, err := newAwsStoragePersistedState(
+		append([]awsStoragePersistedStateOption{
+			withCredentials(credState),
+		}, p.testStorageStateOpts...)...,
+	)
+	if err != nil {
+		return nil, errors.BadRequestStatusf("error setting up persisted state: %s", err)
+	}
+
+	var opts []s3Option
+	if storageAttributes.EndpointUrl != "" {
+		opts = append(opts, WithEndpoint(storageAttributes.EndpointUrl))
+	}
+	s3Client, err := storageState.s3Client(ctx, opts...)
+	if err != nil {
+		return nil, errors.BadRequestStatusf("error getting S3 client: %s", err)
+	}
+
+	prefix := path.Join(bucket.GetBucketPrefix(), req.GetKeyPrefix())
+	if strings.HasSuffix(req.GetKeyPrefix(), "/") {
+		// path.Join ends by "cleaning" the path, including removing a trailing slash, if
+		// it exists. given that a slash is used to denote a folder, it is required here.
+		prefix += "/"
+	}
+	var objects []*pb.Object
+
+	if req.GetRecursive() {
+		objects, err = listObjectsRecursive(ctx, s3Client, bucket.GetBucketName(), prefix, req)
+	} else {
+		objects, err = listObjectsTopLevel(ctx, s3Client, bucket.GetBucketName(), prefix, req)
+	}
+	if err != nil {
+		return nil, err
+	}
+
+	return &pb.ListObjectsResponse{
+		Objects: objects,
+	}, nil
+}
+
+// listObjectsTopLevel lists only the objects that exist directly under the specified prefix (This does not traverse subdirectories)
+// It uses the S3 "Delimiter" option to group results so that subdirectories appear as CommonPrefixes.
+func listObjectsTopLevel(ctx context.Context, s3Client S3API, bucketName, prefix string, req *pb.ListObjectsRequest) ([]*pb.Object, error) {
+	var objects []*pb.Object
+	paginator := s3.NewListObjectsV2Paginator(s3Client, &s3.ListObjectsV2Input{
+		Bucket:    aws.String(bucketName),
+		Prefix:    aws.String(prefix),
+		Delimiter: aws.String("/"),
+	})
+
+	for paginator.HasMorePages() {
+		if err := ctx.Err(); err != nil {
+			switch {
+			case stderr.Is(err, context.Canceled):
+				return nil, status.Error(codes.Canceled, "request canceled")
+			case stderr.Is(err, context.DeadlineExceeded):
+				return nil, status.Error(codes.DeadlineExceeded, "request deadline exceeded")
+			default:
+				return nil, status.Error(codes.Internal, "unknown context error")
+			}
+		}
+		page, err := paginator.NextPage(ctx)
+		if err != nil {
+			return nil, parseS3Error("failed to list objects", err, req).Err()
+		}
+
+		for _, c := range page.Contents {
+			if c.Key != nil {
+				objects = append(objects, &pb.Object{Key: *c.Key, IsDir: false})
+			}
+		}
+		for _, cp := range page.CommonPrefixes {
+			if cp.Prefix != nil {
+				objects = append(objects, &pb.Object{Key: *cp.Prefix, IsDir: true})
+			}
+		}
+	}
+	return objects, nil
+}
+
+// listObjectsRecursive lists all objects under the specified prefix, traversing all subdirectories.
+// It does not use the S3 "Delimiter" option, so every object key that matches the prefix is returned.
+// This mode is useful for fully scanning all objects in a folder tree.
+func listObjectsRecursive(ctx context.Context, s3Client S3API, bucketName, prefix string, req *pb.ListObjectsRequest) ([]*pb.Object, error) {
+	var objects []*pb.Object
+	folderSet := make(map[string]struct{})
+	paginator := s3.NewListObjectsV2Paginator(s3Client, &s3.ListObjectsV2Input{
+		Bucket: aws.String(bucketName),
+		Prefix: aws.String(prefix),
+	})
+
+	for paginator.HasMorePages() {
+		if err := ctx.Err(); err != nil {
+			switch {
+			case stderr.Is(err, context.Canceled):
+				return nil, status.Error(codes.Canceled, "request canceled")
+			case stderr.Is(err, context.DeadlineExceeded):
+				return nil, status.Error(codes.DeadlineExceeded, "request deadline exceeded")
+			default:
+				return nil, status.Error(codes.Internal, "unknown context error")
+			}
+		}
+		page, err := paginator.NextPage(ctx)
+		if err != nil {
+			return nil, parseS3Error("failed to list objects", err, req).Err()
+		}
+
+		for _, c := range page.Contents {
+			// We intentionally ignore "empty objects" that simulate folders.
+			// S3 is not a traditional file system and does not have real directories.
+			// Folders are an abstraction; they are represented by zero-byte objects
+			// whose keys end with a slash (e.g., "myfolder/"). These objects exist
+			// solely as placeholders to give the appearance of directories in S3 tools.
+			// Here, we only include actual objects with content (non-zero length).
+			if c.Key != nil && !strings.HasSuffix(*c.Key, "/") {
+				objects = append(objects, &pb.Object{Key: *c.Key, IsDir: false})
+			}
+
+			// Extract all parent folder paths from the object key.
+			// We walk up the directory hierarchy using path.Dir,
+			// adding each parent folder to folderSet until we reach
+			// the root ("/" or ".") or leave the current prefix subtree.
+			// This ensures all intermediate "folders" appear in the result even if
+			// no explicit zero-byte object exists for them.
+			dir := path.Dir(*c.Key)
+			for dir != "." && dir != "/" {
+				folder := dir + "/"
+				if !strings.HasPrefix(folder, prefix) {
+					break // left the subtree, stop climbing up
+				}
+				if folder != prefix {
+					folderSet[folder] = struct{}{}
+				}
+				dir = path.Dir(dir)
+			}
+		}
+	}
+	// Add folders
+	for folder := range folderSet {
+		objects = append(objects, &pb.Object{
+			Key:   folder,
+			IsDir: true,
+		})
+	}
+	return objects, nil
 }
 
 // dryRunValidation validates that the IAM role policy attached to the given secrets of the

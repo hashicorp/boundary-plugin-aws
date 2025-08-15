@@ -6,19 +6,19 @@ output "bucket_name" {
 }
 
 output "valid_policy_arn" {
-    value = aws_iam_role.valid.arn
+  value = aws_iam_role.valid.arn
 }
 
 output "missing_put_obj_policy_arn" {
-    value = aws_iam_role.missing_put_obj.arn
+  value = aws_iam_role.missing_put_obj.arn
 }
 
 output "missing_get_obj_policy_arn" {
-    value = aws_iam_role.missing_get_obj.arn
+  value = aws_iam_role.missing_get_obj.arn
 }
 
 output "missing_delete_obj_policy_arn" {
-    value = aws_iam_role.missing_delete_obj.arn
+  value = aws_iam_role.missing_delete_obj.arn
 }
 
 output "iam_user_names" {
@@ -67,4 +67,9 @@ output "iam_access_key_missing_delete_obj" {
 output "iam_secret_access_key_missing_delete_obj" {
   value     = aws_iam_access_key.missing_delete_obj.secret
   sensitive = true
+}
+
+output "s3_pagination_test_object_count" {
+  description = "The number of S3 objects created for each pagination test scenario."
+  value       = local.s3_pagination_test_object_count
 }

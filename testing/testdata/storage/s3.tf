@@ -9,9 +9,17 @@ resource "aws_s3_bucket" "test" {
 
 resource "aws_s3_bucket_public_access_block" "secure_access" {
   bucket = aws_s3_bucket.test.id
-  
+
   block_public_acls       = true
   block_public_policy     = true
   ignore_public_acls      = true
   restrict_public_buckets = true
+}
+resource "aws_s3_object" "s3_files" {
+  for_each = local.s3_files
+
+  bucket  = aws_s3_bucket.test.id
+  key     = each.key
+  content = each.value
+  tags    = local.tags
 }

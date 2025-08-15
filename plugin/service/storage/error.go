@@ -40,6 +40,10 @@ func setStatePermission(req any, permission *pb.Permission) *pb.StorageBucketCre
 		state.State.Delete = permission
 	case *pb.DeleteObjectsRequest:
 		state.State.Delete = permission
+	case pb.ListObjectsRequest:
+		state.State.Read = permission
+	case *pb.ListObjectsRequest:
+		state.State.Read = permission
 	}
 	return state
 }
