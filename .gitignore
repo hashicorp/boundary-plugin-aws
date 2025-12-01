@@ -10,3 +10,6 @@ plan.tfplan
 *.iprg
 
 .DS_Store
+
+.env
+.envrc
