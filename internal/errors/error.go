@@ -73,7 +73,7 @@ func InvalidArgumentError(msg string, f map[string]string) error {
 		sort.Strings(fieldMsgs)
 		msg = fmt.Sprintf("%s: [%s]", msg, strings.Join(fieldMsgs, ", "))
 	}
-	return BadRequestStatus(msg)
+	return BadRequestStatus("%s", msg)
 }
 
 // ParseAWSError converts an aws service error into a RPC status. This method

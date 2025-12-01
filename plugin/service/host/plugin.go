@@ -93,7 +93,7 @@ func (p *HostPlugin) OnCreateCatalog(ctx context.Context, req *pb.OnCreateCatalo
 
 	persistedProto, err := catalogState.toProto()
 	if err != nil {
-		return nil, errors.BadRequestStatus(err.Error())
+		return nil, errors.BadRequestStatus("%s", err.Error())
 	}
 
 	return &pb.OnCreateCatalogResponse{
@@ -227,7 +227,7 @@ func (p *HostPlugin) OnUpdateCatalog(ctx context.Context, req *pb.OnUpdateCatalo
 
 	persistedProto, err := catalogState.toProto()
 	if err != nil {
-		return nil, errors.BadRequestStatus(err.Error())
+		return nil, errors.BadRequestStatus("%s", err.Error())
 	}
 
 	return &pb.OnUpdateCatalogResponse{

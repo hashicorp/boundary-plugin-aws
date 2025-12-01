@@ -130,7 +130,7 @@ func GetCredentialsConfig(secrets *structpb.Struct, attrs *CredentialAttributes,
 
 	cfg, err := awsutil.NewCredentialsConfig(opts...)
 	if err != nil {
-		return nil, errors.BadRequestStatus(err.Error())
+		return nil, errors.BadRequestStatus("%s", err.Error())
 	}
 
 	return cfg, nil
