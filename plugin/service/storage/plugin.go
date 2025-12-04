@@ -244,7 +244,7 @@ func (p *StoragePlugin) OnCreateStorageBucket(ctx context.Context, req *pb.OnCre
 
 	persistedProto, err := storageState.toProto()
 	if err != nil {
-		return nil, errors.BadRequestStatus(err.Error())
+		return nil, errors.BadRequestStatus("%s", err.Error())
 	}
 
 	return &pb.OnCreateStorageBucketResponse{
@@ -373,7 +373,7 @@ func (p *StoragePlugin) OnUpdateStorageBucket(ctx context.Context, req *pb.OnUpd
 
 	persistedProto, err := storageState.toProto()
 	if err != nil {
-		return nil, errors.BadRequestStatus(err.Error())
+		return nil, errors.BadRequestStatus("%s", err.Error())
 	}
 
 	return &pb.OnUpdateStorageBucketResponse{
