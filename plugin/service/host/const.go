@@ -13,4 +13,16 @@ const (
 
 	// ConstAwsDualStack is the key for the dualstack flag in the aws s3 client.
 	ConstAwsDualStack = "dual_stack"
+
+	// ConstPrimaryInterfaceOnly limits host discovery to the primary ENI.
+	ConstPrimaryInterfaceOnly = "primary_interface_only"
+
+	// ConstExcludePrivateIps excludes private IPv4 addresses.
+	ConstExcludePrivateIps = "exclude_private_ips"
+
+	// ConstExcludePublicIps excludes public IPv4 addresses associated to ENI IPs.
+	ConstExcludePublicIps = "exclude_public_ips"
+
+	// ConstExcludeIpv6 excludes IPv6 addresses.
+	ConstExcludeIpv6 = "exclude_ipv6"
 )

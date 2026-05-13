@@ -16,6 +16,36 @@ boundary host-catalogs create plugin \
  -secret secret_access_key='SECRET'
 ```
 
+To create a host catalog that returns addresses only from the primary network
+interface:
+
+```
+boundary host-catalogs create plugin \
+ -scope-id p_1234567890 \
+ -name "Example Plugin-Based Host Catalog" \
+ -description "Description for plugin-based host catalog" \
+ -plugin-name aws \
+ -attr region=REGION \
+ -attr primary_interface_only=true \
+ -secret access_key_id='KEY' \
+ -secret secret_access_key='SECRET'
+```
+
+To create a host catalog that excludes public IPv4 addresses while keeping
+private IPv4 addresses:
+
+```
+boundary host-catalogs create plugin \
+ -scope-id p_1234567890 \
+ -name "Example Plugin-Based Host Catalog" \
+ -description "Description for plugin-based host catalog" \
+ -plugin-name aws \
+ -attr region=REGION \
+ -attr exclude_public_ips=true \
+ -secret access_key_id='KEY' \
+ -secret secret_access_key='SECRET'
+```
+
 To create a host set, filtering the host set based on tag keys `foo` or `bar`
 (either tag can be present), ensuring that any targets set to this host set only
 connect to external addresses in the `54.0.0.0/8` class A subnet:
@@ -75,7 +105,6 @@ a configured IAM user for this provider:
       "Resource": "*"
     }
   ]
-}
 ```
 
 * `iam:GetUser`, `iam:CreateAccessKey`, and `iam:DeleteAccessKey`, configured to
@@ -116,6 +145,16 @@ The following `attributes` are valid on an AWS host catalog resource:
   provider.
 - `role_tags` (object): The key-value pair tags configured for the `AssumeRole`
   provider.
+- `primary_interface_only` (bool): If `true`, only addresses from the primary
+  ENI are returned. When `false` or omitted, addresses from all attached ENIs
+  are considered.
+- `exclude_private_ips` (bool): If `true`, private IPv4 addresses are omitted.
+- `exclude_public_ips` (bool): If `true`, public IPv4 addresses are omitted.
+
+If none of the exclusion flags are set, the plugin preserves the historical
+behavior and returns all discovered address classes. The exclusion flags apply
+to both IPv4 and IPv6 addresses based on whether the IP is classified as public
+or private.
 
 The following `secrets` are required on an AWS host catalog resource:
 

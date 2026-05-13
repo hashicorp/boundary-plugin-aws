@@ -22,6 +22,18 @@ type CatalogAttributes struct {
 
 	// DualStack is used for configuring how the aws client will resolve requests.
 	DualStack bool
+
+	// PrimaryInterfaceOnly restricts discovery to the instance's primary ENI.
+	PrimaryInterfaceOnly bool
+
+	// ExcludePrivateIps controls whether private IPv4 addresses are omitted.
+	ExcludePrivateIps bool
+
+	// ExcludePublicIps controls whether public IPv4 addresses are omitted.
+	ExcludePublicIps bool
+
+	// ExcludeIpv6 controls whether IPv6 addresses are omitted.
+	ExcludeIpv6 bool
 }
 
 func getCatalogAttributes(in *structpb.Struct) (*CatalogAttributes, error) {
@@ -39,6 +51,36 @@ func getCatalogAttributes(in *structpb.Struct) (*CatalogAttributes, error) {
 		badFields[fmt.Sprintf("attributes.%s", ConstAwsDualStack)] = err.Error()
 	}
 	delete(unknownFields, ConstAwsDualStack)
+
+	primaryInterfaceOnly, err := values.GetBoolValue(in, ConstPrimaryInterfaceOnly, false)
+	if err != nil {
+		badFields[fmt.Sprintf("attributes.%s", ConstPrimaryInterfaceOnly)] = err.Error()
+	}
+	delete(unknownFields, ConstPrimaryInterfaceOnly)
+
+	excludePrivateIPs, err := values.GetBoolValue(in, ConstExcludePrivateIps, false)
+	if err != nil {
+		badFields[fmt.Sprintf("attributes.%s", ConstExcludePrivateIps)] = err.Error()
+	}
+	delete(unknownFields, ConstExcludePrivateIps)
+
+	excludePublicIPs, err := values.GetBoolValue(in, ConstExcludePublicIps, false)
+	if err != nil {
+		badFields[fmt.Sprintf("attributes.%s", ConstExcludePublicIps)] = err.Error()
+	}
+	delete(unknownFields, ConstExcludePublicIps)
+
+	excludeIpv6, err := values.GetBoolValue(in, ConstExcludeIpv6, false)
+	if err != nil {
+		badFields[fmt.Sprintf("attributes.%s", ConstExcludeIpv6)] = err.Error()
+	}
+	delete(unknownFields, ConstExcludeIpv6)
+
+	if excludePrivateIPs && excludePublicIPs && excludeIpv6 {
+		badFields[fmt.Sprintf("attributes.%s", ConstExcludePrivateIps)] = "cannot be combined with exclude_public_ips and exclude_ipv6"
+		badFields[fmt.Sprintf("attributes.%s", ConstExcludePublicIps)] = "cannot be combined with exclude_private_ips and exclude_ipv6"
+		badFields[fmt.Sprintf("attributes.%s", ConstExcludeIpv6)] = "cannot be combined with exclude_private_ips and exclude_public_ips"
+	}
 
 	for s := range unknownFields {
 		switch s {
@@ -67,6 +109,10 @@ func getCatalogAttributes(in *structpb.Struct) (*CatalogAttributes, error) {
 	return &CatalogAttributes{
 		CredentialAttributes: credAttributes,
 		DualStack:            dualStack,
+		PrimaryInterfaceOnly: primaryInterfaceOnly,
+		ExcludePrivateIps:    excludePrivateIPs,
+		ExcludePublicIps:     excludePublicIPs,
+		ExcludeIpv6:          excludeIpv6,
 	}, nil
 }
 

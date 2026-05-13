@@ -1,7 +1,7 @@
-package host
-
 // Copyright IBM Corp. 2021, 2026
 // SPDX-License-Identifier: MPL-2.0
+
+package host
 
 import (
 	"context"
@@ -550,7 +550,7 @@ func (p *HostPlugin) ListHosts(ctx context.Context, req *pb.ListHostsRequest) (*
 		// set of hosts afterwards (possibly removing duplicates).
 		for _, reservation := range output.Reservations {
 			for _, instance := range reservation.Instances {
-				host, err := awsInstanceToHost(instance)
+				host, err := awsInstanceToHost(instance, catalogAttributes)
 				if err != nil {
 					return nil, errors.BadRequestStatus("error processing host results for host set id %q: %s", query.Id, err)
 				}
@@ -648,9 +648,12 @@ func buildDescribeInstancesInput(attrs *SetAttributes, dryRun bool) (*ec2.Descri
 // awsInstanceToHost processes data from an ec2.Instance and returns
 // a ListHostsResponseHost with the ID and network addresses
 // populated.
-func awsInstanceToHost(instance types.Instance) (*pb.ListHostsResponseHost, error) {
+func awsInstanceToHost(instance types.Instance, catalogAttributes *CatalogAttributes) (*pb.ListHostsResponseHost, error) {
 	if aws.ToString(instance.InstanceId) == "" {
 		return nil, fmt.Errorf("response integrity error: missing instance id")
+	}
+	if catalogAttributes == nil {
+		return nil, fmt.Errorf("catalog attributes are required")
 	}
 
 	result := new(pb.ListHostsResponseHost)
@@ -666,22 +669,46 @@ func awsInstanceToHost(instance types.Instance) (*pb.ListHostsResponseHost, erro
 		}
 	}
 
-	result.IpAddresses = appendDistinct(result.IpAddresses, instance.PrivateIpAddress, instance.PublicIpAddress)
-	result.DnsNames = appendDistinct(result.DnsNames, instance.PrivateDnsName, instance.PublicDnsName)
+	if !catalogAttributes.ExcludePrivateIps {
+		result.IpAddresses = appendDistinct(result.IpAddresses, instance.PrivateIpAddress)
+		result.DnsNames = appendDistinct(result.DnsNames, instance.PrivateDnsName)
+	}
+	if !catalogAttributes.ExcludePublicIps {
+		result.IpAddresses = appendDistinct(result.IpAddresses, instance.PublicIpAddress)
+		result.DnsNames = appendDistinct(result.DnsNames, instance.PublicDnsName)
+	}
 
 	// Now go through all of the interfaces and log the IP address of
 	// every interface.
 	for _, iface := range instance.NetworkInterfaces {
+		if catalogAttributes.PrimaryInterfaceOnly {
+			if iface.Attachment == nil || aws.ToInt32(iface.Attachment.DeviceIndex) != 0 {
+				// We only want to sync the primary interface so skip any others
+				continue
+			}
+		}
+
 		// Populate default IP addresses/DNS name similar to how we do
 		// for the entire instance.
-		result.IpAddresses = appendDistinct(result.IpAddresses, iface.PrivateIpAddress)
-		result.DnsNames = appendDistinct(result.DnsNames, iface.PrivateDnsName)
+		if !catalogAttributes.ExcludePrivateIps {
+			result.IpAddresses = appendDistinct(result.IpAddresses, iface.PrivateIpAddress)
+			result.DnsNames = appendDistinct(result.DnsNames, iface.PrivateDnsName)
+		}
 
 		// Iterate through the private IP addresses and log the
 		// information.
 		for _, addr := range iface.PrivateIpAddresses {
-			result.IpAddresses = appendDistinct(result.IpAddresses, addr.PrivateIpAddress)
-			result.DnsNames = appendDistinct(result.DnsNames, addr.PrivateDnsName)
+			if !catalogAttributes.ExcludePrivateIps {
+				result.IpAddresses = appendDistinct(result.IpAddresses, addr.PrivateIpAddress)
+				result.DnsNames = appendDistinct(result.DnsNames, addr.PrivateDnsName)
+			}
+
+			if catalogAttributes.ExcludePublicIps {
+				// skip adding public addresses if we are excluding them
+				continue
+			}
+
+			// PublicIP for iface is only available via an association to the private IP
 			if addr.Association != nil {
 				result.IpAddresses = appendDistinct(result.IpAddresses, addr.Association.PublicIp)
 				result.DnsNames = appendDistinct(result.DnsNames, addr.Association.PublicDnsName)
@@ -689,8 +716,10 @@ func awsInstanceToHost(instance types.Instance) (*pb.ListHostsResponseHost, erro
 		}
 
 		// Add the IPv6 addresses.
-		for _, addr := range iface.Ipv6Addresses {
-			result.IpAddresses = appendDistinct(result.IpAddresses, addr.Ipv6Address)
+		if !catalogAttributes.ExcludeIpv6 {
+			for _, addr := range iface.Ipv6Addresses {
+				result.IpAddresses = appendDistinct(result.IpAddresses, addr.Ipv6Address)
+			}
 		}
 	}
 

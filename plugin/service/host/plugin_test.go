@@ -638,7 +638,8 @@ func TestPluginOnCreateCatalogErr(t *testing.T) {
 						Fields: map[string]*structpb.Value{
 							credential.ConstAccessKeyId:     structpb.NewStringValue("AKIA_foobar"),
 							credential.ConstSecretAccessKey: structpb.NewStringValue("bazqux"),
-						}},
+						},
+					},
 					Attrs: &hostcatalogs.HostCatalog_Attributes{
 						Attributes: &structpb.Struct{
 							Fields: map[string]*structpb.Value{
@@ -664,7 +665,8 @@ func TestPluginOnCreateCatalogErr(t *testing.T) {
 						Fields: map[string]*structpb.Value{
 							credential.ConstAccessKeyId:     structpb.NewStringValue("AKIA_foobar"),
 							credential.ConstSecretAccessKey: structpb.NewStringValue("bazqux"),
-						}},
+						},
+					},
 					Attrs: &hostcatalogs.HostCatalog_Attributes{
 						Attributes: &structpb.Struct{
 							Fields: map[string]*structpb.Value{
@@ -694,7 +696,8 @@ func TestPluginOnCreateCatalogErr(t *testing.T) {
 						Fields: map[string]*structpb.Value{
 							credential.ConstAccessKeyId:     structpb.NewStringValue("AKIA_foobar"),
 							credential.ConstSecretAccessKey: structpb.NewStringValue("bazqux"),
-						}},
+						},
+					},
 					Attrs: &hostcatalogs.HostCatalog_Attributes{
 						Attributes: &structpb.Struct{
 							Fields: map[string]*structpb.Value{
@@ -721,7 +724,8 @@ func TestPluginOnCreateCatalogErr(t *testing.T) {
 						Fields: map[string]*structpb.Value{
 							credential.ConstAccessKeyId:     structpb.NewStringValue("AKIA_foobar"),
 							credential.ConstSecretAccessKey: structpb.NewStringValue("bazqux"),
-						}},
+						},
+					},
 					Attrs: &hostcatalogs.HostCatalog_Attributes{
 						Attributes: &structpb.Struct{
 							Fields: map[string]*structpb.Value{
@@ -2383,10 +2387,11 @@ func TestBuildDescribeInstancesInput(t *testing.T) {
 
 func TestAwsInstanceToHost(t *testing.T) {
 	cases := []struct {
-		name        string
-		instance    types.Instance
-		expected    *pb.ListHostsResponseHost
-		expectedErr string
+		name              string
+		instance          types.Instance
+		catalogAttributes *CatalogAttributes
+		expected          *pb.ListHostsResponseHost
+		expectedErr       string
 	}{
 		{
 			name:        "missing instance id",
@@ -2591,14 +2596,45 @@ func TestAwsInstanceToHost(t *testing.T) {
 						},
 						Ipv6Addresses: []types.InstanceIpv6Address{
 							{Ipv6Address: nil}, // Just coverage for nil assertion which is skipped
-							{Ipv6Address: aws.String("some::fake::address")},
+							{Ipv6Address: aws.String("2001:db8::1")},
 						},
 					},
 				},
 			},
 			expected: &pb.ListHostsResponseHost{
 				ExternalId:  "foobar",
-				IpAddresses: []string{"10.0.0.1", "1.1.1.1", "some::fake::address"},
+				IpAddresses: []string{"10.0.0.1", "1.1.1.1", "2001:db8::1"},
+				DnsNames:    []string{"test.example.internal", "test.example.com"},
+			},
+		},
+		{
+			name: "good, single IP w/public addr",
+			instance: types.Instance{
+				InstanceId:       aws.String("foobar"),
+				PrivateIpAddress: aws.String("10.0.0.1"),
+				PrivateDnsName:   aws.String("test.example.internal"),
+				PublicIpAddress:  aws.String("1.1.1.1"),
+				PublicDnsName:    aws.String("test.example.com"),
+				NetworkInterfaces: []types.InstanceNetworkInterface{
+					{
+						PrivateIpAddress: aws.String("10.0.0.1"),
+						PrivateDnsName:   aws.String("test.example.internal"),
+						PrivateIpAddresses: []types.InstancePrivateIpAddress{
+							{
+								Association: &types.InstanceNetworkInterfaceAssociation{
+									PublicIp:      aws.String("1.1.1.1"),
+									PublicDnsName: aws.String("test.example.com"),
+								},
+								PrivateIpAddress: aws.String("10.0.0.1"),
+								PrivateDnsName:   aws.String("test.example.internal"),
+							},
+						},
+					},
+				},
+			},
+			expected: &pb.ListHostsResponseHost{
+				ExternalId:  "foobar",
+				IpAddresses: []string{"10.0.0.1", "1.1.1.1"},
 				DnsNames:    []string{"test.example.internal", "test.example.com"},
 			},
 		},
@@ -2676,18 +2712,663 @@ func TestAwsInstanceToHost(t *testing.T) {
 				DnsNames:     []string{"test.example.internal", "test.example.com"},
 			},
 		},
+		{
+			name: "primary_interface_only keeps all addresses on primary ENI",
+			catalogAttributes: &CatalogAttributes{
+				PrimaryInterfaceOnly: true,
+			},
+			instance: types.Instance{
+				InstanceId:       aws.String("foobar"),
+				PrivateIpAddress: aws.String("10.0.0.1"),
+				PrivateDnsName:   aws.String("test.example.internal"),
+				PublicIpAddress:  aws.String("1.1.1.1"),
+				PublicDnsName:    aws.String("test.example.com"),
+				NetworkInterfaces: []types.InstanceNetworkInterface{
+					{
+						Attachment: &types.InstanceNetworkInterfaceAttachment{
+							DeviceIndex: aws.Int32(0),
+						},
+						PrivateIpAddress: aws.String("10.0.0.1"),
+						PrivateDnsName:   aws.String("test.example.internal"),
+						PrivateIpAddresses: []types.InstancePrivateIpAddress{
+							{
+								Primary:          aws.Bool(true),
+								PrivateIpAddress: aws.String("10.0.0.1"),
+								PrivateDnsName:   aws.String("test.example.internal"),
+							},
+							// Secondary IPs on primary ENI (e.g. VPC CNI pod IPs).
+							{
+								Primary:          aws.Bool(false),
+								PrivateIpAddress: aws.String("10.0.0.42"),
+								PrivateDnsName:   aws.String("pod-a.example.internal"),
+							},
+							{
+								Primary:          aws.Bool(false),
+								PrivateIpAddress: aws.String("10.0.0.43"),
+								PrivateDnsName:   aws.String("pod-b.example.internal"),
+							},
+						},
+					},
+					// Secondary ENI attached by VPC CNI for additional pod IPs.
+					{
+						Attachment: &types.InstanceNetworkInterfaceAttachment{
+							DeviceIndex: aws.Int32(1),
+						},
+						PrivateIpAddress: aws.String("10.0.0.99"),
+						PrivateDnsName:   aws.String("eni1.example.internal"),
+					},
+				},
+			},
+			expected: &pb.ListHostsResponseHost{
+				ExternalId:  "foobar",
+				IpAddresses: []string{"10.0.0.1", "1.1.1.1", "10.0.0.42", "10.0.0.43"},
+				DnsNames:    []string{"test.example.internal", "test.example.com", "pod-a.example.internal", "pod-b.example.internal"},
+			},
+		},
+		{
+			name: "primary_interface_only keeps IPv6 on primary ENI",
+			catalogAttributes: &CatalogAttributes{
+				PrimaryInterfaceOnly: true,
+			},
+			instance: types.Instance{
+				InstanceId:       aws.String("foobar"),
+				PrivateIpAddress: aws.String("10.0.0.1"),
+				PrivateDnsName:   aws.String("test.example.internal"),
+				NetworkInterfaces: []types.InstanceNetworkInterface{
+					// Secondary ENI listed first to verify ordering does not matter.
+					{
+						Attachment: &types.InstanceNetworkInterfaceAttachment{
+							DeviceIndex: aws.Int32(1),
+						},
+						PrivateIpAddress: aws.String("10.0.0.99"),
+						Ipv6Addresses: []types.InstanceIpv6Address{
+							{Ipv6Address: aws.String("2001:db8::2")},
+						},
+					},
+					{
+						Attachment: &types.InstanceNetworkInterfaceAttachment{
+							DeviceIndex: aws.Int32(0),
+						},
+						PrivateIpAddress: aws.String("10.0.0.1"),
+						Ipv6Addresses: []types.InstanceIpv6Address{
+							{Ipv6Address: aws.String("2001:db8::3")},
+							{Ipv6Address: aws.String("2001:db8::4")},
+						},
+					},
+				},
+			},
+			expected: &pb.ListHostsResponseHost{
+				ExternalId:  "foobar",
+				IpAddresses: []string{"10.0.0.1", "2001:db8::3", "2001:db8::4"},
+				DnsNames:    []string{"test.example.internal"},
+			},
+		},
+		{
+			name: "primary_interface_only without interfaces still returns top-level IPs",
+			catalogAttributes: &CatalogAttributes{
+				PrimaryInterfaceOnly: true,
+			},
+			instance: types.Instance{
+				InstanceId:       aws.String("foobar"),
+				PrivateIpAddress: aws.String("10.0.0.1"),
+				PrivateDnsName:   aws.String("test.example.internal"),
+				PublicIpAddress:  aws.String("1.1.1.1"),
+				PublicDnsName:    aws.String("test.example.com"),
+			},
+			expected: &pb.ListHostsResponseHost{
+				ExternalId:  "foobar",
+				IpAddresses: []string{"10.0.0.1", "1.1.1.1"},
+				DnsNames:    []string{"test.example.internal", "test.example.com"},
+			},
+		},
+		{
+			name: "exclude_public_ips excludes public IPv4 sources but keeps IPv6",
+			catalogAttributes: &CatalogAttributes{
+				ExcludePublicIps: true,
+			},
+			instance: types.Instance{
+				InstanceId:       aws.String("i-1234"),
+				PrivateIpAddress: aws.String("10.0.0.1"),
+				PrivateDnsName:   aws.String("host.internal"),
+				PublicIpAddress:  aws.String("1.2.3.4"),
+				PublicDnsName:    aws.String("host.public"),
+				NetworkInterfaces: []types.InstanceNetworkInterface{
+					{
+						PrivateIpAddress: aws.String("10.0.0.1"),
+						PrivateDnsName:   aws.String("host.internal"),
+						PrivateIpAddresses: []types.InstancePrivateIpAddress{
+							{
+								PrivateIpAddress: aws.String("10.0.0.1"),
+								PrivateDnsName:   aws.String("host.internal"),
+								Association: &types.InstanceNetworkInterfaceAssociation{
+									PublicIp:      aws.String("1.2.3.4"),
+									PublicDnsName: aws.String("host.public"),
+								},
+							},
+						},
+						Ipv6Addresses: []types.InstanceIpv6Address{{Ipv6Address: aws.String("2001:db8::1")}},
+					},
+				},
+			},
+			expected: &pb.ListHostsResponseHost{
+				ExternalId:  "i-1234",
+				IpAddresses: []string{"10.0.0.1", "2001:db8::1"},
+				DnsNames:    []string{"host.internal"},
+			},
+		},
+		{
+			name: "exclude_private_ips excludes private IPv4 sources but keeps IPv6",
+			catalogAttributes: &CatalogAttributes{
+				ExcludePrivateIps: true,
+			},
+			instance: types.Instance{
+				InstanceId:      aws.String("i-1234"),
+				PublicIpAddress: aws.String("1.2.3.4"),
+				PublicDnsName:   aws.String("host.public"),
+				NetworkInterfaces: []types.InstanceNetworkInterface{
+					{
+						PrivateIpAddresses: []types.InstancePrivateIpAddress{
+							{Association: &types.InstanceNetworkInterfaceAssociation{PublicIp: aws.String("1.2.3.4"), PublicDnsName: aws.String("host.public")}},
+						},
+						Ipv6Addresses: []types.InstanceIpv6Address{{Ipv6Address: aws.String("2001:db8::1")}},
+					},
+					{
+						PrivateIpAddresses: []types.InstancePrivateIpAddress{
+							{Association: &types.InstanceNetworkInterfaceAssociation{PublicIp: aws.String("1.2.3.5"), PublicDnsName: aws.String("svc.public")}},
+						},
+					},
+				},
+			},
+			expected: &pb.ListHostsResponseHost{
+				ExternalId:  "i-1234",
+				IpAddresses: []string{"1.2.3.4", "2001:db8::1", "1.2.3.5"},
+				DnsNames:    []string{"host.public", "svc.public"},
+			},
+		},
+		{
+			name: "exclude_public_ips keeps IPv6 addresses",
+			catalogAttributes: &CatalogAttributes{
+				ExcludePublicIps: true,
+			},
+			instance: types.Instance{
+				InstanceId:       aws.String("i-1234"),
+				PrivateIpAddress: aws.String("10.0.0.1"),
+				PrivateDnsName:   aws.String("host.internal"),
+				NetworkInterfaces: []types.InstanceNetworkInterface{
+					{
+						PrivateIpAddress: aws.String("10.0.0.1"),
+						PrivateDnsName:   aws.String("host.internal"),
+						Ipv6Addresses:    []types.InstanceIpv6Address{{Ipv6Address: aws.String("fd00::1")}},
+					},
+				},
+			},
+			expected: &pb.ListHostsResponseHost{
+				ExternalId:  "i-1234",
+				IpAddresses: []string{"10.0.0.1", "fd00::1"},
+				DnsNames:    []string{"host.internal"},
+			},
+		},
+		{
+			name: "exclude_ipv6 omits IPv6 while preserving IPv4 and DNS",
+			catalogAttributes: &CatalogAttributes{
+				ExcludeIpv6: true,
+			},
+			instance: types.Instance{
+				InstanceId:       aws.String("i-1234"),
+				PrivateIpAddress: aws.String("10.0.0.1"),
+				PrivateDnsName:   aws.String("host.internal"),
+				PublicIpAddress:  aws.String("1.2.3.4"),
+				PublicDnsName:    aws.String("host.public"),
+				NetworkInterfaces: []types.InstanceNetworkInterface{
+					{
+						PrivateIpAddress: aws.String("10.0.0.1"),
+						PrivateDnsName:   aws.String("host.internal"),
+						PrivateIpAddresses: []types.InstancePrivateIpAddress{
+							{
+								PrivateIpAddress: aws.String("10.0.0.1"),
+								PrivateDnsName:   aws.String("host.internal"),
+								Association: &types.InstanceNetworkInterfaceAssociation{
+									PublicIp:      aws.String("1.2.3.4"),
+									PublicDnsName: aws.String("host.public"),
+								},
+							},
+						},
+						Ipv6Addresses: []types.InstanceIpv6Address{{Ipv6Address: aws.String("2001:db8::1")}},
+					},
+				},
+			},
+			expected: &pb.ListHostsResponseHost{
+				ExternalId:  "i-1234",
+				IpAddresses: []string{"10.0.0.1", "1.2.3.4"},
+				DnsNames:    []string{"host.internal", "host.public"},
+			},
+		},
+		{
+			name: "exclude_public_ips with exclude_ipv6 keeps only private IPv4 sources",
+			catalogAttributes: &CatalogAttributes{
+				ExcludePublicIps: true,
+				ExcludeIpv6:      true,
+			},
+			instance: types.Instance{
+				InstanceId:       aws.String("i-1234"),
+				PrivateIpAddress: aws.String("10.0.0.1"),
+				PrivateDnsName:   aws.String("host.internal"),
+				PublicIpAddress:  aws.String("1.2.3.4"),
+				PublicDnsName:    aws.String("host.public"),
+				NetworkInterfaces: []types.InstanceNetworkInterface{
+					{
+						PrivateIpAddress: aws.String("10.0.0.1"),
+						PrivateDnsName:   aws.String("host.internal"),
+						PrivateIpAddresses: []types.InstancePrivateIpAddress{
+							{
+								PrivateIpAddress: aws.String("10.0.0.1"),
+								PrivateDnsName:   aws.String("host.internal"),
+								Association: &types.InstanceNetworkInterfaceAssociation{
+									PublicIp:      aws.String("1.2.3.4"),
+									PublicDnsName: aws.String("host.public"),
+								},
+							},
+							{
+								PrivateIpAddress: aws.String("10.0.0.2"),
+								PrivateDnsName:   aws.String("svc.internal"),
+							},
+						},
+						Ipv6Addresses: []types.InstanceIpv6Address{{Ipv6Address: aws.String("2001:db8::1")}},
+					},
+				},
+			},
+			expected: &pb.ListHostsResponseHost{
+				ExternalId:  "i-1234",
+				IpAddresses: []string{"10.0.0.1", "10.0.0.2"},
+				DnsNames:    []string{"host.internal", "svc.internal"},
+			},
+		},
+		{
+			name: "exclude_private_ips with exclude_ipv6 keeps only public IPv4 sources",
+			catalogAttributes: &CatalogAttributes{
+				ExcludePrivateIps: true,
+				ExcludeIpv6:       true,
+			},
+			instance: types.Instance{
+				InstanceId:      aws.String("i-1234"),
+				PublicIpAddress: aws.String("1.2.3.4"),
+				PublicDnsName:   aws.String("host.public"),
+				NetworkInterfaces: []types.InstanceNetworkInterface{
+					{
+						PrivateIpAddresses: []types.InstancePrivateIpAddress{
+							{
+								Association: &types.InstanceNetworkInterfaceAssociation{
+									PublicIp:      aws.String("1.2.3.4"),
+									PublicDnsName: aws.String("host.public"),
+								},
+							},
+							{
+								Association: &types.InstanceNetworkInterfaceAssociation{
+									PublicIp:      aws.String("1.2.3.5"),
+									PublicDnsName: aws.String("svc.public"),
+								},
+							},
+						},
+						Ipv6Addresses: []types.InstanceIpv6Address{{Ipv6Address: aws.String("fd00::1")}},
+					},
+				},
+			},
+			expected: &pb.ListHostsResponseHost{
+				ExternalId:  "i-1234",
+				IpAddresses: []string{"1.2.3.4", "1.2.3.5"},
+				DnsNames:    []string{"host.public", "svc.public"},
+			},
+		},
+		{
+			name: "primary_interface_only with exclude_ipv6 drops IPv6 from primary ENI",
+			catalogAttributes: &CatalogAttributes{
+				PrimaryInterfaceOnly: true,
+				ExcludeIpv6:          true,
+			},
+			instance: types.Instance{
+				InstanceId:       aws.String("foobar"),
+				PrivateIpAddress: aws.String("10.0.0.1"),
+				PrivateDnsName:   aws.String("test.example.internal"),
+				PublicIpAddress:  aws.String("1.1.1.1"),
+				PublicDnsName:    aws.String("test.example.com"),
+				NetworkInterfaces: []types.InstanceNetworkInterface{
+					{
+						Attachment: &types.InstanceNetworkInterfaceAttachment{
+							DeviceIndex: aws.Int32(0),
+						},
+						PrivateIpAddress: aws.String("10.0.0.1"),
+						PrivateDnsName:   aws.String("test.example.internal"),
+						PrivateIpAddresses: []types.InstancePrivateIpAddress{
+							{
+								PrivateIpAddress: aws.String("10.0.0.42"),
+								PrivateDnsName:   aws.String("pod-a.example.internal"),
+							},
+						},
+						Ipv6Addresses: []types.InstanceIpv6Address{{Ipv6Address: aws.String("2001:db8::3")}},
+					},
+					{
+						Attachment: &types.InstanceNetworkInterfaceAttachment{
+							DeviceIndex: aws.Int32(1),
+						},
+						PrivateIpAddress: aws.String("10.0.0.99"),
+						PrivateDnsName:   aws.String("eni1.example.internal"),
+						Ipv6Addresses:    []types.InstanceIpv6Address{{Ipv6Address: aws.String("2001:db8::4")}},
+					},
+				},
+			},
+			expected: &pb.ListHostsResponseHost{
+				ExternalId:  "foobar",
+				IpAddresses: []string{"10.0.0.1", "1.1.1.1", "10.0.0.42"},
+				DnsNames:    []string{"test.example.internal", "test.example.com", "pod-a.example.internal"},
+			},
+		},
+		{
+			name: "exclude_ipv6 on IPv6-only interface leaves no addresses",
+			catalogAttributes: &CatalogAttributes{
+				ExcludeIpv6: true,
+			},
+			instance: types.Instance{
+				InstanceId: aws.String("i-1234"),
+				NetworkInterfaces: []types.InstanceNetworkInterface{
+					{
+						Ipv6Addresses: []types.InstanceIpv6Address{
+							{Ipv6Address: aws.String("2001:db8::1")},
+							{Ipv6Address: aws.String("fd00::1")},
+						},
+					},
+				},
+			},
+			expected: &pb.ListHostsResponseHost{
+				ExternalId: "i-1234",
+			},
+		},
+		{
+			name: "deduplicates repeated addresses and DNS names across instance and interfaces",
+			instance: types.Instance{
+				InstanceId:       aws.String("i-1234"),
+				PrivateIpAddress: aws.String("10.0.0.1"),
+				PrivateDnsName:   aws.String("host.internal"),
+				PublicIpAddress:  aws.String("1.2.3.4"),
+				PublicDnsName:    aws.String("host.public"),
+				NetworkInterfaces: []types.InstanceNetworkInterface{
+					{
+						PrivateIpAddress: aws.String("10.0.0.1"),
+						PrivateDnsName:   aws.String("host.internal"),
+						PrivateIpAddresses: []types.InstancePrivateIpAddress{
+							{
+								PrivateIpAddress: aws.String("10.0.0.1"),
+								PrivateDnsName:   aws.String("host.internal"),
+								Association: &types.InstanceNetworkInterfaceAssociation{
+									PublicIp:      aws.String("1.2.3.4"),
+									PublicDnsName: aws.String("host.public"),
+								},
+							},
+						},
+						Ipv6Addresses: []types.InstanceIpv6Address{
+							{Ipv6Address: aws.String("2001:db8::1")},
+							{Ipv6Address: aws.String("2001:db8::1")},
+						},
+					},
+					{
+						PrivateIpAddress: aws.String("10.0.0.1"),
+						PrivateDnsName:   aws.String("host.internal"),
+						PrivateIpAddresses: []types.InstancePrivateIpAddress{
+							{
+								Association: &types.InstanceNetworkInterfaceAssociation{
+									PublicIp:      aws.String("1.2.3.4"),
+									PublicDnsName: aws.String("host.public"),
+								},
+							},
+						},
+						Ipv6Addresses: []types.InstanceIpv6Address{
+							{Ipv6Address: aws.String("2001:db8::1")},
+						},
+					},
+				},
+			},
+			expected: &pb.ListHostsResponseHost{
+				ExternalId:  "i-1234",
+				IpAddresses: []string{"10.0.0.1", "1.2.3.4", "2001:db8::1"},
+				DnsNames:    []string{"host.internal", "host.public"},
+			},
+		},
+		{
+			name: "primary_interface_only skips interfaces without attachment metadata",
+			catalogAttributes: &CatalogAttributes{
+				PrimaryInterfaceOnly: true,
+			},
+			instance: types.Instance{
+				InstanceId:       aws.String("i-1234"),
+				PrivateIpAddress: aws.String("10.0.0.1"),
+				PrivateDnsName:   aws.String("host.internal"),
+				PublicIpAddress:  aws.String("1.2.3.4"),
+				PublicDnsName:    aws.String("host.public"),
+				NetworkInterfaces: []types.InstanceNetworkInterface{
+					{
+						PrivateIpAddress: aws.String("10.0.0.99"),
+						PrivateDnsName:   aws.String("missing-attachment.internal"),
+						PrivateIpAddresses: []types.InstancePrivateIpAddress{
+							{
+								PrivateIpAddress: aws.String("10.0.0.99"),
+								PrivateDnsName:   aws.String("missing-attachment.internal"),
+							},
+						},
+						Ipv6Addresses: []types.InstanceIpv6Address{{Ipv6Address: aws.String("2001:db8::99")}},
+					},
+				},
+			},
+			expected: &pb.ListHostsResponseHost{
+				ExternalId:  "i-1234",
+				IpAddresses: []string{"10.0.0.1", "1.2.3.4"},
+				DnsNames:    []string{"host.internal", "host.public"},
+			},
+		},
+		{
+			name: "exclude_private_ips removes private DNS names even when public addresses remain",
+			catalogAttributes: &CatalogAttributes{
+				ExcludePrivateIps: true,
+			},
+			instance: types.Instance{
+				InstanceId:      aws.String("i-1234"),
+				PublicIpAddress: aws.String("1.2.3.4"),
+				PublicDnsName:   aws.String("host.public"),
+				NetworkInterfaces: []types.InstanceNetworkInterface{
+					{
+						PrivateIpAddress: aws.String("10.0.0.1"),
+						PrivateDnsName:   aws.String("host.internal"),
+						PrivateIpAddresses: []types.InstancePrivateIpAddress{
+							{
+								PrivateIpAddress: aws.String("10.0.0.1"),
+								PrivateDnsName:   aws.String("host.internal"),
+								Association: &types.InstanceNetworkInterfaceAssociation{
+									PublicIp:      aws.String("1.2.3.4"),
+									PublicDnsName: aws.String("host.public"),
+								},
+							},
+							{
+								PrivateIpAddress: aws.String("10.0.0.2"),
+								PrivateDnsName:   aws.String("svc.internal"),
+								Association: &types.InstanceNetworkInterfaceAssociation{
+									PublicIp:      aws.String("1.2.3.5"),
+									PublicDnsName: aws.String("svc.public"),
+								},
+							},
+						},
+					},
+				},
+			},
+			expected: &pb.ListHostsResponseHost{
+				ExternalId:  "i-1234",
+				IpAddresses: []string{"1.2.3.4", "1.2.3.5"},
+				DnsNames:    []string{"host.public", "svc.public"},
+			},
+		},
 	}
 
 	for _, tc := range cases {
 		tc := tc
 		t.Run(tc.name, func(t *testing.T) {
 			require := require.New(t)
-			actual, err := awsInstanceToHost(tc.instance)
+			attrs := tc.catalogAttributes
+			if attrs == nil {
+				attrs = &CatalogAttributes{}
+			}
+			actual, err := awsInstanceToHost(tc.instance, attrs)
 			if tc.expectedErr != "" {
 				require.EqualError(err, tc.expectedErr)
 				return
 			}
+			require.NoError(err)
+			require.Equal(tc.expected, actual)
+		})
+	}
+}
 
+func TestGetCatalogAttributesAddressSelection(t *testing.T) {
+	cases := []struct {
+		name        string
+		in          *structpb.Struct
+		expectedErr string
+		expected    *CatalogAttributes
+	}{
+		{
+			name: "valid selectors",
+			in: &structpb.Struct{
+				Fields: map[string]*structpb.Value{
+					"region":                 structpb.NewStringValue("us-west-2"),
+					"primary_interface_only": structpb.NewBoolValue(true),
+					"exclude_public_ips":     structpb.NewBoolValue(true),
+					"exclude_ipv6":           structpb.NewBoolValue(true),
+				},
+			},
+			expected: &CatalogAttributes{
+				CredentialAttributes: &credential.CredentialAttributes{
+					Region:                    "us-west-2",
+					DisableCredentialRotation: false,
+				},
+				PrimaryInterfaceOnly: true,
+				ExcludePublicIps:     true,
+				ExcludeIpv6:          true,
+			},
+		},
+		{
+			name: "exclude_private_ips can be combined with exclude_ipv6",
+			in: &structpb.Struct{
+				Fields: map[string]*structpb.Value{
+					"region":              structpb.NewStringValue("us-west-2"),
+					"exclude_private_ips": structpb.NewBoolValue(true),
+					"exclude_ipv6":        structpb.NewBoolValue(true),
+				},
+			},
+			expected: &CatalogAttributes{
+				CredentialAttributes: &credential.CredentialAttributes{
+					Region:                    "us-west-2",
+					DisableCredentialRotation: false,
+				},
+				ExcludePrivateIps: true,
+				ExcludeIpv6:       true,
+			},
+		},
+		{
+			name: "exclude_public_ips can be combined with exclude_ipv6",
+			in: &structpb.Struct{
+				Fields: map[string]*structpb.Value{
+					"region":             structpb.NewStringValue("us-west-2"),
+					"exclude_public_ips": structpb.NewBoolValue(true),
+					"exclude_ipv6":       structpb.NewBoolValue(true),
+				},
+			},
+			expected: &CatalogAttributes{
+				CredentialAttributes: &credential.CredentialAttributes{
+					Region:                    "us-west-2",
+					DisableCredentialRotation: false,
+				},
+				ExcludePublicIps: true,
+				ExcludeIpv6:      true,
+			},
+		},
+		{
+			name: "exclude_private_ips and exclude_public_ips can be combined when IPv6 remains enabled",
+			in: &structpb.Struct{
+				Fields: map[string]*structpb.Value{
+					"region":              structpb.NewStringValue("us-west-2"),
+					"exclude_private_ips": structpb.NewBoolValue(true),
+					"exclude_public_ips":  structpb.NewBoolValue(true),
+				},
+			},
+			expected: &CatalogAttributes{
+				CredentialAttributes: &credential.CredentialAttributes{
+					Region:                    "us-west-2",
+					DisableCredentialRotation: false,
+				},
+				ExcludePrivateIps: true,
+				ExcludePublicIps:  true,
+			},
+		},
+		{
+			name: "exclude_private_ips and exclude_public_ips cannot also exclude_ipv6",
+			in: &structpb.Struct{
+				Fields: map[string]*structpb.Value{
+					"region":              structpb.NewStringValue("us-west-2"),
+					"exclude_private_ips": structpb.NewBoolValue(true),
+					"exclude_public_ips":  structpb.NewBoolValue(true),
+					"exclude_ipv6":        structpb.NewBoolValue(true),
+				},
+			},
+			expectedErr: "attributes.exclude_ipv6: cannot be combined with exclude_private_ips and exclude_public_ips, attributes.exclude_private_ips: cannot be combined with exclude_public_ips and exclude_ipv6, attributes.exclude_public_ips: cannot be combined with exclude_private_ips and exclude_ipv6",
+		},
+		{
+			name: "exclude_ipv6 alone is accepted",
+			in: &structpb.Struct{
+				Fields: map[string]*structpb.Value{
+					"region":       structpb.NewStringValue("us-west-2"),
+					"exclude_ipv6": structpb.NewBoolValue(true),
+				},
+			},
+			expected: &CatalogAttributes{
+				CredentialAttributes: &credential.CredentialAttributes{
+					Region:                    "us-west-2",
+					DisableCredentialRotation: false,
+				},
+				ExcludeIpv6: true,
+			},
+		},
+		{
+			name: "exclude_ipv6 requires a boolean",
+			in: &structpb.Struct{
+				Fields: map[string]*structpb.Value{
+					"region":       structpb.NewStringValue("us-west-2"),
+					"exclude_ipv6": structpb.NewStringValue("true"),
+				},
+			},
+			expectedErr: "attributes.exclude_ipv6",
+		},
+		{
+			name: "no selectors configured preserves historical behavior",
+			in: &structpb.Struct{
+				Fields: map[string]*structpb.Value{
+					"region": structpb.NewStringValue("us-west-2"),
+				},
+			},
+			expected: &CatalogAttributes{
+				CredentialAttributes: &credential.CredentialAttributes{
+					Region:                    "us-west-2",
+					DisableCredentialRotation: false,
+				},
+			},
+		},
+	}
+
+	for _, tc := range cases {
+		tc := tc
+		t.Run(tc.name, func(t *testing.T) {
+			require := require.New(t)
+			actual, err := getCatalogAttributes(tc.in)
+			if tc.expectedErr != "" {
+				require.Error(err)
+				require.Contains(err.Error(), tc.expectedErr)
+				return
+			}
 			require.NoError(err)
 			require.Equal(tc.expected, actual)
 		})

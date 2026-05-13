@@ -60,6 +60,106 @@ func TestGetCatalogAttributes(t *testing.T) {
 			},
 		},
 		{
+			name: "with primary interface only",
+			in: &structpb.Struct{
+				Fields: map[string]*structpb.Value{
+					"region":                 structpb.NewStringValue("us-west-2"),
+					"primary_interface_only": structpb.NewBoolValue(true),
+				},
+			},
+			expected: &CatalogAttributes{
+				CredentialAttributes: &credential.CredentialAttributes{
+					Region:                    "us-west-2",
+					DisableCredentialRotation: false,
+				},
+				PrimaryInterfaceOnly: true,
+			},
+		},
+		{
+			name: "with exclude public ip",
+			in: &structpb.Struct{
+				Fields: map[string]*structpb.Value{
+					"region":             structpb.NewStringValue("us-west-2"),
+					"exclude_public_ips": structpb.NewBoolValue(true),
+				},
+			},
+			expected: &CatalogAttributes{
+				CredentialAttributes: &credential.CredentialAttributes{
+					Region:                    "us-west-2",
+					DisableCredentialRotation: false,
+				},
+				ExcludePublicIps: true,
+			},
+		},
+		{
+			name: "with exclude private ip",
+			in: &structpb.Struct{
+				Fields: map[string]*structpb.Value{
+					"region":              structpb.NewStringValue("us-west-2"),
+					"exclude_private_ips": structpb.NewBoolValue(true),
+				},
+			},
+			expected: &CatalogAttributes{
+				CredentialAttributes: &credential.CredentialAttributes{
+					Region:                    "us-west-2",
+					DisableCredentialRotation: false,
+				},
+				ExcludePrivateIps: true,
+			},
+		},
+		{
+			name: "with mixed attributes",
+			in: &structpb.Struct{
+				Fields: map[string]*structpb.Value{
+					"region":                 structpb.NewStringValue("us-west-2"),
+					"dual_stack":             structpb.NewBoolValue(true),
+					"exclude_private_ips":    structpb.NewBoolValue(true),
+					"exclude_ipv6":           structpb.NewBoolValue(true),
+					"primary_interface_only": structpb.NewBoolValue(true),
+				},
+			},
+			expected: &CatalogAttributes{
+				CredentialAttributes: &credential.CredentialAttributes{
+					Region:                    "us-west-2",
+					DisableCredentialRotation: false,
+				},
+				DualStack:            true,
+				ExcludePrivateIps:    true,
+				ExcludeIpv6:          true,
+				PrimaryInterfaceOnly: true,
+			},
+		},
+		{
+			name: "can exclude public and private IPs when IPv6 remains enabled",
+			in: &structpb.Struct{
+				Fields: map[string]*structpb.Value{
+					"region":              structpb.NewStringValue("us-west-2"),
+					"exclude_private_ips": structpb.NewBoolValue(true),
+					"exclude_public_ips":  structpb.NewBoolValue(true),
+				},
+			},
+			expected: &CatalogAttributes{
+				CredentialAttributes: &credential.CredentialAttributes{
+					Region:                    "us-west-2",
+					DisableCredentialRotation: false,
+				},
+				ExcludePrivateIps: true,
+				ExcludePublicIps:  true,
+			},
+		},
+		{
+			name: "cannot exclude public private and IPv6 together",
+			in: &structpb.Struct{
+				Fields: map[string]*structpb.Value{
+					"region":              structpb.NewStringValue("us-west-2"),
+					"exclude_private_ips": structpb.NewBoolValue(true),
+					"exclude_public_ips":  structpb.NewBoolValue(true),
+					"exclude_ipv6":        structpb.NewBoolValue(true),
+				},
+			},
+			expectedErrContains: "attributes.exclude_ipv6: cannot be combined with exclude_private_ips and exclude_public_ips, attributes.exclude_private_ips: cannot be combined with exclude_public_ips and exclude_ipv6, attributes.exclude_public_ips: cannot be combined with exclude_private_ips and exclude_ipv6",
+		},
+		{
 			name: "default",
 			in: &structpb.Struct{
 				Fields: map[string]*structpb.Value{
