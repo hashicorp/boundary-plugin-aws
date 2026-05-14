@@ -1,24 +1,20 @@
 # Copyright IBM Corp. 2021, 2026
 # SPDX-License-Identifier: MPL-2.0
 
-variable "iam_user_prefix" {
-  default = "boundary-plugin-host-aws-test-iam-user"
-}
-
-variable "iam_user_count" {
-  default = 6
-}
-
 resource "random_id" "aws_iam_user_name" {
   count       = var.iam_user_count
-  prefix      = "${var.iam_user_prefix}-${count.index}"
+  prefix      = "demo-${local.hashicorp_email}-boundary-iam-user"
   byte_length = 4
 }
 
 resource "aws_iam_user" "user" {
-  count         = var.iam_user_count
-  name          = random_id.aws_iam_user_name[count.index].dec
-  force_destroy = true
+  count                = var.iam_user_count
+  name                 = random_id.aws_iam_user_name[count.index].dec
+  force_destroy        = true
+  permissions_boundary = "arn:aws:iam::${data.aws_caller_identity.current.account_id}:policy/DemoUser"
+  tags = {
+    "boundary-demo" = local.hashicorp_email
+  }
 }
 
 resource "aws_iam_access_key" "user_initial_key" {
@@ -26,8 +22,13 @@ resource "aws_iam_access_key" "user_initial_key" {
   user  = aws_iam_user.user[count.index].name
 }
 
+resource "random_id" "aws_ec2_policy_name" {
+  prefix      = "BoundaryPluginHost"
+  byte_length = 4
+}
+
 resource "aws_iam_policy" "ec2_describeinstances" {
-  name = "BoundaryPluginHostAwsTestDescribeInstancesPolicy"
+  name = random_id.aws_ec2_policy_name.dec
 
   policy = <<EOF
 {
@@ -51,9 +52,15 @@ resource "aws_iam_user_policy_attachment" "user_ec2_describeinstances_attachment
   policy_arn = aws_iam_policy.ec2_describeinstances.arn
 }
 
+resource "random_id" "aws_iam_policy_name" {
+  count       = var.iam_user_count
+  prefix      = "BoundaryPluginCredentials"
+  byte_length = 4
+}
+
 resource "aws_iam_policy" "user_self_manage_policy" {
   count = var.iam_user_count
-  name  = "BoundaryPluginHostAwsTestUserSelfManagePolicy-${count.index}"
+  name  = random_id.aws_iam_policy_name[count.index].dec
 
   policy = <<EOF
 {

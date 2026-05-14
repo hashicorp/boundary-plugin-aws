@@ -22,8 +22,6 @@ import (
 
 const expectedEc2InstanceCount = 5
 
-var expectedTags = []string{"foo", "bar", "baz"}
-
 func TestHostPlugin(t *testing.T) {
 	region := os.Getenv("AWS_REGION")
 	if region == "" {
@@ -79,6 +77,14 @@ func TestHostPlugin(t *testing.T) {
 	ec2InstanceTags, err := tf.GetOutputMap("instance_tags")
 	require.NoError(err)
 	require.Len(ec2InstanceTags, expectedEc2InstanceCount)
+
+	rawExpectedTags, err := tf.GetOutputSlice("instance_tag_keys")
+	require.NoError(err)
+	require.Len(rawExpectedTags, 3)
+	expectedTags := make([]string, 0, len(rawExpectedTags))
+	for _, rawExpectedTag := range rawExpectedTags {
+		expectedTags = append(expectedTags, rawExpectedTag.(string))
+	}
 
 	// Start the workflow now. Set up the host catalog. Note that this
 	// will cause the state to go out of drift above in the sense that
@@ -143,13 +149,13 @@ func TestHostPlugin(t *testing.T) {
 	}
 
 	cases := [][]string{
-		{"foo"},
-		{"bar"},
-		{"baz"},
-		{"foo", "bar"},
-		{"foo", "baz"},
-		{"bar", "baz"},
-		{"foo", "bar", "baz"},
+		{expectedTags[0]},
+		{expectedTags[1]},
+		{expectedTags[2]},
+		{expectedTags[0], expectedTags[1]},
+		{expectedTags[0], expectedTags[2]},
+		{expectedTags[1], expectedTags[2]},
+		{expectedTags[0], expectedTags[1], expectedTags[2]},
 	}
 
 	for _, tc := range cases {
