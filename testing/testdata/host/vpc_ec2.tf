@@ -1,28 +1,6 @@
 # Copyright IBM Corp. 2021, 2026
 # SPDX-License-Identifier: MPL-2.0
 
-variable "instance_tags" {
-  default = [
-    {
-      "foo" = "true",
-    },
-    {
-      "foo" = "true",
-      "bar" = "true",
-    },
-    {
-      "bar" = "true",
-    },
-    {
-      "bar" = "true",
-      "baz" = "true",
-    },
-    {
-      "baz" = "true",
-    },
-  ]
-}
-
 data "aws_availability_zones" "azs" {}
 
 data "aws_ami" "ubuntu" {
@@ -52,12 +30,12 @@ resource "aws_subnet" "subnet" {
 }
 
 resource "aws_instance" "instances" {
-  count         = length(var.instance_tags)
+  count         = length(local.instance_tags)
   ami           = data.aws_ami.ubuntu.id
   instance_type = "t3.nano"
   subnet_id     = aws_subnet.subnet.id
 
-  tags = var.instance_tags[count.index]
+  tags = local.instance_tags[count.index]
 }
 
 output "instance_ids" {
@@ -74,4 +52,12 @@ output "instance_tags" {
   value = {
     for _, r in aws_instance.instances : r.id => r.tags
   }
+}
+
+output "instance_tag_keys" {
+  value = [
+    random_id.foo_key.dec,
+    random_id.bar_key.dec,
+    random_id.baz_key.dec,
+  ]
 }
