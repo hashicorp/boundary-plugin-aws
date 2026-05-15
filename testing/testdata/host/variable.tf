@@ -26,7 +26,7 @@ resource "random_id" "baz_key" {
 
 locals {
   hashicorp_email = split(":", data.aws_caller_identity.current.user_id)[1]
-  
+
   instance_tags = [
     {
       "${random_id.foo_key.dec}" = "true"

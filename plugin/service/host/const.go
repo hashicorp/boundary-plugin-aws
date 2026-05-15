@@ -13,4 +13,9 @@ const (
 
 	// ConstAwsDualStack is the key for the dualstack flag in the aws s3 client.
 	ConstAwsDualStack = "dual_stack"
+
+	// ConstInstanceAddressesOnly is the key (instance_addresses_only) that specifies whether
+	// only the instance addresses (private IPv4/DNS, public IPv4/DNS, and IPv6) are synced,
+	// or all addresses, including those from secondary ENIs, are synced.
+	ConstInstanceAddressesOnly = "instance_addresses_only"
 )

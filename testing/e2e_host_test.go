@@ -165,6 +165,9 @@ func TestHostPlugin(t *testing.T) {
 		testPluginListHosts(ctx, t, p, region, keyid, secret, tc, expectedTagInstancesMap)
 		// TODO: add OnDeleteSet if it needs to be implemented
 	}
+
+	// finally lets test instance_address_only catalog attribute correctly syncs only instance addresses
+	testInstanceAddressesOnlyListHosts(ctx, t, p, tf, region, keyid, secret)
 }
 
 func testPluginOnCreateCatalog(ctx context.Context, t *testing.T, p *host.HostPlugin, region, accessKeyId, secretAccessKey string, rotate bool) (string, string) {
@@ -449,4 +452,92 @@ func testPluginListHosts(ctx context.Context, t *testing.T, p *host.HostPlugin, 
 	require.Equal(expectedInstances, actualInstances)
 	// Success
 	t.Logf("testing ListHosts: success (region=%s, tags=%v, expected/actual=(len=%d, ids=%s))", region, tags, len(actualInstances), actualInstances)
+}
+
+func testInstanceAddressesOnlyListHosts(ctx context.Context, t *testing.T, p *host.HostPlugin, tf *TestTerraformer, region, accessKeyId, secretAccessKey string) {
+	t.Helper()
+	t.Logf("testing testInstanceAddressesOnlyListHosts")
+
+	// Get the instance details from tf output
+	instanceID, err := tf.GetOutputString("multi_address_instance_id")
+	require.NoError(t, err)
+	primaryAddresses, err := tf.GetOutputMap("multi_address_primary_addresses")
+	require.NoError(t, err)
+	secondaryAddresses, err := tf.GetOutputMap("multi_address_secondary_addresses")
+	require.NoError(t, err)
+
+	var primary, secondary []string
+	for _, addr := range primaryAddresses {
+		primary = append(primary, addr.(string))
+	}
+	for _, addr := range secondaryAddresses {
+		secondary = append(secondary, addr.(string))
+	}
+
+	cases := []struct {
+		name                  string
+		instanceAddressesOnly bool
+		expectedIPs           []string
+	}{
+		{
+			name:        "all addresses",
+			expectedIPs: append(primary, secondary...),
+		},
+		{
+			name:                  "instance addresses only",
+			instanceAddressesOnly: true,
+			expectedIPs:           primary,
+		},
+	}
+
+	for _, tc := range cases {
+		tc := tc
+		t.Run(tc.name, func(t *testing.T) {
+			require := require.New(t)
+
+			catalogAttrMap := map[string]any{
+				credential.ConstRegion:                    region,
+				credential.ConstDisableCredentialRotation: true,
+			}
+			if tc.instanceAddressesOnly {
+				catalogAttrMap[host.ConstInstanceAddressesOnly] = true
+			}
+
+			catalogAttrs, err := structpb.NewStruct(catalogAttrMap)
+			require.NoError(err)
+			setAttrs, err := structpb.NewStruct(map[string]any{
+				host.ConstDescribeInstancesFilters: []any{fmt.Sprintf("instance-id=%s", instanceID)},
+			})
+			require.NoError(err)
+
+			reqPersistedSecrets, err := structpb.NewStruct(map[string]any{
+				credential.ConstAccessKeyId:          accessKeyId,
+				credential.ConstSecretAccessKey:      secretAccessKey,
+				credential.ConstCredsLastRotatedTime: (time.Time{}).Format(time.RFC3339Nano),
+			})
+			require.NoError(err)
+			request := &pb.ListHostsRequest{
+				Catalog: &hostcatalogs.HostCatalog{
+					Attrs: &hostcatalogs.HostCatalog_Attributes{
+						Attributes: catalogAttrs,
+					},
+				},
+				Sets: []*hostsets.HostSet{{
+					Id:    "hostset-0",
+					Attrs: &hostsets.HostSet_Attributes{Attributes: setAttrs},
+				}},
+				Persisted: &pb.HostCatalogPersisted{
+					Secrets: reqPersistedSecrets,
+				},
+			}
+
+			response, err := p.ListHosts(ctx, request)
+			require.NoError(err)
+			require.Len(response.GetHosts(), 1)
+			hostResp := response.GetHosts()[0]
+
+			require.Equal(instanceID, hostResp.ExternalId)
+			require.ElementsMatch(hostResp.IpAddresses, tc.expectedIPs)
+		})
+	}
 }

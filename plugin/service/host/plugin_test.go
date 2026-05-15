@@ -638,7 +638,8 @@ func TestPluginOnCreateCatalogErr(t *testing.T) {
 						Fields: map[string]*structpb.Value{
 							credential.ConstAccessKeyId:     structpb.NewStringValue("AKIA_foobar"),
 							credential.ConstSecretAccessKey: structpb.NewStringValue("bazqux"),
-						}},
+						},
+					},
 					Attrs: &hostcatalogs.HostCatalog_Attributes{
 						Attributes: &structpb.Struct{
 							Fields: map[string]*structpb.Value{
@@ -664,7 +665,8 @@ func TestPluginOnCreateCatalogErr(t *testing.T) {
 						Fields: map[string]*structpb.Value{
 							credential.ConstAccessKeyId:     structpb.NewStringValue("AKIA_foobar"),
 							credential.ConstSecretAccessKey: structpb.NewStringValue("bazqux"),
-						}},
+						},
+					},
 					Attrs: &hostcatalogs.HostCatalog_Attributes{
 						Attributes: &structpb.Struct{
 							Fields: map[string]*structpb.Value{
@@ -694,7 +696,8 @@ func TestPluginOnCreateCatalogErr(t *testing.T) {
 						Fields: map[string]*structpb.Value{
 							credential.ConstAccessKeyId:     structpb.NewStringValue("AKIA_foobar"),
 							credential.ConstSecretAccessKey: structpb.NewStringValue("bazqux"),
-						}},
+						},
+					},
 					Attrs: &hostcatalogs.HostCatalog_Attributes{
 						Attributes: &structpb.Struct{
 							Fields: map[string]*structpb.Value{
@@ -721,7 +724,8 @@ func TestPluginOnCreateCatalogErr(t *testing.T) {
 						Fields: map[string]*structpb.Value{
 							credential.ConstAccessKeyId:     structpb.NewStringValue("AKIA_foobar"),
 							credential.ConstSecretAccessKey: structpb.NewStringValue("bazqux"),
-						}},
+						},
+					},
 					Attrs: &hostcatalogs.HostCatalog_Attributes{
 						Attributes: &structpb.Struct{
 							Fields: map[string]*structpb.Value{
@@ -2383,15 +2387,25 @@ func TestBuildDescribeInstancesInput(t *testing.T) {
 
 func TestAwsInstanceToHost(t *testing.T) {
 	cases := []struct {
-		name        string
-		instance    types.Instance
-		expected    *pb.ListHostsResponseHost
-		expectedErr string
+		name         string
+		instance     types.Instance
+		catalogAttrs *CatalogAttributes
+		expected     *pb.ListHostsResponseHost
+		expectedErr  string
 	}{
 		{
-			name:        "missing instance id",
-			instance:    types.Instance{},
-			expectedErr: "response integrity error: missing instance id",
+			name:         "missing instance id",
+			instance:     types.Instance{},
+			catalogAttrs: &CatalogAttributes{},
+			expectedErr:  "response integrity error: missing instance id",
+		},
+		{
+			name: "missing catalog attributes",
+			instance: types.Instance{
+				InstanceId: aws.String("foobar"),
+			},
+			catalogAttrs: nil,
+			expectedErr:  "response integrity error: missing catalog attributes",
 		},
 		{
 			name: "good, single IP w/public addr",
@@ -2418,6 +2432,7 @@ func TestAwsInstanceToHost(t *testing.T) {
 					},
 				},
 			},
+			catalogAttrs: &CatalogAttributes{},
 			expected: &pb.ListHostsResponseHost{
 				ExternalId:  "foobar",
 				IpAddresses: []string{"10.0.0.1", "1.1.1.1"},
@@ -2443,6 +2458,7 @@ func TestAwsInstanceToHost(t *testing.T) {
 					},
 				},
 			},
+			catalogAttrs: &CatalogAttributes{},
 			expected: &pb.ListHostsResponseHost{
 				ExternalId:  "foobar",
 				IpAddresses: []string{"10.0.0.1"},
@@ -2484,6 +2500,7 @@ func TestAwsInstanceToHost(t *testing.T) {
 					},
 				},
 			},
+			catalogAttrs: &CatalogAttributes{},
 			expected: &pb.ListHostsResponseHost{
 				ExternalId:  "foobar",
 				IpAddresses: []string{"10.0.0.1", "1.1.1.1", "10.0.0.2"},
@@ -2529,6 +2546,7 @@ func TestAwsInstanceToHost(t *testing.T) {
 					},
 				},
 			},
+			catalogAttrs: &CatalogAttributes{},
 			expected: &pb.ListHostsResponseHost{
 				ExternalId:  "foobar",
 				IpAddresses: []string{"10.0.0.1", "1.1.1.1", "10.0.0.2", "1.1.1.2"},
@@ -2564,6 +2582,7 @@ func TestAwsInstanceToHost(t *testing.T) {
 					},
 				},
 			},
+			catalogAttrs: &CatalogAttributes{},
 			expected: &pb.ListHostsResponseHost{
 				ExternalId:  "foobar",
 				IpAddresses: []string{"10.0.0.1", "1.1.1.1", "10.0.0.2"},
@@ -2578,6 +2597,7 @@ func TestAwsInstanceToHost(t *testing.T) {
 				PrivateDnsName:   aws.String("test.example.internal"),
 				PublicIpAddress:  aws.String("1.1.1.1"),
 				PublicDnsName:    aws.String("test.example.com"),
+				Ipv6Address:      aws.String("instance::ipv6::address"),
 				NetworkInterfaces: []types.InstanceNetworkInterface{
 					{
 						PrivateIpAddress: aws.String("10.0.0.1"),
@@ -2596,9 +2616,63 @@ func TestAwsInstanceToHost(t *testing.T) {
 					},
 				},
 			},
+			catalogAttrs: &CatalogAttributes{},
 			expected: &pb.ListHostsResponseHost{
 				ExternalId:  "foobar",
-				IpAddresses: []string{"10.0.0.1", "1.1.1.1", "some::fake::address"},
+				IpAddresses: []string{"10.0.0.1", "1.1.1.1", "instance::ipv6::address", "some::fake::address"},
+				DnsNames:    []string{"test.example.internal", "test.example.com"},
+			},
+		},
+		{
+			name: "good, instance addresses only excludes interface secondary addresses",
+			instance: types.Instance{
+				InstanceId:       aws.String("foobar"),
+				PrivateIpAddress: aws.String("10.0.0.1"),
+				PrivateDnsName:   aws.String("test.example.internal"),
+				PublicIpAddress:  aws.String("1.1.1.1"),
+				PublicDnsName:    aws.String("test.example.com"),
+				Ipv6Address:      aws.String("instance::ipv6::address"),
+				NetworkInterfaces: []types.InstanceNetworkInterface{
+					{
+						PrivateIpAddress: aws.String("10.0.0.1"),
+						PrivateDnsName:   aws.String("test.example.internal"),
+						PrivateIpAddresses: []types.InstancePrivateIpAddress{
+							{
+								Association: &types.InstanceNetworkInterfaceAssociation{
+									PublicIp:      aws.String("1.1.1.1"),
+									PublicDnsName: aws.String("test.example.com"),
+								},
+								PrivateIpAddress: aws.String("10.0.0.1"),
+								PrivateDnsName:   aws.String("test.example.internal"),
+							},
+							{
+								PrivateIpAddress: aws.String("10.0.0.2"),
+								PrivateDnsName:   aws.String("test2.example.internal"),
+							},
+						},
+						Ipv6Addresses: []types.InstanceIpv6Address{{Ipv6Address: aws.String("iface::ipv6::address")}},
+					},
+					{
+						PrivateIpAddress: aws.String("10.0.1.1"),
+						PrivateDnsName:   aws.String("secondary.example.internal"),
+						PrivateIpAddresses: []types.InstancePrivateIpAddress{
+							{
+								Association: &types.InstanceNetworkInterfaceAssociation{
+									PublicIp:      aws.String("2.2.2.2"),
+									PublicDnsName: aws.String("secondary.example.com"),
+								},
+								PrivateIpAddress: aws.String("10.0.1.1"),
+								PrivateDnsName:   aws.String("secondary.example.internal"),
+							},
+						},
+						Ipv6Addresses: []types.InstanceIpv6Address{{Ipv6Address: aws.String("secondary::ipv6::address")}},
+					},
+				},
+			},
+			catalogAttrs: &CatalogAttributes{InstanceAddressesOnly: true},
+			expected: &pb.ListHostsResponseHost{
+				ExternalId:  "foobar",
+				IpAddresses: []string{"10.0.0.1", "1.1.1.1", "instance::ipv6::address"},
 				DnsNames:    []string{"test.example.internal", "test.example.com"},
 			},
 		},
@@ -2632,6 +2706,7 @@ func TestAwsInstanceToHost(t *testing.T) {
 					},
 				},
 			},
+			catalogAttrs: &CatalogAttributes{},
 			expected: &pb.ListHostsResponseHost{
 				ExternalId:   "foobar",
 				ExternalName: "test-instance-actual-name",
@@ -2669,6 +2744,7 @@ func TestAwsInstanceToHost(t *testing.T) {
 					},
 				},
 			},
+			catalogAttrs: &CatalogAttributes{},
 			expected: &pb.ListHostsResponseHost{
 				ExternalId:   "foobar",
 				ExternalName: "test-instance-actual-name",
@@ -2682,7 +2758,7 @@ func TestAwsInstanceToHost(t *testing.T) {
 		tc := tc
 		t.Run(tc.name, func(t *testing.T) {
 			require := require.New(t)
-			actual, err := awsInstanceToHost(tc.instance)
+			actual, err := awsInstanceToHost(tc.instance, tc.catalogAttrs)
 			if tc.expectedErr != "" {
 				require.EqualError(err, tc.expectedErr)
 				return
