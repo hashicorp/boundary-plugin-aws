@@ -550,7 +550,7 @@ func (p *HostPlugin) ListHosts(ctx context.Context, req *pb.ListHostsRequest) (*
 		// set of hosts afterwards (possibly removing duplicates).
 		for _, reservation := range output.Reservations {
 			for _, instance := range reservation.Instances {
-				host, err := awsInstanceToHost(instance)
+				host, err := awsInstanceToHost(instance, catalogAttributes)
 				if err != nil {
 					return nil, errors.BadRequestStatusf("error processing host results for host set id %q: %s", query.Id, err)
 				}
@@ -648,9 +648,12 @@ func buildDescribeInstancesInput(attrs *SetAttributes, dryRun bool) (*ec2.Descri
 // awsInstanceToHost processes data from an ec2.Instance and returns
 // a ListHostsResponseHost with the ID and network addresses
 // populated.
-func awsInstanceToHost(instance types.Instance) (*pb.ListHostsResponseHost, error) {
+func awsInstanceToHost(instance types.Instance, catalogAttributes *CatalogAttributes) (*pb.ListHostsResponseHost, error) {
 	if aws.ToString(instance.InstanceId) == "" {
 		return nil, fmt.Errorf("response integrity error: missing instance id")
+	}
+	if catalogAttributes == nil {
+		return nil, fmt.Errorf("response integrity error: missing catalog attributes")
 	}
 
 	result := new(pb.ListHostsResponseHost)
@@ -666,10 +669,16 @@ func awsInstanceToHost(instance types.Instance) (*pb.ListHostsResponseHost, erro
 		}
 	}
 
-	result.IpAddresses = appendDistinct(result.IpAddresses, instance.PrivateIpAddress, instance.PublicIpAddress)
+	// First let's get the instance's Private IPv4/DNS, Public IPv4/DNS, and IPv6 addresses
+	result.IpAddresses = appendDistinct(result.IpAddresses, instance.PrivateIpAddress, instance.PublicIpAddress, instance.Ipv6Address)
 	result.DnsNames = appendDistinct(result.DnsNames, instance.PrivateDnsName, instance.PublicDnsName)
 
-	// Now go through all of the interfaces and log the IP address of
+	if catalogAttributes.InstanceAddressesOnly {
+		// return early as we already have the instance addresses
+		return result, nil
+	}
+
+	// Now go through all of the interfaces and sync the IP address of
 	// every interface.
 	for _, iface := range instance.NetworkInterfaces {
 		// Populate default IP addresses/DNS name similar to how we do

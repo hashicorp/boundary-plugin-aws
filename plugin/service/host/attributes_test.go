@@ -60,6 +60,22 @@ func TestGetCatalogAttributes(t *testing.T) {
 			},
 		},
 		{
+			name: "withInstanceAddressesOnly",
+			in: &structpb.Struct{
+				Fields: map[string]*structpb.Value{
+					"region":                  structpb.NewStringValue("us-west-2"),
+					"instance_addresses_only": structpb.NewBoolValue(true),
+				},
+			},
+			expected: &CatalogAttributes{
+				CredentialAttributes: &credential.CredentialAttributes{
+					Region:                    "us-west-2",
+					DisableCredentialRotation: false,
+				},
+				InstanceAddressesOnly: true,
+			},
+		},
+		{
 			name: "default",
 			in: &structpb.Struct{
 				Fields: map[string]*structpb.Value{

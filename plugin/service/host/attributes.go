@@ -22,6 +22,11 @@ type CatalogAttributes struct {
 
 	// DualStack is used for configuring how the aws client will resolve requests.
 	DualStack bool
+
+	// InstanceAddressesOnly specifies whether only the instance addresses (private IPv4/DNS,
+	// public IPv4/DNS, and IPv6) are synced, or all addresses, including those from
+	// secondary ENIs, are synced.
+	InstanceAddressesOnly bool
 }
 
 func getCatalogAttributes(in *structpb.Struct) (*CatalogAttributes, error) {
@@ -39,6 +44,12 @@ func getCatalogAttributes(in *structpb.Struct) (*CatalogAttributes, error) {
 		badFields[fmt.Sprintf("attributes.%s", ConstAwsDualStack)] = err.Error()
 	}
 	delete(unknownFields, ConstAwsDualStack)
+
+	instanceAddressesOnly, err := values.GetBoolValue(in, ConstInstanceAddressesOnly, false)
+	if err != nil {
+		badFields[fmt.Sprintf("attributes.%s", ConstInstanceAddressesOnly)] = err.Error()
+	}
+	delete(unknownFields, ConstInstanceAddressesOnly)
 
 	for s := range unknownFields {
 		switch s {
@@ -65,8 +76,9 @@ func getCatalogAttributes(in *structpb.Struct) (*CatalogAttributes, error) {
 	}
 
 	return &CatalogAttributes{
-		CredentialAttributes: credAttributes,
-		DualStack:            dualStack,
+		CredentialAttributes:  credAttributes,
+		DualStack:             dualStack,
+		InstanceAddressesOnly: instanceAddressesOnly,
 	}, nil
 }
 
