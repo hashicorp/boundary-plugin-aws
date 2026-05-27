@@ -33,7 +33,7 @@ resource "aws_subnet" "subnet" {
   assign_ipv6_address_on_creation = true
 }
 
-# Need to add a gateway for public IP addr assignments 
+# Need to add a gateway for public IP addr assignments
 resource "aws_internet_gateway" "igw" {
   vpc_id = aws_vpc.vpc.id
 }
@@ -178,4 +178,3 @@ output "multi_address_secondary_addresses" {
     secondary_eni_ipv6       = tolist(aws_network_interface.multi_address_secondary_eni.ipv6_addresses)[0]
   }
 }
-

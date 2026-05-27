@@ -669,7 +669,7 @@ func awsInstanceToHost(instance types.Instance, catalogAttributes *CatalogAttrib
 		}
 	}
 
-	// First lets get the instance Private IPv4/DNS, Public IPv4/DNS, and IPv6 address
+	// First let's get the instance's Private IPv4/DNS, Public IPv4/DNS, and IPv6 addresses
 	result.IpAddresses = appendDistinct(result.IpAddresses, instance.PrivateIpAddress, instance.PublicIpAddress, instance.Ipv6Address)
 	result.DnsNames = appendDistinct(result.DnsNames, instance.PrivateDnsName, instance.PublicDnsName)
 

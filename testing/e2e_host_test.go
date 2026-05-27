@@ -166,7 +166,7 @@ func TestHostPlugin(t *testing.T) {
 		// TODO: add OnDeleteSet if it needs to be implemented
 	}
 
-	// finally lets test instance_address_only catalog attribute correctly syncs only instance addresses
+	// finally lets test instance_addresses_only catalog attribute correctly syncs only instance addresses
 	testInstanceAddressesOnlyListHosts(ctx, t, p, tf, region, keyid, secret)
 }
 
@@ -466,12 +466,13 @@ func testInstanceAddressesOnlyListHosts(ctx context.Context, t *testing.T, p *ho
 	secondaryAddresses, err := tf.GetOutputMap("multi_address_secondary_addresses")
 	require.NoError(t, err)
 
-	var primary, secondary []string
+	var primary, allAddresses []string
 	for _, addr := range primaryAddresses {
 		primary = append(primary, addr.(string))
 	}
+	allAddresses = append(allAddresses, primary...)
 	for _, addr := range secondaryAddresses {
-		secondary = append(secondary, addr.(string))
+		allAddresses = append(allAddresses, addr.(string))
 	}
 
 	cases := []struct {
@@ -481,7 +482,7 @@ func testInstanceAddressesOnlyListHosts(ctx context.Context, t *testing.T, p *ho
 	}{
 		{
 			name:        "all addresses",
-			expectedIPs: append(primary, secondary...),
+			expectedIPs: allAddresses,
 		},
 		{
 			name:                  "instance addresses only",
