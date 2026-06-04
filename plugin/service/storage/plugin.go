@@ -665,6 +665,23 @@ func (p *StoragePlugin) GetObject(req *pb.GetObjectRequest, stream pb.StoragePlu
 	return nil
 }
 
+const (
+	// multipartThreshold is the file size, in bytes, above which PutObject
+	// uploads an object using a multipart upload instead of a single PutObject
+	// request. 8 MiB matches the AWS CLI and boto3 defaults.
+	multipartThreshold = 8 * 1024 * 1024 // 8 MiB
+
+	// defaultMultipartPartSize is the default size, in bytes, of each part
+	// uploaded during a multipart upload. It is kept equal to
+	// multipartThreshold so a multipart upload always has at least two parts
+	// (S3 requires every part except the last to be at least 5 MiB).
+	defaultMultipartPartSize = 8 * 1024 * 1024 // 8 MiB
+
+	// maxMultipartParts is the maximum number of parts S3 permits for a single
+	// multipart upload.
+	maxMultipartParts = 10000
+)
+
 // PutObject is called when putting objects into an s3 bucket.
 func (p *StoragePlugin) PutObject(ctx context.Context, req *pb.PutObjectRequest) (*pb.PutObjectResponse, error) {
 	if req == nil {
@@ -751,6 +768,32 @@ func (p *StoragePlugin) PutObject(ctx context.Context, req *pb.PutObjectRequest)
 	}
 	objectKey := path.Join(bucket.GetBucketPrefix(), req.GetKey())
 
+	// decodedChecksum is the raw SHA-256 digest of the entire object. Boundary
+	// compares this byte-for-byte against the hash it computed locally before
+	// the upload, so it must always be the whole-object checksum regardless of
+	// whether a single PutObject or a multipart upload is used.
+	decodedChecksum, err := base64.StdEncoding.DecodeString(checksum)
+	if err != nil {
+		return nil, errors.UnknownStatus("failed to decode checksum value")
+	}
+
+	// for larger files, use a multipart upload instead of a single PutObject
+	// request.
+	if info.Size() > multipartThreshold {
+		partSize := int64(defaultMultipartPartSize)
+		// S3 allows at most maxMultipartParts parts per upload, so grow the
+		// part size for very large objects to stay within that limit.
+		if sz := info.Size(); sz/partSize >= maxMultipartParts {
+			partSize = (sz + maxMultipartParts - 1) / maxMultipartParts
+		}
+		if err := p.putObjectMultipart(ctx, req, storageState, bucket.GetBucketName(), objectKey, file, partSize, opts...); err != nil {
+			return nil, err
+		}
+		return &pb.PutObjectResponse{
+			ChecksumSha_256: decodedChecksum,
+		}, nil
+	}
+
 	putCall := func(s3Client S3API) (any, error) {
 		return s3Client.PutObject(ctx, &s3.PutObjectInput{
 			Bucket:            aws.String(bucket.GetBucketName()),
@@ -772,13 +815,124 @@ func (p *StoragePlugin) PutObject(ctx context.Context, req *pb.PutObjectRequest)
 	if checksum != *resp.ChecksumSHA256 {
 		return nil, checksumMistmatchStatus()
 	}
-	decodedChecksum, err := base64.StdEncoding.DecodeString(*resp.ChecksumSHA256)
-	if err != nil {
-		return nil, errors.UnknownStatus("failed to decode checksum value from aws")
-	}
 	return &pb.PutObjectResponse{
 		ChecksumSha_256: decodedChecksum,
 	}, nil
+}
+
+// putObjectMultipart uploads file to the given bucket and key using an S3
+// multipart upload. The file is split into parts of partSize bytes (the final
+// part may be smaller) and each part is uploaded with its own SHA-256 checksum
+// so S3 can verify part integrity on the wire.
+//
+// If any step fails the upload is aborted on a best-effort basis to avoid
+// leaving orphaned parts behind, which would otherwise continue to accrue
+// storage charges.
+func (p *StoragePlugin) putObjectMultipart(
+	ctx context.Context,
+	req *pb.PutObjectRequest,
+	storageState *awsStoragePersistedState,
+	bucketName, objectKey string,
+	file *os.File,
+	partSize int64,
+	opts ...s3Option,
+) error {
+	bucketId := req.GetBucket().GetId()
+
+	createCall := func(s3Client S3API) (any, error) {
+		return s3Client.CreateMultipartUpload(ctx, &s3.CreateMultipartUploadInput{
+			Bucket:            aws.String(bucketName),
+			Key:               aws.String(objectKey),
+			ChecksumAlgorithm: types.ChecksumAlgorithmSha256,
+		})
+	}
+	createResp, err := p.call(ctx, createCall, bucketId, storageState, opts...)
+	if err != nil {
+		return parseS3Error("create multipart upload", err, req).Err()
+	}
+	uploadID := createResp.(*s3.CreateMultipartUploadOutput).UploadId
+
+	// once the upload has been created, any subsequent failure must abort it so
+	// uploaded parts are not orphaned.
+	abort := func() {
+		abortCall := func(s3Client S3API) (any, error) {
+			return s3Client.AbortMultipartUpload(ctx, &s3.AbortMultipartUploadInput{
+				Bucket:   aws.String(bucketName),
+				Key:      aws.String(objectKey),
+				UploadId: uploadID,
+			})
+		}
+		// best effort: the failure that triggered the abort is more useful to
+		// the caller than an error from the abort itself.
+		_, _ = p.call(ctx, abortCall, bucketId, storageState, opts...)
+	}
+
+	var completedParts []types.CompletedPart
+	buf := make([]byte, partSize)
+	var partNumber int32 = 1
+	for {
+		n, readErr := io.ReadFull(file, buf)
+		if readErr == io.EOF {
+			// previous iteration consumed the final bytes of the file
+			break
+		}
+		if readErr != nil && readErr != io.ErrUnexpectedEOF {
+			abort()
+			return errors.UnknownStatusf("failed to read file: %s", readErr)
+		}
+
+		partData := buf[:n]
+		sum := sha256.Sum256(partData)
+		partChecksum := base64.StdEncoding.EncodeToString(sum[:])
+
+		pn := partNumber
+		uploadCall := func(s3Client S3API) (any, error) {
+			return s3Client.UploadPart(ctx, &s3.UploadPartInput{
+				Bucket:            aws.String(bucketName),
+				Key:               aws.String(objectKey),
+				UploadId:          uploadID,
+				PartNumber:        aws.Int32(pn),
+				Body:              bytes.NewReader(partData),
+				ContentLength:     aws.Int64(int64(n)),
+				ChecksumAlgorithm: types.ChecksumAlgorithmSha256,
+				ChecksumSHA256:    aws.String(partChecksum),
+			})
+		}
+		uploadResp, err := p.call(ctx, uploadCall, bucketId, storageState, opts...)
+		if err != nil {
+			abort()
+			return parseS3Error("upload part", err, req).Err()
+		}
+		part := uploadResp.(*s3.UploadPartOutput)
+		completedParts = append(completedParts, types.CompletedPart{
+			ETag:           part.ETag,
+			ChecksumSHA256: part.ChecksumSHA256,
+			PartNumber:     aws.Int32(pn),
+		})
+
+		partNumber++
+		if readErr == io.ErrUnexpectedEOF {
+			// the final, short part
+			break
+		}
+	}
+
+	completeCall := func(s3Client S3API) (any, error) {
+		return s3Client.CompleteMultipartUpload(ctx, &s3.CompleteMultipartUploadInput{
+			Bucket:   aws.String(bucketName),
+			Key:      aws.String(objectKey),
+			UploadId: uploadID,
+			MultipartUpload: &types.CompletedMultipartUpload{
+				Parts: completedParts,
+			},
+		})
+	}
+	if _, err := p.call(ctx, completeCall, bucketId, storageState, opts...); err != nil {
+		abort()
+		return parseS3Error("complete multipart upload", err, req).Err()
+	}
+
+	return nil
 }
 
 // DeleteObjects is used to delete one or many objects from an s3 bucket.

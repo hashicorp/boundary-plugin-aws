@@ -6,6 +6,8 @@ package storage
 import (
 	"bytes"
 	"context"
+	"crypto/sha256"
+	"encoding/base64"
 	"fmt"
 	"io"
 	"testing"
@@ -39,6 +41,23 @@ type testMockS3State struct {
 	PutObjectInputParams *s3.PutObjectInput
 	PutObjectBody        []byte
 
+	CreateMultipartUploadCalled      bool
+	CreateMultipartUploadInputParams *s3.CreateMultipartUploadInput
+
+	UploadPartCalled      bool
+	UploadPartCallCount   int
+	UploadPartInputParams []*s3.UploadPartInput
+	// UploadPartBody is the concatenation, in part-number order, of every
+	// part body received by UploadPart. It can be compared against the full
+	// object that was expected to be uploaded.
+	UploadPartBody []byte
+
+	CompleteMultipartUploadCalled      bool
+	CompleteMultipartUploadInputParams *s3.CompleteMultipartUploadInput
+
+	AbortMultipartUploadCalled      bool
+	AbortMultipartUploadInputParams *s3.AbortMultipartUploadInput
+
 	HeadObjectCalled      bool
 	HeadObjectInputParams *s3.HeadObjectInput
 
@@ -57,6 +76,16 @@ func (s *testMockS3State) Reset() {
 	s.PutObjectCalled = false
 	s.PutObjectInputParams = nil
 	s.PutObjectBody = nil
+	s.CreateMultipartUploadCalled = false
+	s.CreateMultipartUploadInputParams = nil
+	s.UploadPartCalled = false
+	s.UploadPartCallCount = 0
+	s.UploadPartInputParams = nil
+	s.UploadPartBody = nil
+	s.CompleteMultipartUploadCalled = false
+	s.CompleteMultipartUploadInputParams = nil
+	s.AbortMultipartUploadCalled = false
+	s.AbortMultipartUploadInputParams = nil
 	s.HeadObjectCalled = false
 	s.HeadObjectInputParams = nil
 	s.ListObjectsV2Called = false
@@ -80,6 +109,19 @@ type testMockS3 struct {
 	// mocked responses for putObject
 	PutObjectOutput *s3.PutObjectOutput
 	PutObjectErr    error
+
+	// mocked responses for the multipart upload calls
+	CreateMultipartUploadOutput *s3.CreateMultipartUploadOutput
+	CreateMultipartUploadErr    error
+	UploadPartOutput            *s3.UploadPartOutput
+	UploadPartErr               error
+	// UploadPartErrOnPart, when greater than zero, causes UploadPart to return
+	// UploadPartErr (or a generic error) only for the matching part number.
+	UploadPartErrOnPart           int32
+	CompleteMultipartUploadOutput *s3.CompleteMultipartUploadOutput
+	CompleteMultipartUploadErr    error
+	AbortMultipartUploadOutput    *s3.AbortMultipartUploadOutput
+	AbortMultipartUploadErr       error
 
 	// mocked responses for headObject
 	HeadObjectOutput *s3.HeadObjectOutput
@@ -110,6 +152,63 @@ func testMockS3WithPutObjectOutput(o *s3.PutObjectOutput) testMockS3Option {
 func testMockS3WithPutObjectError(e error) testMockS3Option {
 	return func(m *testMockS3) error {
 		m.PutObjectErr = e
+		return nil
+	}
+}
+
+func testMockS3WithCreateMultipartUploadOutput(o *s3.CreateMultipartUploadOutput) testMockS3Option {
+	return func(m *testMockS3) error {
+		m.CreateMultipartUploadOutput = o
+		return nil
+	}
+}
+
+func testMockS3WithCreateMultipartUploadError(e error) testMockS3Option {
+	return func(m *testMockS3) error {
+		m.CreateMultipartUploadErr = e
+		return nil
+	}
+}
+
+func testMockS3WithUploadPartOutput(o *s3.UploadPartOutput) testMockS3Option {
+	return func(m *testMockS3) error {
+		m.UploadPartOutput = o
+		return nil
+	}
+}
+
+func testMockS3WithUploadPartError(e error) testMockS3Option {
+	return func(m *testMockS3) error {
+		m.UploadPartErr = e
+		return nil
+	}
+}
+
+func testMockS3WithUploadPartErrorOnPart(partNumber int32, e error) testMockS3Option {
+	return func(m *testMockS3) error {
+		m.UploadPartErr = e
+		m.UploadPartErrOnPart = partNumber
+		return nil
+	}
+}
+
+func testMockS3WithCompleteMultipartUploadOutput(o *s3.CompleteMultipartUploadOutput) testMockS3Option {
+	return func(m *testMockS3) error {
+		m.CompleteMultipartUploadOutput = o
+		return nil
+	}
+}
+
+func testMockS3WithCompleteMultipartUploadError(e error) testMockS3Option {
+	return func(m *testMockS3) error {
+		m.CompleteMultipartUploadErr = e
+		return nil
+	}
+}
+
+func testMockS3WithAbortMultipartUploadError(e error) testMockS3Option {
+	return func(m *testMockS3) error {
+		m.AbortMultipartUploadErr = e
 		return nil
 	}
 }
@@ -253,6 +352,95 @@ func (m *testMockS3) PutObject(ctx context.Context, params *s3.PutObjectInput, o
 	}
 
 	return m.PutObjectOutput, nil
+}
+
+func (m *testMockS3) CreateMultipartUpload(ctx context.Context, params *s3.CreateMultipartUploadInput, optFns ...func(*s3.Options)) (*s3.CreateMultipartUploadOutput, error) {
+	if m.State != nil {
+		m.State.CreateMultipartUploadCalled = true
+		m.State.CreateMultipartUploadInputParams = params
+	}
+
+	if m.CreateMultipartUploadErr != nil {
+		return nil, m.CreateMultipartUploadErr
+	}
+
+	if m.CreateMultipartUploadOutput != nil {
+		return m.CreateMultipartUploadOutput, nil
+	}
+	return &s3.CreateMultipartUploadOutput{
+		UploadId: aws.String("test-upload-id"),
+	}, nil
+}
+
+func (m *testMockS3) UploadPart(ctx context.Context, params *s3.UploadPartInput, optFns ...func(*s3.Options)) (*s3.UploadPartOutput, error) {
+	if m.State != nil {
+		m.State.UploadPartCalled = true
+		m.State.UploadPartCallCount++
+		m.State.UploadPartInputParams = append(m.State.UploadPartInputParams, params)
+	}
+
+	// always drain the body so the part data can be asserted on and so the
+	// reader is not left dangling.
+	var data []byte
+	if params.Body != nil {
+		var err error
+		data, err = io.ReadAll(params.Body)
+		if err != nil {
+			return nil, err
+		}
+		if m.State != nil {
+			m.State.UploadPartBody = append(m.State.UploadPartBody, data...)
+		}
+	}
+
+	if m.UploadPartErr != nil {
+		if m.UploadPartErrOnPart == 0 || (params.PartNumber != nil && *params.PartNumber == m.UploadPartErrOnPart) {
+			return nil, m.UploadPartErr
+		}
+	}
+
+	if m.UploadPartOutput != nil {
+		return m.UploadPartOutput, nil
+	}
+	// echo the supplied part checksum so CompleteMultipartUpload can be built
+	// the way the real service would allow.
+	sum := sha256.Sum256(data)
+	return &s3.UploadPartOutput{
+		ETag:           aws.String(fmt.Sprintf("etag-%d", aws.ToInt32(params.PartNumber))),
+		ChecksumSHA256: aws.String(base64.StdEncoding.EncodeToString(sum[:])),
+	}, nil
+}
+
+func (m *testMockS3) CompleteMultipartUpload(ctx context.Context, params *s3.CompleteMultipartUploadInput, optFns ...func(*s3.Options)) (*s3.CompleteMultipartUploadOutput, error) {
+	if m.State != nil {
+		m.State.CompleteMultipartUploadCalled = true
+		m.State.CompleteMultipartUploadInputParams = params
+	}
+
+	if m.CompleteMultipartUploadErr != nil {
+		return nil, m.CompleteMultipartUploadErr
+	}
+
+	if m.CompleteMultipartUploadOutput != nil {
+		return m.CompleteMultipartUploadOutput, nil
+	}
+	return &s3.CompleteMultipartUploadOutput{}, nil
+}
+
+func (m *testMockS3) AbortMultipartUpload(ctx context.Context, params *s3.AbortMultipartUploadInput, optFns ...func(*s3.Options)) (*s3.AbortMultipartUploadOutput, error) {
+	if m.State != nil {
+		m.State.AbortMultipartUploadCalled = true
+		m.State.AbortMultipartUploadInputParams = params
+	}
+
+	if m.AbortMultipartUploadErr != nil {
+		return nil, m.AbortMultipartUploadErr
+	}
+
+	if m.AbortMultipartUploadOutput != nil {
+		return m.AbortMultipartUploadOutput, nil
+	}
+	return &s3.AbortMultipartUploadOutput{}, nil
 }
 
 func (m *testMockS3) ListObjectsV2(ctx context.Context, params *s3.ListObjectsV2Input, optFns ...func(*s3.Options)) (*s3.ListObjectsV2Output, error) {
