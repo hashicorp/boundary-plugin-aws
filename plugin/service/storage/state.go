@@ -7,9 +7,13 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"net/http"
 	"net/url"
+	"time"
 
 	"github.com/aws/aws-sdk-go-v2/aws"
+	"github.com/aws/aws-sdk-go-v2/aws/retry"
+	awshttp "github.com/aws/aws-sdk-go-v2/aws/transport/http"
 	"github.com/aws/aws-sdk-go-v2/service/s3"
 	smithyEndpoints "github.com/aws/smithy-go/endpoints"
 	"github.com/hashicorp/boundary-plugin-aws/internal/credential"
@@ -118,7 +122,10 @@ func (s *awsStoragePersistedState) s3Client(ctx context.Context, opt ...s3Option
 	if err != nil {
 		return nil, fmt.Errorf("failed to retrieve credentials: %v\n", err)
 	}
-
+	err = newTransport(awsCfg)
+	if err != nil {
+		return nil, fmt.Errorf("failed to configure new http transport: %v", err)
+	}
 	c := s3.NewFromConfig(*awsCfg, s3Opts...)
 	return &s3Client{Client: c, creds: creds}, nil
 }
@@ -201,4 +208,31 @@ func (e *endpointResolver) ResolveEndpoint(ctx context.Context, params s3.Endpoi
 		URI: *uri,
 	}
 	return
+}
+
+// newTransport returns an http Transport object. The http transport object utilizes the
+// default transport created by minio. The following transport fields are updated to provide
+// more reliable connectivity when handling larger objects:
+// MaxResponseHeaderBytes is set to 1MiB to prevent header reads from stalling.
+// WriteBufferSize is set to 1MiB, matching the default buffer size used in Boundary storage.
+// ReadBufferSize is set to 1MiB, matching the default buffer size used in Boundary storage.
+// ForceAttemptHTTP2 is set to true, supporting more resilient multiplexing and avoids HOL blocking on retries.
+// IdleConnTimeout is set to 2 minutes.
+func newTransport(cfg *aws.Config) error {
+	if cfg == nil {
+		return fmt.Errorf("missing aws configuration")
+	}
+	cfg.HTTPClient = awshttp.NewBuildableClient().WithTransportOptions(func(transport *http.Transport) {
+		transport.MaxResponseHeaderBytes = 1 << 20  // 1 MiB prevents header read from stalling
+		transport.WriteBufferSize = 1 << 20         // 1 MiB write buffer (default is 4 KiB)
+		transport.ReadBufferSize = 1 << 20          // 1 MiB read buffer (default is 4 KiB)
+		transport.ForceAttemptHTTP2 = true          // enables HTTP/2 where supported more resilient multiplexing, avoids HOL blocking on retries
+		transport.IdleConnTimeout = 2 * time.Minute // double the idle connection timeout, default is 1 minute
+	})
+	cfg.Retryer = func() aws.Retryer {
+		return retry.NewStandard(func(o *retry.StandardOptions) {
+			o.MaxAttempts = 20
+		})
+	}
+	return nil
 }

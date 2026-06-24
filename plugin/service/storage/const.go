@@ -11,5 +11,5 @@ const (
 	ConstAwsDualStack = "dual_stack"
 
 	// defaultStreamChunkSize is the recommened chunk size for sending data through a stream
-	defaultStreamChunkSize = 65536 // 64 KiB
+	defaultStreamChunkSize = 1 << 20 // 1 MiB
 )
