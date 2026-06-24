@@ -850,7 +850,7 @@ func (p *StoragePlugin) putObjectMultipart(
 	if err != nil {
 		return parseS3Error("create multipart upload", err, req).Err()
 	}
-	uploadID := createResp.(*s3.CreateMultipartUploadOutput).UploadId
+	uploadId := createResp.(*s3.CreateMultipartUploadOutput).UploadId
 
 	// once the upload has been created, any subsequent failure must abort it so
 	// uploaded parts are not orphaned.
