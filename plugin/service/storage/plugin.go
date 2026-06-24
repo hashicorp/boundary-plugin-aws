@@ -859,7 +859,7 @@ func (p *StoragePlugin) putObjectMultipart(
 			return s3Client.AbortMultipartUpload(ctx, &s3.AbortMultipartUploadInput{
 				Bucket:   aws.String(bucketName),
 				Key:      aws.String(objectKey),
-				UploadId: uploadID,
+				UploadId: uploadId,
 			})
 		}
 		// best effort: the failure that triggered the abort is more useful to
@@ -890,7 +890,7 @@ func (p *StoragePlugin) putObjectMultipart(
 			return s3Client.UploadPart(ctx, &s3.UploadPartInput{
 				Bucket:            aws.String(bucketName),
 				Key:               aws.String(objectKey),
-				UploadId:          uploadID,
+				UploadId:          uploadId,
 				PartNumber:        aws.Int32(pn),
 				Body:              bytes.NewReader(partData),
 				ContentLength:     aws.Int64(int64(n)),
@@ -921,7 +921,7 @@ func (p *StoragePlugin) putObjectMultipart(
 		return s3Client.CompleteMultipartUpload(ctx, &s3.CompleteMultipartUploadInput{
 			Bucket:   aws.String(bucketName),
 			Key:      aws.String(objectKey),
-			UploadId: uploadID,
+			UploadId: uploadId,
 			MultipartUpload: &types.CompletedMultipartUpload{
 				Parts: completedParts,
 			},
