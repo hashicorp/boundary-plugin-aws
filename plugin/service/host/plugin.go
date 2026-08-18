@@ -34,15 +34,15 @@ type HostPlugin struct {
 
 type hostSetQuery struct {
 	Id          string
-	roleArn     string
+	RoleArn     string
 	Input       *ec2.DescribeInstancesInput
 	Output      *ec2.DescribeInstancesOutput
 	OutputHosts []*pb.ListHostsResponseHost
 }
 
 type describeInstancesResponse struct {
-	hosts  []hostSetQuery
-	errors []error // TODO: change to []*pb.HostPluginIssue
+	Hosts  []hostSetQuery
+	Errors []error // TODO: change to []*pb.HostPluginIssue
 }
 
 // Ensure that we are implementing HostPluginServiceServer
