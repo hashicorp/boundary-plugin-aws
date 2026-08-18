@@ -32,6 +32,19 @@ type HostPlugin struct {
 	testCatalogStateOpts []awsCatalogPersistedStateOption
 }
 
+type hostSetQuery struct {
+	Id          string
+	roleArn     string
+	Input       *ec2.DescribeInstancesInput
+	Output      *ec2.DescribeInstancesOutput
+	OutputHosts []*pb.ListHostsResponseHost
+}
+
+type describeInstancesResponse struct {
+	hosts  []hostSetQuery
+	errors []error // TODO: change to []*pb.HostPluginIssue
+}
+
 // Ensure that we are implementing HostPluginServiceServer
 var _ pb.HostPluginServiceServer = (*HostPlugin)(nil)
 
@@ -495,13 +508,6 @@ func (p *HostPlugin) ListHosts(ctx context.Context, req *pb.ListHostsRequest) (*
 	}
 
 	// Build all the queries in advance.
-	type hostSetQuery struct {
-		Id          string
-		Input       *ec2.DescribeInstancesInput
-		Output      *ec2.DescribeInstancesOutput
-		OutputHosts []*pb.ListHostsResponseHost
-	}
-
 	queries := make([]hostSetQuery, len(sets))
 	for i, set := range sets {
 		// Validate Id since we use it in output
