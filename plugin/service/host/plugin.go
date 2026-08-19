@@ -42,7 +42,7 @@ type hostSetQuery struct {
 
 type describeInstancesResponse struct {
 	Hosts  []hostSetQuery
-	Errors []error // TODO: change to []*pb.HostPluginIssue
+	Errors []*pb.HostPluginIssue
 }
 
 // Ensure that we are implementing HostPluginServiceServer
