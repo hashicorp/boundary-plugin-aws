@@ -594,6 +594,9 @@ func (p *HostPlugin) ListHosts(ctx context.Context, req *pb.ListHostsRequest) (*
 }
 
 func buildFilters(attrs *SetAttributes) ([]types.Filter, error) {
+	if attrs == nil {
+		attrs = &SetAttributes{}
+	}
 	var filters []types.Filter
 	var foundStateFilter bool
 	for _, filterAttr := range attrs.Filters {
