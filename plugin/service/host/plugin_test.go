@@ -30,6 +30,38 @@ import (
 	"google.golang.org/protobuf/testing/protocmp"
 	"google.golang.org/protobuf/types/known/structpb"
 )
+// testRoleARN is a syntactically valid ARN used for role_arn test cases.
+// All STS calls against it are handled by injected mocks — no real AWS
+// account is contacted.
+const testRoleARN = "arn:aws:iam::123456789012:role/BoundaryTestRole"
+
+// validAssumeRoleOutput returns a mock AssumeRoleOutput with synthetic
+// temporary credentials for use with WithSTSAPIFunc.
+func validAssumeRoleOutput() *sts.AssumeRoleOutput {
+	return &sts.AssumeRoleOutput{
+		Credentials: &stsTypes.Credentials{
+			AccessKeyId:     aws.String("ASIAmockassumedkey"),
+			SecretAccessKey: aws.String("mockassumedsecret"),
+			SessionToken:    aws.String("mockassumedsessiontoken"),
+			Expiration:      aws.Time(time.Now().Add(time.Hour)),
+		},
+	}
+}
+
+// catalogAttrsStruct builds a catalog attributes structpb for the given
+// region. roleArn is written only when non-empty. disableRotation must be
+// set explicitly to avoid implicit rotation behaviour in tests.
+func catalogAttrsStruct(region, roleArn string, disableRotation bool) *structpb.Struct {
+	fields := map[string]*structpb.Value{
+		credential.ConstRegion:                    structpb.NewStringValue(region),
+		credential.ConstDisableCredentialRotation: structpb.NewBoolValue(disableRotation),
+	}
+	if roleArn != "" {
+		fields[credential.ConstRoleArn] = structpb.NewStringValue(roleArn)
+	}
+	return &structpb.Struct{Fields: fields}
+}
+
 
 func TestPluginOnCreateCatalogSuccess(t *testing.T) {
 	tests := []struct {
@@ -140,17 +172,13 @@ func TestPluginOnCreateCatalogSuccess(t *testing.T) {
 			},
 		},
 		{
+			// role_arn set, no static keys. AssumeRole mock succeeds.
+			// Persisted secrets are empty — dynamic credentials are not stored.
 			name: "usingAssumeRole",
 			req: &pb.OnCreateCatalogRequest{
 				Catalog: &hostcatalogs.HostCatalog{
 					Attrs: &hostcatalogs.HostCatalog_Attributes{
-						Attributes: &structpb.Struct{
-							Fields: map[string]*structpb.Value{
-								credential.ConstRegion:                    structpb.NewStringValue("us-east-1"),
-								credential.ConstRoleArn:                   structpb.NewStringValue("arn:0123:test:rolearn"),
-								credential.ConstDisableCredentialRotation: structpb.NewBoolValue(true),
-							},
-						},
+						Attributes: catalogAttrsStruct("us-east-1", testRoleARN, true),
 					},
 				},
 			},
@@ -163,14 +191,7 @@ func TestPluginOnCreateCatalogSuccess(t *testing.T) {
 			credOpts: []credential.AwsCredentialPersistedStateOption{
 				credential.WithStateTestOpts([]awsutil.Option{
 					awsutil.WithSTSAPIFunc(awsutil.NewMockSTS(
-						awsutil.WithAssumeRoleOutput(&sts.AssumeRoleOutput{
-							Credentials: &stsTypes.Credentials{
-								AccessKeyId:     aws.String("ASIAfoobar"),
-								SecretAccessKey: aws.String("secretkeyfoobar"),
-								SessionToken:    aws.String("sessiontokenfoobar"),
-								Expiration:      aws.Time(time.Now().Add(time.Hour)),
-							},
-						}),
+						awsutil.WithAssumeRoleOutput(validAssumeRoleOutput()),
 					)),
 				}),
 			},
@@ -786,6 +807,35 @@ func TestPluginOnCreateCatalogErr(t *testing.T) {
 			// wrapping it in a gRPC FailedPrecondition status like the old
 			// dryRunValidation did. A plain Go error maps to codes.Unknown.
 			expectedErrContains: testDescribeInstancesError,
+			expectedErrCode:     codes.Unknown,
+		},
+		{
+			// BUG FIX: role_arn set, no static keys. AssumeRole mock returns
+			// an error. ValidateCreds now eagerly calls Retrieve() which forces
+			// sts:AssumeRole, so the error surfaces here at creation time.
+			// Previously this succeeded silently via the ambient credential chain.
+			name: "role_arn AssumeRole error — correctly rejected",
+			req: &pb.OnCreateCatalogRequest{
+				Catalog: &hostcatalogs.HostCatalog{
+					Attrs: &hostcatalogs.HostCatalog_Attributes{
+						Attributes: catalogAttrsStruct("us-east-1", testRoleARN, true),
+					},
+				},
+			},
+			credOpts: []credential.AwsCredentialPersistedStateOption{
+				credential.WithStateTestOpts([]awsutil.Option{
+					awsutil.WithSTSAPIFunc(awsutil.NewMockSTS(
+						awsutil.WithAssumeRoleError(errors.New("simulated AssumeRole failure")),
+					)),
+				}),
+			},
+			catalogOpts: []awsCatalogPersistedStateOption{
+				withTestEC2APIFunc(newTestMockEC2(
+					nil,
+					testMockEC2WithDescribeInstancesOutput(&ec2.DescribeInstancesOutput{}),
+				)),
+			},
+			expectedErrContains: "simulated AssumeRole failure",
 			expectedErrCode:     codes.Unknown,
 		},
 	}
