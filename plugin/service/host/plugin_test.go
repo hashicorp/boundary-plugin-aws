@@ -16,6 +16,8 @@ import (
 	"github.com/aws/aws-sdk-go-v2/service/ec2/types"
 	"github.com/aws/aws-sdk-go-v2/service/iam"
 	iamTypes "github.com/aws/aws-sdk-go-v2/service/iam/types"
+	"github.com/aws/aws-sdk-go-v2/service/sts"
+	stsTypes "github.com/aws/aws-sdk-go-v2/service/sts/types"
 	"github.com/google/go-cmp/cmp"
 	"github.com/hashicorp/boundary-plugin-aws/internal/credential"
 	"github.com/hashicorp/boundary/sdk/pbs/controller/api/resources/hostcatalogs"
@@ -157,6 +159,20 @@ func TestPluginOnCreateCatalogSuccess(t *testing.T) {
 					nil,
 					testMockEC2WithDescribeInstancesOutput(&ec2.DescribeInstancesOutput{}),
 				)),
+			},
+			credOpts: []credential.AwsCredentialPersistedStateOption{
+				credential.WithStateTestOpts([]awsutil.Option{
+					awsutil.WithSTSAPIFunc(awsutil.NewMockSTS(
+						awsutil.WithAssumeRoleOutput(&sts.AssumeRoleOutput{
+							Credentials: &stsTypes.Credentials{
+								AccessKeyId:     aws.String("ASIAfoobar"),
+								SecretAccessKey: aws.String("secretkeyfoobar"),
+								SessionToken:    aws.String("sessiontokenfoobar"),
+								Expiration:      aws.Time(time.Now().Add(time.Hour)),
+							},
+						}),
+					)),
+				}),
 			},
 			expRsp: &pb.OnCreateCatalogResponse{Persisted: &pb.HostCatalogPersisted{Secrets: &structpb.Struct{}}},
 		},
@@ -315,6 +331,20 @@ func TestPluginOnUpdateCatalogSuccess(t *testing.T) {
 					testMockEC2WithDescribeInstancesOutput(&ec2.DescribeInstancesOutput{}),
 				)),
 			},
+			credOpts: []credential.AwsCredentialPersistedStateOption{
+				credential.WithStateTestOpts([]awsutil.Option{
+					awsutil.WithSTSAPIFunc(awsutil.NewMockSTS(
+						awsutil.WithAssumeRoleOutput(&sts.AssumeRoleOutput{
+							Credentials: &stsTypes.Credentials{
+								AccessKeyId:     aws.String("ASIAfoobar"),
+								SecretAccessKey: aws.String("secretkeyfoobar"),
+								SessionToken:    aws.String("sessiontokenfoobar"),
+								Expiration:      aws.Time(time.Now().Add(time.Hour)),
+							},
+						}),
+					)),
+				}),
+			},
 			expRsp: &pb.OnUpdateCatalogResponse{
 				Persisted: &pb.HostCatalogPersisted{Secrets: &structpb.Struct{}},
 			},
@@ -421,6 +451,16 @@ func TestPluginOnUpdateCatalogSuccess(t *testing.T) {
 			credOpts: []credential.AwsCredentialPersistedStateOption{
 				credential.WithStateTestOpts([]awsutil.Option{
 					awsutil.WithIAMAPIFunc(awsutil.NewMockIAM()),
+					awsutil.WithSTSAPIFunc(awsutil.NewMockSTS(
+						awsutil.WithAssumeRoleOutput(&sts.AssumeRoleOutput{
+							Credentials: &stsTypes.Credentials{
+								AccessKeyId:     aws.String("ASIAfoobar"),
+								SecretAccessKey: aws.String("secretkeyfoobar"),
+								SessionToken:    aws.String("sessiontokenfoobar"),
+								Expiration:      aws.Time(time.Now().Add(time.Hour)),
+							},
+						}),
+					)),
 				}),
 			},
 			expRsp: &pb.OnUpdateCatalogResponse{
