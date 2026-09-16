@@ -25,6 +25,8 @@ Credential rotation can be turned off by setting the
 This plugin will attempt to assume a role when a `role_arn` is supplied through the
 `attributes` object. More information about assume an AWS role can be found [here](https://docs.aws.amazon.com/STS/latest/APIReference/API_AssumeRole.html). This feature only works when the plugin is running on a self managed Boundary [worker](https://developer.hashicorp.com/boundary/tutorials/hcp-administration/hcp-manage-workers).
 
+To discover hosts across multiple AWS accounts, supply a `target_role_arn` in addition to `role_arn`. The plugin uses the principal credentials to assume the target role via a two-hop `AssumeRole` chain, enabling cross-account host discovery from a single worker. See [Attributes and Secrets](plugin/service/host/README.md#attributes-and-secrets) for the full list of `target_*` attributes.
+
 ### Environment Credentials
 
 This plugin will attempt to retrieve credentials from environment variables. More
