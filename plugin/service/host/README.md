@@ -109,13 +109,23 @@ The following `attributes` are valid on an AWS host catalog resource:
 - `region` (string): The region to configure the host catalog for. All host sets
   in this catalog will be configured for this region.
 - `role_arn` (string): The AWS Role ARN used for `AssumeRole` authentication. If
-  provided, `disable_credential_rotation` must be also set to `true.
-- `role_external_id` (string):  The external id configured for the `AssumeRole`
+  provided, `disable_credential_rotation` must be also set to `true`.
+- `role_external_id` (string): The external ID configured for the principal `AssumeRole`
   provider.
-- `role_session_name` (string): The session name configured for the `AssumeRole`
+- `role_session_name` (string): The session name configured for the principal `AssumeRole`
   provider.
-- `role_tags` (object): The key-value pair tags configured for the `AssumeRole`
+- `role_tags` (object): The key-value pair tags configured for the principal `AssumeRole`
   provider.
+- `target_role_arn` (string): The AWS role ARN of the target IAM role to assume for
+  cross-account discovery. Required if any other `target_*` attributes are configured.
+- `target_region` (string): The region where the target hosts reside. Defaults to the
+  principal account `region` if omitted.
+- `target_role_external_id` (string): The external ID configured for the target
+  `AssumeRole` provider.
+- `target_role_session_name` (string): The session name configured for the target
+  `AssumeRole` provider.
+- `target_role_tags` (object): The key-value pair tags configured for the target
+  `AssumeRole` provider.
 
 The following `secrets` are required on an AWS host catalog resource:
 
