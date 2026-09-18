@@ -118,6 +118,170 @@ func TestGetCatalogAttributes(t *testing.T) {
 				},
 			},
 		},
+		{
+			name: "target_region without target_role_arn",
+			in: &structpb.Struct{
+				Fields: map[string]*structpb.Value{
+					"region":        structpb.NewStringValue("us-west-2"),
+					"target_region": structpb.NewStringValue("eu-west-1"),
+				},
+			},
+			expectedErrContains: "attributes.target_role_arn: missing required value \"target_role_arn\"",
+		},
+		{
+			name: "target role field without target_role_arn",
+			in: &structpb.Struct{
+				Fields: map[string]*structpb.Value{
+					"region":                  structpb.NewStringValue("us-west-2"),
+					"target_role_external_id": structpb.NewStringValue("target-ext"),
+				},
+			},
+			expectedErrContains: "attributes.target_role_arn: missing required value \"target_role_arn\"",
+		},
+		{
+			name: "other target role fields without target_role_arn",
+			in: &structpb.Struct{
+				Fields: map[string]*structpb.Value{
+					"region":                   structpb.NewStringValue("us-west-2"),
+					"target_role_session_name": structpb.NewStringValue("target-session"),
+					"target_role_tags": structpb.NewStructValue(&structpb.Struct{
+						Fields: map[string]*structpb.Value{
+							"env": structpb.NewStringValue("target"),
+						},
+					}),
+				},
+			},
+			expectedErrContains: "attributes.target_role_arn: missing required value \"target_role_arn\"",
+		},
+		{
+			name: "empty target_role_arn with target_region",
+			in: &structpb.Struct{
+				Fields: map[string]*structpb.Value{
+					"region":          structpb.NewStringValue("us-west-2"),
+					"target_role_arn": structpb.NewStringValue(""),
+					"target_region":   structpb.NewStringValue("eu-west-1"),
+				},
+			},
+			expectedErrContains: "attributes.target_role_arn: value \"target_role_arn\" cannot be empty",
+		},
+		{
+			name: "target_role_arn without target_region uses region; principal sts fields are not copied",
+			in: &structpb.Struct{
+				Fields: map[string]*structpb.Value{
+					"region":                      structpb.NewStringValue("us-west-2"),
+					"disable_credential_rotation": structpb.NewBoolValue(true),
+					"role_arn":                    structpb.NewStringValue("arn:aws:iam::111111111111:role/Principal"),
+					"role_external_id":            structpb.NewStringValue("principal-ext"),
+					"role_session_name":           structpb.NewStringValue("principal-sess"),
+					"role_tags": structpb.NewStructValue(&structpb.Struct{
+						Fields: map[string]*structpb.Value{
+							"env": structpb.NewStringValue("principal"),
+						},
+					}),
+					"target_role_arn": structpb.NewStringValue("arn:aws:iam::222222222222:role/Target"),
+				},
+			},
+			expected: &CatalogAttributes{
+				CredentialAttributes: &cred.CredentialAttributes{
+					Region:                    "us-west-2",
+					DisableCredentialRotation: true,
+					RoleArn:                   "arn:aws:iam::111111111111:role/Principal",
+					RoleExternalId:            "principal-ext",
+					RoleSessionName:           "principal-sess",
+					RoleTags: map[string]string{
+						"env": "principal",
+					},
+				},
+				TargetAccount: &cred.CredentialAttributes{
+					Region:                    "us-west-2",
+					DisableCredentialRotation: true,
+					RoleArn:                   "arn:aws:iam::222222222222:role/Target",
+				},
+			},
+		},
+		{
+			name: "target attributes are independent of principal",
+			in: &structpb.Struct{
+				Fields: map[string]*structpb.Value{
+					"region":                      structpb.NewStringValue("us-west-2"),
+					"disable_credential_rotation": structpb.NewBoolValue(true),
+					"role_arn":                    structpb.NewStringValue("arn:aws:iam::111111111111:role/Principal"),
+					"role_external_id":            structpb.NewStringValue("principal-ext"),
+					"role_session_name":           structpb.NewStringValue("principal-sess"),
+					"role_tags": structpb.NewStructValue(&structpb.Struct{
+						Fields: map[string]*structpb.Value{
+							"env": structpb.NewStringValue("principal"),
+						},
+					}),
+					"target_role_arn":          structpb.NewStringValue("arn:aws:iam::222222222222:role/Target"),
+					"target_region":            structpb.NewStringValue("eu-west-1"),
+					"target_role_external_id":  structpb.NewStringValue("target-ext"),
+					"target_role_session_name": structpb.NewStringValue("target-sess"),
+					"target_role_tags": structpb.NewStructValue(&structpb.Struct{
+						Fields: map[string]*structpb.Value{
+							"env": structpb.NewStringValue("target"),
+						},
+					}),
+				},
+			},
+			expected: &CatalogAttributes{
+				CredentialAttributes: &cred.CredentialAttributes{
+					Region:                    "us-west-2",
+					DisableCredentialRotation: true,
+					RoleArn:                   "arn:aws:iam::111111111111:role/Principal",
+					RoleExternalId:            "principal-ext",
+					RoleSessionName:           "principal-sess",
+					RoleTags: map[string]string{
+						"env": "principal",
+					},
+				},
+				TargetAccount: &cred.CredentialAttributes{
+					Region:                    "eu-west-1",
+					DisableCredentialRotation: true,
+					RoleArn:                   "arn:aws:iam::222222222222:role/Target",
+					RoleExternalId:            "target-ext",
+					RoleSessionName:           "target-sess",
+					RoleTags: map[string]string{
+						"env": "target",
+					},
+				},
+			},
+		},
+		{
+			name: "catalog dual_stack and instance_addresses_only with target",
+			in: &structpb.Struct{
+				Fields: map[string]*structpb.Value{
+					"region":                  structpb.NewStringValue("us-west-2"),
+					"dual_stack":              structpb.NewBoolValue(true),
+					"instance_addresses_only": structpb.NewBoolValue(true),
+					"target_role_arn":         structpb.NewStringValue("arn:aws:iam::222222222222:role/Target"),
+				},
+			},
+			expected: &CatalogAttributes{
+				CredentialAttributes: &credential.CredentialAttributes{
+					Region:                    "us-west-2",
+					DisableCredentialRotation: false,
+				},
+				TargetAccount: &cred.CredentialAttributes{
+					Region:                    "us-west-2",
+					DisableCredentialRotation: false,
+					RoleArn:                   "arn:aws:iam::222222222222:role/Target",
+				},
+				DualStack:             true,
+				InstanceAddressesOnly: true,
+			},
+		},
+		{
+			name: "unknown field with target_role_arn",
+			in: &structpb.Struct{
+				Fields: map[string]*structpb.Value{
+					"region":          structpb.NewStringValue("us-west-2"),
+					"target_role_arn": structpb.NewStringValue("arn:aws:iam::222222222222:role/Target"),
+					"foo":             structpb.NewBoolValue(true),
+				},
+			},
+			expectedErrContains: "attributes.foo: unrecognized field",
+		},
 	}
 
 	for _, tc := range cases {
