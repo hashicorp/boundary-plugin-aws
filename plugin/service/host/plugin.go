@@ -644,6 +644,10 @@ func buildFilters(attrs *SetAttributes) ([]types.Filter, error) {
 }
 
 func buildDescribeInstancesInput(attrs *SetAttributes, dryRun bool) (*ec2.DescribeInstancesInput, error) {
+	if attrs == nil {
+		attrs = &SetAttributes{}
+	}
+
 	filters, err := buildFilters(attrs)
 	if err != nil {
 		return nil, fmt.Errorf("error building filters: %w", err)

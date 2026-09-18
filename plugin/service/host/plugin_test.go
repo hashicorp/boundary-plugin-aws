@@ -2633,6 +2633,21 @@ func TestBuildDescribeInstancesInput(t *testing.T) {
 			require.Equal(tc.expected, actual)
 		})
 	}
+
+	t.Run("nil attrs, dry run", func(t *testing.T) {
+		require := require.New(t)
+		actual, err := buildDescribeInstancesInput(nil, true)
+		require.NoError(err)
+		require.Equal(&ec2.DescribeInstancesInput{
+			DryRun: aws.Bool(true),
+			Filters: []types.Filter{
+				{
+					Name:   aws.String("instance-state-name"),
+					Values: []string{string(types.InstanceStateNameRunning)},
+				},
+			},
+		}, actual)
+	})
 }
 
 func TestAwsInstanceToHost(t *testing.T) {
