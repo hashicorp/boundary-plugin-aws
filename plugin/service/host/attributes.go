@@ -20,6 +20,9 @@ import (
 type CatalogAttributes struct {
 	*cred.CredentialAttributes
 
+	// TargetAccount optionally holds the credentials used to AssumeRole into a second, affiliated account when provided.
+	TargetAccount *cred.CredentialAttributes
+
 	// DualStack is used for configuring how the aws client will resolve requests.
 	DualStack bool
 
@@ -37,6 +40,14 @@ func getCatalogAttributes(in *structpb.Struct) (*CatalogAttributes, error) {
 	credAttributes, err := cred.GetCredentialAttributes(in)
 	if err != nil {
 		return nil, err
+	}
+
+	var targetCredAttributes *cred.CredentialAttributes
+	if hasTargetAccountAttributes(in) {
+		targetCredAttributes, err = cred.GetTargetCredentialAttributes(in)
+		if err != nil {
+			return nil, err
+		}
 	}
 
 	dualStack, err := values.GetBoolValue(in, ConstAwsDualStack, false)
@@ -66,6 +77,16 @@ func getCatalogAttributes(in *structpb.Struct) (*CatalogAttributes, error) {
 			continue
 		case cred.ConstRoleTags:
 			continue
+		case cred.ConstTargetRegion:
+			continue
+		case cred.ConstTargetRoleArn:
+			continue
+		case cred.ConstTargetRoleExternalId:
+			continue
+		case cred.ConstTargetRoleSessionName:
+			continue
+		case cred.ConstTargetRoleTags:
+			continue
 		default:
 			badFields[fmt.Sprintf("attributes.%s", s)] = "unrecognized field"
 		}
@@ -77,6 +98,7 @@ func getCatalogAttributes(in *structpb.Struct) (*CatalogAttributes, error) {
 
 	return &CatalogAttributes{
 		CredentialAttributes:  credAttributes,
+		TargetAccount:         targetCredAttributes,
 		DualStack:             dualStack,
 		InstanceAddressesOnly: instanceAddressesOnly,
 	}, nil
@@ -120,4 +142,20 @@ func getSetAttributes(in *structpb.Struct) (*SetAttributes, error) {
 	}
 
 	return &setAttrs, nil
+}
+
+func hasTargetAccountAttributes(in *structpb.Struct) bool {
+	fields := in.GetFields()
+
+	_, hasTargetRegion := fields[cred.ConstTargetRegion]
+	_, hasTargetRoleArn := fields[cred.ConstTargetRoleArn]
+	_, hasTargetRoleExternalID := fields[cred.ConstTargetRoleExternalId]
+	_, hasTargetRoleSessionName := fields[cred.ConstTargetRoleSessionName]
+	_, hasTargetRoleTags := fields[cred.ConstTargetRoleTags]
+
+	return hasTargetRegion ||
+		hasTargetRoleArn ||
+		hasTargetRoleExternalID ||
+		hasTargetRoleSessionName ||
+		hasTargetRoleTags
 }
