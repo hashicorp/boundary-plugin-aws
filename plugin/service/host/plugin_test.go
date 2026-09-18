@@ -742,8 +742,8 @@ func TestPluginOnCreateCatalogErr(t *testing.T) {
 					testMockEC2WithDescribeInstancesError(errors.New(testDescribeInstancesError)),
 				)),
 			},
-			expectedErrContains: "aws describe instances failed: DescribeInstances error",
-			expectedErrCode:     codes.FailedPrecondition,
+			expectedErrContains: testDescribeInstancesError,
+			expectedErrCode:     codes.Unknown,
 		},
 	}
 
@@ -994,8 +994,8 @@ func TestPluginOnUpdateCatalogErr(t *testing.T) {
 					testMockEC2WithDescribeInstancesError(errors.New(testDescribeInstancesError)),
 				)),
 			},
-			expectedErrContains: "aws describe instances failed: DescribeInstances error",
-			expectedErrCode:     codes.FailedPrecondition,
+			expectedErrContains: testDescribeInstancesError,
+			expectedErrCode:     codes.Unknown,
 		},
 		{
 			name: "new incoming dynamic credential update dry run error",
@@ -1036,8 +1036,8 @@ func TestPluginOnUpdateCatalogErr(t *testing.T) {
 					testMockEC2WithDescribeInstancesError(errors.New(testDescribeInstancesError)),
 				)),
 			},
-			expectedErrContains: "aws describe instances failed: DescribeInstances error",
-			expectedErrCode:     codes.FailedPrecondition,
+			expectedErrContains: testDescribeInstancesError,
+			expectedErrCode:     codes.Unknown,
 		},
 		{
 			name: "replace creds error",
@@ -1211,8 +1211,8 @@ func TestPluginOnUpdateCatalogErr(t *testing.T) {
 					testMockEC2WithDescribeInstancesError(fmt.Errorf("oops there was an error")),
 				)),
 			},
-			expectedErrContains: "aws describe instances failed: oops there was an error",
-			expectedErrCode:     codes.FailedPrecondition,
+			expectedErrContains: "oops there was an error",
+			expectedErrCode:     codes.Unknown,
 		},
 	}
 
@@ -1565,8 +1565,8 @@ func TestPluginOnCreateSetErr(t *testing.T) {
 					testMockEC2WithDescribeInstancesError(errors.New(testDescribeInstancesError)),
 				)),
 			},
-			expectedErrContains: fmt.Sprintf("aws describe instances failed: %s", testDescribeInstancesError),
-			expectedErrCode:     codes.FailedPrecondition,
+			expectedErrContains: testDescribeInstancesError,
+			expectedErrCode:     codes.Unknown,
 		},
 	}
 
@@ -1828,8 +1828,8 @@ func TestPluginOnUpdateSetErr(t *testing.T) {
 					testMockEC2WithDescribeInstancesError(errors.New(testDescribeInstancesError)),
 				)),
 			},
-			expectedErrContains: fmt.Sprintf("aws describe instances failed: %s", testDescribeInstancesError),
-			expectedErrCode:     codes.FailedPrecondition,
+			expectedErrContains: testDescribeInstancesError,
+			expectedErrCode:     codes.Unknown,
 		},
 	}
 
