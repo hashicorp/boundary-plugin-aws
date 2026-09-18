@@ -5,12 +5,17 @@ package host
 
 import (
 	"context"
+	goerrors "errors"
 	"fmt"
 	"strings"
 
 	"github.com/aws/aws-sdk-go-v2/aws"
+	"github.com/aws/aws-sdk-go-v2/credentials/stscreds"
 	"github.com/aws/aws-sdk-go-v2/service/ec2"
 	"github.com/aws/aws-sdk-go-v2/service/ec2/types"
+	"github.com/aws/aws-sdk-go-v2/service/sts"
+	stsTypes "github.com/aws/aws-sdk-go-v2/service/sts/types"
+	"github.com/aws/smithy-go"
 	"github.com/hashicorp/boundary-plugin-aws/internal/credential"
 	"github.com/hashicorp/boundary-plugin-aws/internal/errors"
 	pb "github.com/hashicorp/boundary/sdk/pbs/plugin"
@@ -31,6 +36,16 @@ type HostPlugin struct {
 	// testCatalogStateOpts are passed in to the stored state to control test behavior
 	testCatalogStateOpts []awsCatalogPersistedStateOption
 }
+
+type hostSetQuery struct {
+	Id          string
+	Input       *ec2.DescribeInstancesInput
+	Output      *ec2.DescribeInstancesOutput
+	OutputHosts []*pb.ListHostsResponseHost
+}
+
+const defaultSessionName = "boundary-default"
+const dryRunOperationErrorCode = "DryRunOperation"
 
 // Ensure that we are implementing HostPluginServiceServer
 var _ pb.HostPluginServiceServer = (*HostPlugin)(nil)
@@ -495,13 +510,6 @@ func (p *HostPlugin) ListHosts(ctx context.Context, req *pb.ListHostsRequest) (*
 	}
 
 	// Build all the queries in advance.
-	type hostSetQuery struct {
-		Id          string
-		Input       *ec2.DescribeInstancesInput
-		Output      *ec2.DescribeInstancesOutput
-		OutputHosts []*pb.ListHostsResponseHost
-	}
-
 	queries := make([]hostSetQuery, len(sets))
 	for i, set := range sets {
 		// Validate Id since we use it in output
@@ -531,20 +539,22 @@ func (p *HostPlugin) ListHosts(ctx context.Context, req *pb.ListHostsRequest) (*
 	if catalogAttributes.DualStack {
 		opts = append(opts, WithDualStack(catalogAttributes.DualStack))
 	}
-	ec2Client, err := catalogState.EC2Client(ctx, opts...)
-	if err != nil {
-		return nil, errors.BadRequestStatusf("error getting EC2 client: %s", err)
-	}
 
 	// Run all queries now and assemble output.
 	var maxLen int
 	for i, query := range queries {
-		output, err := ec2Client.DescribeInstances(ctx, query.Input)
+		output, err := checkHosts(ctx, catalogState, query.Input, opts, catalogAttributes.TargetAccount)
 		if err != nil {
-			return nil, errors.BadRequestStatusf("error running DescribeInstances for host set id %q: %s", query.Id, err)
+			if catalogAttributes.TargetAccount != nil {
+				return nil, errors.BadRequestStatusf("unable to list hosts for host set %q: %s", query.Id, err)
+			}
+			return nil, errors.BadRequestStatusf("error retrieving host results for host set id %q: %s", query.Id, err)
 		}
 
 		queries[i].Output = output
+		if output == nil {
+			continue
+		}
 
 		// Process the output here, we will normalize this into a single
 		// set of hosts afterwards (possibly removing duplicates).
@@ -705,6 +715,117 @@ func awsInstanceToHost(instance types.Instance, catalogAttributes *CatalogAttrib
 
 	// Done
 	return result, nil
+}
+
+func checkHosts(ctx context.Context,
+	principalCatalogState *awsCatalogPersistedState,
+	input *ec2.DescribeInstancesInput,
+	opts []ec2Option,
+	target *credential.CredentialAttributes,
+) (*ec2.DescribeInstancesOutput, error) {
+	if principalCatalogState == nil {
+		return nil, fmt.Errorf("unable to create EC2 client from catalog state")
+	}
+
+	var ec2Client EC2API
+	var err error
+	if target == nil {
+		// use the principal account to execute the DescribeInstances command
+		ec2Client, err = principalCatalogState.EC2Client(ctx, opts...)
+		if err != nil {
+			return nil, err
+		}
+	} else {
+		// use the target account to execute the DescribeInstances command
+		ec2Client, err = ec2ClientForTarget(ctx, principalCatalogState, target, opts)
+		if err != nil {
+			return nil, fmt.Errorf("EC2 client setup failed for target account: %w", err)
+		}
+	}
+
+	output, err := ec2Client.DescribeInstances(ctx, input)
+	if err != nil {
+		var awsErr smithy.APIError
+		ok := goerrors.As(err, &awsErr)
+		if ok && awsErr.ErrorCode() == dryRunOperationErrorCode {
+			// successful DryRun validation, no response necessary, no error thrown
+			return nil, nil
+		}
+
+		if target != nil {
+			return nil, fmt.Errorf("EC2 DescribeInstances failed for target account: %w", err)
+		}
+		return nil, err
+	}
+
+	return output, nil
+}
+
+// ec2ClientForTarget builds an EC2 client to query the target account.
+// The hop is a continuation of the principal session: STS AssumeRole is called
+// as the principal to get to the target, then EC2 uses the resulting temporary credentials.
+// This is not a second worker-level credential chain on the target attributes.
+func ec2ClientForTarget(
+	ctx context.Context,
+	principalCatalogState *awsCatalogPersistedState,
+	target *credential.CredentialAttributes,
+	opts []ec2Option) (EC2API, error) {
+	// Reuse the principal SDK config (HTTP client, retries, logger, and the
+	// principal identity).
+	principalCfg, err := principalCatalogState.GenerateCredentialChain(ctx)
+	if err != nil {
+		return nil, fmt.Errorf("principal AWS configuration could not be loaded: %w", err)
+	}
+	if principalCfg == nil {
+		return nil, fmt.Errorf("nil principal AWS configuration while configuring EC2 client for target account")
+	}
+
+	// STS must run as the principal so the target role's trust policy sees that
+	// identity, not the worker's. Session name, external ID, and tags are
+	// forwarded from attrs when set so the AssumeRole matches the target role's configuration.
+	stsClient := sts.NewFromConfig(*principalCfg)
+	provider := stscreds.NewAssumeRoleProvider(stsClient, target.RoleArn, func(o *stscreds.AssumeRoleOptions) {
+		if target.RoleSessionName != "" {
+			o.RoleSessionName = target.RoleSessionName
+		} else {
+			// STS may reject the AssumeRole request if session name is not provided.
+			o.RoleSessionName = defaultSessionName
+		}
+		if target.RoleExternalId != "" {
+			o.ExternalID = &target.RoleExternalId
+		}
+		for k, v := range target.RoleTags {
+			o.Tags = append(o.Tags, stsTypes.Tag{
+				Key:   aws.String(k),
+				Value: aws.String(v),
+			})
+		}
+	})
+
+	// Same worker SDK environment as the principal; only identity and region change.
+	targetCfg := principalCfg.Copy()
+	targetCfg.Credentials = aws.NewCredentialsCache(provider)
+	if target.Region != "" {
+		targetCfg.Region = target.Region
+	}
+
+	parsed, err := getOpts(opts...)
+	if err != nil {
+		return nil, fmt.Errorf("EC2 client options are invalid: %w", err)
+	}
+	// Dual-stack is the worker's path to AWS endpoints, not per-account. Apply
+	// it on the hopped client the same way EC2Client does for the principal.
+	var ec2Opts []func(*ec2.Options)
+	if parsed.withDualStack {
+		ec2Opts = append(ec2Opts, ec2.WithEndpointResolverV2(&endpointResolver{
+			dualStack: parsed.withDualStack,
+		}))
+	}
+
+	if principalCatalogState.testEC2APIFunc != nil {
+		return principalCatalogState.testEC2APIFunc(targetCfg)
+	}
+	return ec2.NewFromConfig(targetCfg, ec2Opts...), nil
 }
 
 // dryRunValidation performs an AWS DescribeInstances call to verify the state's

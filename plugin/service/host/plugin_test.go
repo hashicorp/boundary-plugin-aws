@@ -1849,6 +1849,162 @@ func TestPluginOnUpdateSetErr(t *testing.T) {
 	}
 }
 
+func testListHostsSet(id, filter string) *hostsets.HostSet {
+	return &hostsets.HostSet{
+		Id: id,
+		Attrs: &hostsets.HostSet_Attributes{
+			Attributes: &structpb.Struct{
+				Fields: map[string]*structpb.Value{
+					ConstDescribeInstancesFilters: structpb.NewListValue(
+						&structpb.ListValue{
+							Values: []*structpb.Value{
+								structpb.NewStringValue(filter),
+							},
+						},
+					),
+				},
+			},
+		},
+	}
+}
+
+func testListHostsPersisted() *pb.HostCatalogPersisted {
+	return &pb.HostCatalogPersisted{
+		Secrets: &structpb.Struct{
+			Fields: map[string]*structpb.Value{
+				credential.ConstAccessKeyId:     structpb.NewStringValue("AKIA_foobar"),
+				credential.ConstSecretAccessKey: structpb.NewStringValue("bazqux"),
+			},
+		},
+	}
+}
+
+func testExpectedDescribeInput(filterKey, filterValue string) *ec2.DescribeInstancesInput {
+	return &ec2.DescribeInstancesInput{
+		DryRun: aws.Bool(false),
+		Filters: []types.Filter{
+			{
+				Name:   aws.String(filterKey),
+				Values: []string{filterValue},
+			},
+			{
+				Name:   aws.String("instance-state-name"),
+				Values: []string{string(types.InstanceStateNameRunning)},
+			},
+		},
+	}
+}
+
+func TestPluginListHosts(t *testing.T) {
+	describeOutput := &ec2.DescribeInstancesOutput{
+		Reservations: []types.Reservation{
+			{
+				Instances: []types.Instance{
+					{
+						InstanceId:       aws.String("i-shared"),
+						PrivateIpAddress: aws.String("10.0.0.1"),
+					},
+				},
+			},
+		},
+	}
+
+	cases := []struct {
+		name             string
+		catalogFields    map[string]*structpb.Value
+		sets             []*hostsets.HostSet
+		expectedRegion   string
+		expectedHosts    []*pb.ListHostsResponseHost
+		expectedInputs   []*ec2.DescribeInstancesInput
+		expectedDescribe int
+	}{
+		{
+			name: "principal account lists hosts",
+			catalogFields: map[string]*structpb.Value{
+				credential.ConstRegion: structpb.NewStringValue("us-west-2"),
+			},
+			sets: []*hostsets.HostSet{
+				testListHostsSet("set-1", "tag-key=foo"),
+			},
+			expectedRegion: "us-west-2",
+			expectedHosts: []*pb.ListHostsResponseHost{
+				{
+					ExternalId: "i-shared",
+					SetIds:     []string{"set-1"},
+				},
+			},
+			expectedInputs: []*ec2.DescribeInstancesInput{
+				testExpectedDescribeInput("tag-key", "foo"),
+			},
+			expectedDescribe: 1,
+		},
+		{
+			name: "target account lists hosts without querying principal",
+			catalogFields: map[string]*structpb.Value{
+				credential.ConstRegion:        structpb.NewStringValue("us-west-2"),
+				credential.ConstTargetRoleArn: structpb.NewStringValue("arn:aws:iam::222222222222:role/Target"),
+				credential.ConstTargetRegion:  structpb.NewStringValue("eu-west-1"),
+			},
+			sets: []*hostsets.HostSet{
+				testListHostsSet("set-1", "tag-key=foo"),
+				testListHostsSet("set-2", "tag-key=bar"),
+			},
+			expectedRegion: "eu-west-1",
+			expectedHosts: []*pb.ListHostsResponseHost{
+				{
+					ExternalId: "i-shared",
+					SetIds:     []string{"set-1", "set-2"},
+				},
+			},
+			expectedInputs: []*ec2.DescribeInstancesInput{
+				testExpectedDescribeInput("tag-key", "foo"),
+				testExpectedDescribeInput("tag-key", "bar"),
+			},
+			expectedDescribe: 2,
+		},
+	}
+
+	for _, tc := range cases {
+		tc := tc
+		t.Run(tc.name, func(t *testing.T) {
+			require := require.New(t)
+			state := &testMockEC2State{}
+			p := &HostPlugin{
+				testCatalogStateOpts: []awsCatalogPersistedStateOption{
+					withTestEC2APIFunc(newTestMockEC2(
+						state,
+						testMockEC2WithDescribeInstancesOutput(describeOutput),
+					)),
+				},
+			}
+
+			resp, err := p.ListHosts(context.Background(), &pb.ListHostsRequest{
+				Catalog: &hostcatalogs.HostCatalog{
+					Attrs: &hostcatalogs.HostCatalog_Attributes{
+						Attributes: &structpb.Struct{Fields: tc.catalogFields},
+					},
+				},
+				Persisted: testListHostsPersisted(),
+				Sets:      tc.sets,
+			})
+			require.NoError(err)
+			require.NotNil(resp)
+			require.Len(resp.GetHosts(), len(tc.expectedHosts))
+			for i, expected := range tc.expectedHosts {
+				require.Equal(expected.ExternalId, resp.Hosts[i].ExternalId)
+				require.Equal(expected.SetIds, resp.Hosts[i].SetIds)
+			}
+
+			require.Equal(tc.expectedDescribe, state.DescribeInstancesCallCount)
+			require.Len(state.ClientRegions, tc.expectedDescribe)
+			for _, region := range state.ClientRegions {
+				require.Equal(tc.expectedRegion, region)
+			}
+			require.Equal(tc.expectedInputs, state.DescribeInstancesInputs)
+		})
+	}
+}
+
 func TestPluginListHostsErr(t *testing.T) {
 	cases := []struct {
 		name                string
@@ -2130,7 +2286,101 @@ func TestPluginListHostsErr(t *testing.T) {
 					testMockEC2WithDescribeInstancesError(errors.New(testDescribeInstancesError)),
 				)),
 			},
-			expectedErrContains: fmt.Sprintf("error running DescribeInstances for host set id \"foobar\": %s", testDescribeInstancesError),
+			expectedErrContains: fmt.Sprintf("error retrieving host results for host set id \"foobar\": %s", testDescribeInstancesError),
+			expectedErrCode:     codes.InvalidArgument,
+		},
+		{
+			name: "target attributes missing target_role_arn",
+			req: &pb.ListHostsRequest{
+				Catalog: &hostcatalogs.HostCatalog{
+					Attrs: &hostcatalogs.HostCatalog_Attributes{
+						Attributes: &structpb.Struct{
+							Fields: map[string]*structpb.Value{
+								credential.ConstRegion:       structpb.NewStringValue("us-west-2"),
+								credential.ConstTargetRegion: structpb.NewStringValue("eu-west-1"),
+							},
+						},
+					},
+				},
+			},
+			expectedErrContains: "attributes.target_role_arn: missing required value \"target_role_arn\"",
+			expectedErrCode:     codes.InvalidArgument,
+		},
+		{
+			name: "target EC2 client error",
+			req: &pb.ListHostsRequest{
+				Catalog: &hostcatalogs.HostCatalog{
+					Attrs: &hostcatalogs.HostCatalog_Attributes{
+						Attributes: &structpb.Struct{
+							Fields: map[string]*structpb.Value{
+								credential.ConstRegion:        structpb.NewStringValue("us-west-2"),
+								credential.ConstTargetRoleArn: structpb.NewStringValue("arn:aws:iam::222222222222:role/Target"),
+							},
+						},
+					},
+				},
+				Persisted: &pb.HostCatalogPersisted{
+					Secrets: &structpb.Struct{
+						Fields: map[string]*structpb.Value{
+							credential.ConstAccessKeyId:          structpb.NewStringValue("AKIA_foobar"),
+							credential.ConstSecretAccessKey:      structpb.NewStringValue("bazqux"),
+							credential.ConstCredsLastRotatedTime: structpb.NewStringValue("2006-01-02T15:04:05+07:00"),
+						},
+					},
+				},
+				Sets: []*hostsets.HostSet{
+					{
+						Id: "foobar",
+						Attrs: &hostsets.HostSet_Attributes{
+							Attributes: &structpb.Struct{
+								Fields: map[string]*structpb.Value{
+									ConstDescribeInstancesFilters: structpb.NewListValue(
+										&structpb.ListValue{
+											Values: []*structpb.Value{
+												structpb.NewStringValue("tag-key=foo"),
+											},
+										},
+									),
+								},
+							},
+						},
+					},
+				},
+			},
+			catalogOpts: []awsCatalogPersistedStateOption{
+				withTestEC2APIFunc(func(...aws.Config) (EC2API, error) {
+					return nil, errors.New("test EC2 client error")
+				}),
+			},
+			expectedErrContains: "unable to list hosts for host set \"foobar\": EC2 client setup failed for target account: test EC2 client error",
+			expectedErrCode:     codes.InvalidArgument,
+		},
+		{
+			name: "target DescribeInstances error",
+			req: &pb.ListHostsRequest{
+				Catalog: &hostcatalogs.HostCatalog{
+					Attrs: &hostcatalogs.HostCatalog_Attributes{
+						Attributes: &structpb.Struct{
+							Fields: map[string]*structpb.Value{
+								credential.ConstRegion:        structpb.NewStringValue("us-west-2"),
+								credential.ConstTargetRoleArn: structpb.NewStringValue("arn:aws:iam::222222222222:role/Target"),
+								credential.ConstTargetRegion:  structpb.NewStringValue("eu-west-1"),
+							},
+						},
+					},
+				},
+				Persisted: testListHostsPersisted(),
+				Sets: []*hostsets.HostSet{
+					testListHostsSet("foobar", "tag-key=foo"),
+				},
+			},
+			catalogOpts: []awsCatalogPersistedStateOption{
+				withTestEC2APIFunc(newTestMockEC2(
+					nil,
+					testMockEC2WithDescribeInstancesError(errors.New(testDescribeInstancesError)),
+				)),
+			},
+			expectedErrContains: "unable to list hosts for host set \"foobar\": EC2 DescribeInstances failed for target account: DescribeInstances error",
 			expectedErrCode:     codes.InvalidArgument,
 		},
 		{
