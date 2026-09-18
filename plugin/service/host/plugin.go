@@ -88,6 +88,15 @@ func (p *HostPlugin) OnCreateCatalog(ctx context.Context, req *pb.OnCreateCatalo
 		}
 	}
 
+	// Validate assumed-role credentials at catalog-creation time so that an
+	// invalid role_arn is rejected immediately rather than silently falling
+	// back to ambient credentials.
+	if credential.GetCredentialType(credState.CredentialsConfig) == credential.DynamicAWS {
+		if err := credState.ValidateCreds(ctx); err != nil {
+			return nil, err
+		}
+	}
+
 	catalogState, err := newAwsCatalogPersistedState(
 		append([]awsCatalogPersistedStateOption{
 			withCredentials(credState),
@@ -178,6 +187,15 @@ func (p *HostPlugin) OnUpdateCatalog(ctx context.Context, req *pb.OnUpdateCatalo
 		if err != nil {
 			return nil, errors.BadRequestStatusf("error setting up new credential persisted state: %s", err)
 		}
+
+		// Validate assumed-role credentials when the role_arn changes so that
+		// an invalid ARN is caught before replacing the existing credential state.
+		if credential.GetCredentialType(newCredState.CredentialsConfig) == credential.DynamicAWS {
+			if err := newCredState.ValidateCreds(ctx); err != nil {
+				return nil, err
+			}
+		}
+
 		newCatalogState, err := newAwsCatalogPersistedState(
 			append([]awsCatalogPersistedStateOption{
 				withCredentials(newCredState),
