@@ -742,6 +742,9 @@ func TestPluginOnCreateCatalogErr(t *testing.T) {
 					testMockEC2WithDescribeInstancesError(errors.New(testDescribeInstancesError)),
 				)),
 			},
+			// checkHosts returns the DescribeInstances error as-is rather than
+			// wrapping it in a gRPC FailedPrecondition status like the old
+			// dryRunValidation did. A plain Go error maps to codes.Unknown.
 			expectedErrContains: testDescribeInstancesError,
 			expectedErrCode:     codes.Unknown,
 		},
@@ -994,6 +997,9 @@ func TestPluginOnUpdateCatalogErr(t *testing.T) {
 					testMockEC2WithDescribeInstancesError(errors.New(testDescribeInstancesError)),
 				)),
 			},
+			// checkHosts returns the DesribeInstances errror as-is rather than wrapping it
+			// in a gRpc FailedPrecodndition status like the old dryRunValidiation did.
+			// A plain Go error maps to codeds.Unknown.
 			expectedErrContains: testDescribeInstancesError,
 			expectedErrCode:     codes.Unknown,
 		},
@@ -1036,6 +1042,9 @@ func TestPluginOnUpdateCatalogErr(t *testing.T) {
 					testMockEC2WithDescribeInstancesError(errors.New(testDescribeInstancesError)),
 				)),
 			},
+			// checkHosts returns the DescribeInstances error as-is rather than wrapping it
+			// in a gRPC FailedPrecondition status like the old dryRunValidiation did.
+			// A plain Go error maps to codes.Unknown.
 			expectedErrContains: testDescribeInstancesError,
 			expectedErrCode:     codes.Unknown,
 		},
@@ -1211,6 +1220,9 @@ func TestPluginOnUpdateCatalogErr(t *testing.T) {
 					testMockEC2WithDescribeInstancesError(fmt.Errorf("oops there was an error")),
 				)),
 			},
+			// checkHosts returns the DescribeInstances error as-is rather than wrapping it
+			// in a gRPC FailedPrecondition status like the old dryRunValidiation did.
+			// A plain Go error maps to codes.Unknown.
 			expectedErrContains: "oops there was an error",
 			expectedErrCode:     codes.Unknown,
 		},

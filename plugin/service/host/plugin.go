@@ -191,7 +191,7 @@ func (p *HostPlugin) OnUpdateCatalog(ctx context.Context, req *pb.OnUpdateCatalo
 			return nil, errors.BadRequestStatusf("error loading persisted state: %s", err)
 		}
 
-		// perform dry run to ensure we can interact with AWS as expected.
+		//  New: perform dry run to ensure we can interact with AWS as expected.
 		opts := []ec2Option{}
 		if newCatalogAttributes.DualStack {
 			opts = append(opts, WithDualStack(newCatalogAttributes.DualStack))
