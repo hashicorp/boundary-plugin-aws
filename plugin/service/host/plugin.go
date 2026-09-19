@@ -102,8 +102,12 @@ func (p *HostPlugin) OnCreateCatalog(ctx context.Context, req *pb.OnCreateCatalo
 	if catalogAttributes.DualStack {
 		opts = append(opts, WithDualStack(catalogAttributes.DualStack))
 	}
-	if st := dryRunValidation(ctx, catalogState, opts); st != nil {
-		return nil, st.Err()
+	input, err := buildDescribeInstancesInput(&SetAttributes{}, true)
+	if err != nil {
+		return nil, errors.BadRequestStatusf("error building DescribeInstances input: %s", err)
+	}
+	if _, err := checkHosts(ctx, catalogState, input, opts, nil); err != nil {
+		return nil, err
 	}
 
 	persistedProto, err := catalogState.toProto()
@@ -186,12 +190,18 @@ func (p *HostPlugin) OnUpdateCatalog(ctx context.Context, req *pb.OnUpdateCatalo
 		if err != nil {
 			return nil, errors.BadRequestStatusf("error loading persisted state: %s", err)
 		}
+
+		// New: perform dry run to ensure we can interact with AWS as expected.
 		opts := []ec2Option{}
 		if newCatalogAttributes.DualStack {
 			opts = append(opts, WithDualStack(newCatalogAttributes.DualStack))
 		}
-		if st := dryRunValidation(ctx, newCatalogState, opts); st != nil {
-			return nil, st.Err()
+		input, err := buildDescribeInstancesInput(&SetAttributes{}, true)
+		if err != nil {
+			return nil, errors.BadRequestStatusf("error building DescribeInstances input: %s", err)
+		}
+		if _, err := checkHosts(ctx, newCatalogState, input, opts, nil); err != nil {
+			return nil, err
 		}
 
 		// Replace the existing credential state.
@@ -231,13 +241,17 @@ func (p *HostPlugin) OnUpdateCatalog(ctx context.Context, req *pb.OnUpdateCatalo
 		return nil, errors.BadRequestStatusf("error loading persisted state: %s", err)
 	}
 
-	// perform dry run to ensure we can interact with AWS as expected.
+	// New: perform dry run to ensure we can interact with AWS as expected.
 	opts := []ec2Option{}
 	if newCatalogAttributes.DualStack {
 		opts = append(opts, WithDualStack(newCatalogAttributes.DualStack))
 	}
-	if st := dryRunValidation(ctx, catalogState, opts); st != nil {
-		return nil, st.Err()
+	input, err := buildDescribeInstancesInput(&SetAttributes{}, true)
+	if err != nil {
+		return nil, errors.BadRequestStatusf("error building DescribeInstances input: %s", err)
+	}
+	if _, err := checkHosts(ctx, catalogState, input, opts, nil); err != nil {
+		return nil, err
 	}
 
 	persistedProto, err := catalogState.toProto()
@@ -381,18 +395,19 @@ func (p *HostPlugin) OnCreateSet(ctx context.Context, req *pb.OnCreateSetRequest
 		return nil, err
 	}
 
-	describeInstanceFilters, err := buildFilters(setAttrs)
-	if err != nil {
-		return nil, errors.BadRequestStatusf("error building set filters: %s", err)
-	}
-
+	// New: perform dry run to ensure we can interact with AWS as expected.
 	opts := []ec2Option{}
 	if catalogAttributes.DualStack {
 		opts = append(opts, WithDualStack(catalogAttributes.DualStack))
 	}
-	if st := dryRunValidation(ctx, catalogState, opts, describeInstanceFilters...); st != nil {
-		return nil, st.Err()
+	input, err := buildDescribeInstancesInput(setAttrs, true)
+	if err != nil {
+		return nil, errors.BadRequestStatusf("error building DescribeInstances input: %s", err)
 	}
+	if _, err := checkHosts(ctx, catalogState, input, opts, nil); err != nil {
+		return nil, err
+	}
+
 	return &pb.OnCreateSetResponse{}, nil
 }
 
@@ -446,17 +461,17 @@ func (p *HostPlugin) OnUpdateSet(ctx context.Context, req *pb.OnUpdateSetRequest
 		return nil, err
 	}
 
-	describeInstanceFilters, err := buildFilters(setAttrs)
-	if err != nil {
-		return nil, errors.BadRequestStatusf("error building set filters: %s", err)
-	}
-
+	// New: perform dry run to ensure we can interact with AWS as expected.
 	opts := []ec2Option{}
 	if catalogAttributes.DualStack {
 		opts = append(opts, WithDualStack(catalogAttributes.DualStack))
 	}
-	if st := dryRunValidation(ctx, catalogState, opts, describeInstanceFilters...); st != nil {
-		return nil, st.Err()
+	input, err := buildDescribeInstancesInput(setAttrs, true)
+	if err != nil {
+		return nil, errors.BadRequestStatusf("error building DescribeInstances input: %s", err)
+	}
+	if _, err := checkHosts(ctx, catalogState, input, opts, nil); err != nil {
+		return nil, err
 	}
 
 	return &pb.OnUpdateSetResponse{}, nil
