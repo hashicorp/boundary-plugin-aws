@@ -191,7 +191,7 @@ func (p *HostPlugin) OnUpdateCatalog(ctx context.Context, req *pb.OnUpdateCatalo
 			return nil, errors.BadRequestStatusf("error loading persisted state: %s", err)
 		}
 
-		//  New: perform dry run to ensure we can interact with AWS as expected.
+		// New: perform dry run to ensure we can interact with AWS as expected.
 		opts := []ec2Option{}
 		if newCatalogAttributes.DualStack {
 			opts = append(opts, WithDualStack(newCatalogAttributes.DualStack))
@@ -241,7 +241,7 @@ func (p *HostPlugin) OnUpdateCatalog(ctx context.Context, req *pb.OnUpdateCatalo
 		return nil, errors.BadRequestStatusf("error loading persisted state: %s", err)
 	}
 
-	// perform dry run to ensure we can interact with AWS as expected.
+	// New: perform dry run to ensure we can interact with AWS as expected.
 	opts := []ec2Option{}
 	if newCatalogAttributes.DualStack {
 		opts = append(opts, WithDualStack(newCatalogAttributes.DualStack))
@@ -395,7 +395,7 @@ func (p *HostPlugin) OnCreateSet(ctx context.Context, req *pb.OnCreateSetRequest
 		return nil, err
 	}
 
-	// perform dry run to ensure we can interact with AWS as expected.
+	// New: perform dry run to ensure we can interact with AWS as expected.
 	opts := []ec2Option{}
 	if catalogAttributes.DualStack {
 		opts = append(opts, WithDualStack(catalogAttributes.DualStack))
@@ -461,7 +461,7 @@ func (p *HostPlugin) OnUpdateSet(ctx context.Context, req *pb.OnUpdateSetRequest
 		return nil, err
 	}
 
-	// perform dry run to ensure we can interact with AWS as expected.
+	// New: perform dry run to ensure we can interact with AWS as expected.
 	opts := []ec2Option{}
 	if catalogAttributes.DualStack {
 		opts = append(opts, WithDualStack(catalogAttributes.DualStack))
