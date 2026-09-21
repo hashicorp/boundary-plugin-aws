@@ -46,6 +46,7 @@ type hostSetQuery struct {
 
 const defaultSessionName = "boundary-default"
 const dryRunOperationErrorCode = "DryRunOperation"
+const errBuildDescribeInstancesInput = "error building DescribeInstances input: %s"
 
 // Ensure that we are implementing HostPluginServiceServer
 var _ pb.HostPluginServiceServer = (*HostPlugin)(nil)
@@ -97,17 +98,18 @@ func (p *HostPlugin) OnCreateCatalog(ctx context.Context, req *pb.OnCreateCatalo
 		return nil, errors.BadRequestStatusf("error setting up persisted state: %s", err)
 	}
 
-	// perform dry run to ensure we can interact with AWS as expected.
 	opts := []ec2Option{}
 	if catalogAttributes.DualStack {
 		opts = append(opts, WithDualStack(catalogAttributes.DualStack))
 	}
 	input, err := buildDescribeInstancesInput(&SetAttributes{}, true)
 	if err != nil {
-		return nil, errors.BadRequestStatusf("error building DescribeInstances input: %s", err)
+		return nil, fmt.Errorf(errBuildDescribeInstancesInput, err)
 	}
+	// Run a DescribeInstances request with DryRun set to true to ensure
+	// we can interact with AWS resources as expected.
 	if _, err := checkHosts(ctx, catalogState, input, opts, nil); err != nil {
-		return nil, err
+		return nil, fmt.Errorf("error performing DescribeInstances dry run: %s", err)
 	}
 
 	persistedProto, err := catalogState.toProto()
@@ -191,17 +193,18 @@ func (p *HostPlugin) OnUpdateCatalog(ctx context.Context, req *pb.OnUpdateCatalo
 			return nil, errors.BadRequestStatusf("error loading persisted state: %s", err)
 		}
 
-		// New: perform dry run to ensure we can interact with AWS as expected.
 		opts := []ec2Option{}
 		if newCatalogAttributes.DualStack {
 			opts = append(opts, WithDualStack(newCatalogAttributes.DualStack))
 		}
 		input, err := buildDescribeInstancesInput(&SetAttributes{}, true)
 		if err != nil {
-			return nil, errors.BadRequestStatusf("error building DescribeInstances input: %s", err)
+			return nil, fmt.Errorf(errBuildDescribeInstancesInput, err)
 		}
+		// Run a DescribeInstances request with DryRun set to true to ensure
+		// we can interact with AWS resources as expected.
 		if _, err := checkHosts(ctx, newCatalogState, input, opts, nil); err != nil {
-			return nil, err
+			return nil, fmt.Errorf("error performing DescribeInstances dry run: %s", err)
 		}
 
 		// Replace the existing credential state.
@@ -241,17 +244,18 @@ func (p *HostPlugin) OnUpdateCatalog(ctx context.Context, req *pb.OnUpdateCatalo
 		return nil, errors.BadRequestStatusf("error loading persisted state: %s", err)
 	}
 
-	// New: perform dry run to ensure we can interact with AWS as expected.
 	opts := []ec2Option{}
 	if newCatalogAttributes.DualStack {
 		opts = append(opts, WithDualStack(newCatalogAttributes.DualStack))
 	}
 	input, err := buildDescribeInstancesInput(&SetAttributes{}, true)
 	if err != nil {
-		return nil, errors.BadRequestStatusf("error building DescribeInstances input: %s", err)
+		return nil, fmt.Errorf(errBuildDescribeInstancesInput, err)
 	}
+	// Run a DescribeInstances request with DryRun set to true to ensure
+	// we can interact with AWS resources as expected.
 	if _, err := checkHosts(ctx, catalogState, input, opts, nil); err != nil {
-		return nil, err
+		return nil, fmt.Errorf("error performing DescribeInstances dry run: %s", err)
 	}
 
 	persistedProto, err := catalogState.toProto()
@@ -395,17 +399,18 @@ func (p *HostPlugin) OnCreateSet(ctx context.Context, req *pb.OnCreateSetRequest
 		return nil, err
 	}
 
-	// New: perform dry run to ensure we can interact with AWS as expected.
 	opts := []ec2Option{}
 	if catalogAttributes.DualStack {
 		opts = append(opts, WithDualStack(catalogAttributes.DualStack))
 	}
 	input, err := buildDescribeInstancesInput(setAttrs, true)
 	if err != nil {
-		return nil, errors.BadRequestStatusf("error building DescribeInstances input: %s", err)
+		return nil, fmt.Errorf(errBuildDescribeInstancesInput, err)
 	}
+	// Run a DescribeInstances request with DryRun set to true to ensure
+	// we can interact with AWS resources as expected.
 	if _, err := checkHosts(ctx, catalogState, input, opts, nil); err != nil {
-		return nil, err
+		return nil, fmt.Errorf("error performing DescribeInstances dry run: %s", err)
 	}
 
 	return &pb.OnCreateSetResponse{}, nil
@@ -461,17 +466,18 @@ func (p *HostPlugin) OnUpdateSet(ctx context.Context, req *pb.OnUpdateSetRequest
 		return nil, err
 	}
 
-	// New: perform dry run to ensure we can interact with AWS as expected.
 	opts := []ec2Option{}
 	if catalogAttributes.DualStack {
 		opts = append(opts, WithDualStack(catalogAttributes.DualStack))
 	}
 	input, err := buildDescribeInstancesInput(setAttrs, true)
 	if err != nil {
-		return nil, errors.BadRequestStatusf("error building DescribeInstances input: %s", err)
+		return nil, fmt.Errorf(errBuildDescribeInstancesInput, err)
 	}
+	// Run a DescribeInstances request with DryRun set to true to ensure
+	// we can interact with AWS resources as expected.
 	if _, err := checkHosts(ctx, catalogState, input, opts, nil); err != nil {
-		return nil, err
+		return nil, fmt.Errorf("error performing DescribeInstances dry run: %s", err)
 	}
 
 	return &pb.OnUpdateSetResponse{}, nil
