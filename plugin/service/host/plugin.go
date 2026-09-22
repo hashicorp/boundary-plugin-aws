@@ -19,8 +19,6 @@ import (
 	"github.com/hashicorp/boundary-plugin-aws/internal/credential"
 	"github.com/hashicorp/boundary-plugin-aws/internal/errors"
 	pb "github.com/hashicorp/boundary/sdk/pbs/plugin"
-	"google.golang.org/grpc/codes"
-	"google.golang.org/grpc/status"
 	"google.golang.org/protobuf/proto"
 	"google.golang.org/protobuf/types/known/structpb"
 )
@@ -847,28 +845,6 @@ func ec2ClientForTarget(
 		return principalCatalogState.testEC2APIFunc(targetCfg)
 	}
 	return ec2.NewFromConfig(targetCfg, ec2Opts...), nil
-}
-
-// dryRunValidation performs an AWS DescribeInstances call to verify the state's
-// credentials, the host listing functionality as well as the filters, if any
-// are passed in. This function can therefore be used for both host catalog and
-// host set validation.
-func dryRunValidation(ctx context.Context, state *awsCatalogPersistedState, ec2Opts []ec2Option, filters ...types.Filter) *status.Status {
-	if state == nil {
-		return status.New(codes.InvalidArgument, "persisted state is required")
-	}
-
-	ec2Client, err := state.EC2Client(ctx, ec2Opts...)
-	if err != nil {
-		return status.New(codes.InvalidArgument, fmt.Sprintf("error getting EC2 client: %s", err))
-	}
-
-	_, err = ec2Client.DescribeInstances(ctx, &ec2.DescribeInstancesInput{Filters: filters})
-	if err != nil {
-		return status.New(codes.FailedPrecondition, fmt.Sprintf("aws describe instances failed: %s", err))
-	}
-
-	return nil
 }
 
 // appendDistinct will append the elements to the slice
