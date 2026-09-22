@@ -43,6 +43,10 @@ type testMockEC2 struct {
 
 	DescribeInstancesOutput *ec2.DescribeInstancesOutput
 	DescribeInstancesError  error
+
+	// DescribeInstancesErrorSequence, if set, returns each error in order on
+	// successive calls. Once exhausted, DescribeInstancesOutput is returned.
+	DescribeInstancesErrorSequence []error
 }
 
 type testMockEC2Option func(m *testMockEC2) error
@@ -57,6 +61,16 @@ func testMockEC2WithDescribeInstancesOutput(o *ec2.DescribeInstancesOutput) test
 func testMockEC2WithDescribeInstancesError(e error) testMockEC2Option {
 	return func(m *testMockEC2) error {
 		m.DescribeInstancesError = e
+		return nil
+	}
+}
+
+// testMockEC2WithDescribeInstancesErrorSequence sets a sequence of errors to
+// return on successive DescribeInstances calls. Once the sequence is exhausted,
+// the mock returns DescribeInstancesOutput (nil error).
+func testMockEC2WithDescribeInstancesErrorSequence(errs ...error) testMockEC2Option {
+	return func(m *testMockEC2) error {
+		m.DescribeInstancesErrorSequence = errs
 		return nil
 	}
 }
@@ -94,6 +108,12 @@ func (m *testMockEC2) DescribeInstances(ctx context.Context, input *ec2.Describe
 		m.State.DescribeInstancesInputParams = input
 		m.State.DescribeInstancesCallCount++
 		m.State.DescribeInstancesInputs = append(m.State.DescribeInstancesInputs, input)
+	}
+
+	if len(m.DescribeInstancesErrorSequence) > 0 {
+		err := m.DescribeInstancesErrorSequence[0]
+		m.DescribeInstancesErrorSequence = m.DescribeInstancesErrorSequence[1:]
+		return nil, err
 	}
 
 	if m.DescribeInstancesError != nil {

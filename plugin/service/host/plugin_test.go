@@ -18,6 +18,7 @@ import (
 	iamTypes "github.com/aws/aws-sdk-go-v2/service/iam/types"
 	"github.com/google/go-cmp/cmp"
 	"github.com/hashicorp/boundary-plugin-aws/internal/credential"
+	pluginErrors "github.com/hashicorp/boundary-plugin-aws/internal/errors"
 	"github.com/hashicorp/boundary/sdk/pbs/controller/api/resources/hostcatalogs"
 	"github.com/hashicorp/boundary/sdk/pbs/controller/api/resources/hostsets"
 	pb "github.com/hashicorp/boundary/sdk/pbs/plugin"
@@ -3120,5 +3121,67 @@ func TestDryRunValidation(t *testing.T) {
 			testEC2APIFunc: newTestMockEC2(nil, testMockEC2WithDescribeInstancesOutput(&ec2.DescribeInstancesOutput{})),
 		}, []ec2Option{})
 		require.Nil(t, st)
+	})
+
+	t.Run("authFailureThenSuccess", func(t *testing.T) {
+		// Simulates the IAM eventual consistency window: EC2 returns AuthFailure
+		// twice before the credentials propagate and the call succeeds.
+		state := &testMockEC2State{}
+		st := dryRunValidation(context.Background(), &awsCatalogPersistedState{
+			AwsCredentialPersistedState: &credential.AwsCredentialPersistedState{
+				CredentialsConfig: &awsutil.CredentialsConfig{
+					AccessKey: "AKIAfoo",
+					SecretKey: "baz",
+				},
+			},
+			testEC2APIFunc: newTestMockEC2(state,
+				testMockEC2WithDescribeInstancesErrorSequence(
+					fmt.Errorf("%s: credentials not yet propagated", pluginErrors.AwsErrorAuthFailure),
+					fmt.Errorf("%s: credentials not yet propagated", pluginErrors.AwsErrorAuthFailure),
+				),
+				testMockEC2WithDescribeInstancesOutput(&ec2.DescribeInstancesOutput{}),
+			),
+		}, []ec2Option{})
+		require.Nil(t, st)
+		require.Equal(t, 3, state.DescribeInstancesCallCount)
+	})
+
+	t.Run("authFailureContextCancelled", func(t *testing.T) {
+		// If the context is cancelled while waiting to retry, the function should
+		// return a FailedPrecondition error immediately rather than hanging.
+		ctx, cancel := context.WithCancel(context.Background())
+		cancel() // cancel immediately so the first retry select hits ctx.Done()
+		st := dryRunValidation(ctx, &awsCatalogPersistedState{
+			AwsCredentialPersistedState: &credential.AwsCredentialPersistedState{
+				CredentialsConfig: &awsutil.CredentialsConfig{
+					AccessKey: "AKIAfoo",
+					SecretKey: "baz",
+				},
+			},
+			testEC2APIFunc: newTestMockEC2(nil,
+				testMockEC2WithDescribeInstancesError(fmt.Errorf("%s: credentials not yet propagated", pluginErrors.AwsErrorAuthFailure)),
+			),
+		}, []ec2Option{})
+		require.NotNil(t, st)
+		require.Equal(t, codes.FailedPrecondition.String(), st.Code().String())
+	})
+
+	t.Run("nonAuthFailureNoRetry", func(t *testing.T) {
+		// A non-AuthFailure error should fail immediately without retrying.
+		state := &testMockEC2State{}
+		st := dryRunValidation(context.Background(), &awsCatalogPersistedState{
+			AwsCredentialPersistedState: &credential.AwsCredentialPersistedState{
+				CredentialsConfig: &awsutil.CredentialsConfig{
+					AccessKey: "AKIAfoo",
+					SecretKey: "baz",
+				},
+			},
+			testEC2APIFunc: newTestMockEC2(state,
+				testMockEC2WithDescribeInstancesError(fmt.Errorf("UnauthorizedOperation: access denied")),
+			),
+		}, []ec2Option{})
+		require.NotNil(t, st)
+		require.Equal(t, codes.FailedPrecondition.String(), st.Code().String())
+		require.Equal(t, 1, state.DescribeInstancesCallCount)
 	})
 }

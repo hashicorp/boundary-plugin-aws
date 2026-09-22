@@ -8,6 +8,7 @@ import (
 	goerrors "errors"
 	"fmt"
 	"strings"
+	"time"
 
 	"github.com/aws/aws-sdk-go-v2/aws"
 	"github.com/aws/aws-sdk-go-v2/credentials/stscreds"
@@ -828,10 +829,18 @@ func ec2ClientForTarget(
 	return ec2.NewFromConfig(targetCfg, ec2Opts...), nil
 }
 
+// dryRunValidationTimeout is the maximum time to wait for credentials to
+// propagate across AWS services after rotation before giving up.
+const dryRunValidationTimeout = 30 * time.Second
+
 // dryRunValidation performs an AWS DescribeInstances call to verify the state's
 // credentials, the host listing functionality as well as the filters, if any
 // are passed in. This function can therefore be used for both host catalog and
 // host set validation.
+//
+// After credential rotation, IAM keys may be valid for STS (GetCallerIdentity)
+// but not yet propagated to EC2. This function retries on AuthFailure to
+// tolerate that eventual consistency window.
 func dryRunValidation(ctx context.Context, state *awsCatalogPersistedState, ec2Opts []ec2Option, filters ...types.Filter) *status.Status {
 	if state == nil {
 		return status.New(codes.InvalidArgument, "persisted state is required")
@@ -842,12 +851,34 @@ func dryRunValidation(ctx context.Context, state *awsCatalogPersistedState, ec2O
 		return status.New(codes.InvalidArgument, fmt.Sprintf("error getting EC2 client: %s", err))
 	}
 
-	_, err = ec2Client.DescribeInstances(ctx, &ec2.DescribeInstancesInput{Filters: filters})
-	if err != nil {
-		return status.New(codes.FailedPrecondition, fmt.Sprintf("aws describe instances failed: %s", err))
-	}
+	deadline := time.Now().Add(dryRunValidationTimeout)
+	delay := time.Second
+	for {
+		_, err = ec2Client.DescribeInstances(ctx, &ec2.DescribeInstancesInput{Filters: filters})
+		if err == nil {
+			return nil
+		}
 
-	return nil
+		// AuthFailure indicates the credentials exist but haven't propagated
+		// to EC2 yet — a transient eventual consistency issue after rotation.
+		// Retry until the deadline.
+		if strings.Contains(err.Error(), errors.AwsErrorAuthFailure) && time.Now().Before(deadline) {
+			select {
+			case <-time.After(delay):
+				// Wait before retrying to give credentials time to propagate.
+			case <-ctx.Done():
+				// The caller cancelled — break out of the select.
+				break
+			}
+			if ctx.Err() != nil {
+				break
+			}
+			continue
+		}
+
+		break
+	}
+	return status.New(codes.FailedPrecondition, fmt.Sprintf("aws describe instances failed: %s", err))
 }
 
 // appendDistinct will append the elements to the slice

@@ -23,6 +23,11 @@ import (
 )
 
 const (
+	// AwsErrorAuthFailure is returned by EC2 when credentials exist in IAM
+	// but have not yet propagated to EC2. This is a transient eventual
+	// consistency issue that can resolve itself by retrying the request.
+	AwsErrorAuthFailure = "AuthFailure"
+
 	// awsErrorAccessDenied is returned when the credentials do not have
 	// the required permissions to do a specific action on a resource.
 	// This error will persist until the IAM Role Policy is updated by
