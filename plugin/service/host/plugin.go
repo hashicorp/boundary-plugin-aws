@@ -19,6 +19,8 @@ import (
 	"github.com/hashicorp/boundary-plugin-aws/internal/credential"
 	"github.com/hashicorp/boundary-plugin-aws/internal/errors"
 	pb "github.com/hashicorp/boundary/sdk/pbs/plugin"
+	"google.golang.org/grpc/codes"
+	"google.golang.org/grpc/status"
 	"google.golang.org/protobuf/proto"
 	"google.golang.org/protobuf/types/known/structpb"
 )
@@ -45,6 +47,7 @@ type hostSetQuery struct {
 const defaultSessionName = "boundary-default"
 const dryRunOperationErrorCode = "DryRunOperation"
 const errBuildDescribeInstancesInput = "error building DescribeInstances input: %s"
+const errDryRunFailed = "error performing DescribeInstances dry run: %s"
 
 // Ensure that we are implementing HostPluginServiceServer
 var _ pb.HostPluginServiceServer = (*HostPlugin)(nil)
@@ -102,12 +105,12 @@ func (p *HostPlugin) OnCreateCatalog(ctx context.Context, req *pb.OnCreateCatalo
 	}
 	input, err := buildDescribeInstancesInput(&SetAttributes{}, true)
 	if err != nil {
-		return nil, fmt.Errorf(errBuildDescribeInstancesInput, err)
+		return nil, status.Errorf(codes.Unknown, errBuildDescribeInstancesInput, err)
 	}
 	// Run a DescribeInstances request with DryRun set to true to ensure
 	// we can interact with AWS resources as expected.
-	if _, err := checkHosts(ctx, catalogState, input, opts, nil); err != nil {
-		return nil, fmt.Errorf("error performing DescribeInstances dry run: %s", err)
+	if _, err := checkHosts(ctx, catalogState, input, opts, catalogAttributes.TargetAccount); err != nil {
+		return nil, fmt.Errorf(errDryRunFailed, err)
 	}
 
 	persistedProto, err := catalogState.toProto()
@@ -197,12 +200,12 @@ func (p *HostPlugin) OnUpdateCatalog(ctx context.Context, req *pb.OnUpdateCatalo
 		}
 		input, err := buildDescribeInstancesInput(&SetAttributes{}, true)
 		if err != nil {
-			return nil, fmt.Errorf(errBuildDescribeInstancesInput, err)
+			return nil, status.Errorf(codes.Unknown, errBuildDescribeInstancesInput, err)
 		}
 		// Run a DescribeInstances request with DryRun set to true to ensure
 		// we can interact with AWS resources as expected.
-		if _, err := checkHosts(ctx, newCatalogState, input, opts, nil); err != nil {
-			return nil, fmt.Errorf("error performing DescribeInstances dry run: %s", err)
+		if _, err := checkHosts(ctx, newCatalogState, input, opts, newCatalogAttributes.TargetAccount); err != nil {
+			return nil, fmt.Errorf(errDryRunFailed, err)
 		}
 
 		// Replace the existing credential state.
@@ -248,12 +251,12 @@ func (p *HostPlugin) OnUpdateCatalog(ctx context.Context, req *pb.OnUpdateCatalo
 	}
 	input, err := buildDescribeInstancesInput(&SetAttributes{}, true)
 	if err != nil {
-		return nil, fmt.Errorf(errBuildDescribeInstancesInput, err)
+		return nil, status.Errorf(codes.Unknown, errBuildDescribeInstancesInput, err)
 	}
 	// Run a DescribeInstances request with DryRun set to true to ensure
 	// we can interact with AWS resources as expected.
-	if _, err := checkHosts(ctx, catalogState, input, opts, nil); err != nil {
-		return nil, fmt.Errorf("error performing DescribeInstances dry run: %s", err)
+	if _, err := checkHosts(ctx, catalogState, input, opts, newCatalogAttributes.TargetAccount); err != nil {
+		return nil, fmt.Errorf(errDryRunFailed, err)
 	}
 
 	persistedProto, err := catalogState.toProto()
@@ -403,12 +406,12 @@ func (p *HostPlugin) OnCreateSet(ctx context.Context, req *pb.OnCreateSetRequest
 	}
 	input, err := buildDescribeInstancesInput(setAttrs, true)
 	if err != nil {
-		return nil, fmt.Errorf(errBuildDescribeInstancesInput, err)
+		return nil, status.Errorf(codes.Unknown, errBuildDescribeInstancesInput, err)
 	}
 	// Run a DescribeInstances request with DryRun set to true to ensure
 	// we can interact with AWS resources as expected.
-	if _, err := checkHosts(ctx, catalogState, input, opts, nil); err != nil {
-		return nil, fmt.Errorf("error performing DescribeInstances dry run: %s", err)
+	if _, err := checkHosts(ctx, catalogState, input, opts, catalogAttributes.TargetAccount); err != nil {
+		return nil, fmt.Errorf(errDryRunFailed, err)
 	}
 
 	return &pb.OnCreateSetResponse{}, nil
@@ -470,12 +473,12 @@ func (p *HostPlugin) OnUpdateSet(ctx context.Context, req *pb.OnUpdateSetRequest
 	}
 	input, err := buildDescribeInstancesInput(setAttrs, true)
 	if err != nil {
-		return nil, fmt.Errorf(errBuildDescribeInstancesInput, err)
+		return nil, status.Errorf(codes.Unknown, errBuildDescribeInstancesInput, err)
 	}
 	// Run a DescribeInstances request with DryRun set to true to ensure
 	// we can interact with AWS resources as expected.
-	if _, err := checkHosts(ctx, catalogState, input, opts, nil); err != nil {
-		return nil, fmt.Errorf("error performing DescribeInstances dry run: %s", err)
+	if _, err := checkHosts(ctx, catalogState, input, opts, catalogAttributes.TargetAccount); err != nil {
+		return nil, fmt.Errorf(errDryRunFailed, err)
 	}
 
 	return &pb.OnUpdateSetResponse{}, nil
