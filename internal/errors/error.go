@@ -66,7 +66,25 @@ const (
 
 	// RequestTimeoutException is returned when an http request takes longer than allowed
 	awsErrorRequestTimeoutException = "RequestTimeoutException"
+
+	// dryRunOperationErrorCode is returned by AWS when a DryRun request would have
+	// succeeded. It is a success signal disguised as an API error (typically HTTP 412).
+	dryRunOperationErrorCode = "DryRunOperation"
 )
+
+// IsDryRunSuccess reports whether err is the AWS DryRunOperation success signal.
+// A true result means the dry-run validated credentials, permissions, and parameters;
+// it must not be treated as a failure.
+func IsDryRunSuccess(err error) bool {
+	if err == nil {
+		return false
+	}
+	var apiErr smithy.APIError
+	if !errors.As(err, &apiErr) {
+		return false
+	}
+	return apiErr.ErrorCode() == dryRunOperationErrorCode
+}
 
 // InvalidArgumentError returns an grpc invalid argument status error.
 func InvalidArgumentError(msg string, f map[string]string) error {

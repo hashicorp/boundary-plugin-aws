@@ -390,6 +390,46 @@ func Test_ParseAWSError(t *testing.T) {
 	}
 }
 
+func Test_IsDryRunSuccess(t *testing.T) {
+	t.Parallel()
+
+	cases := []struct {
+		name string
+		err  error
+		want bool
+	}{
+		{
+			name: "nil",
+			want: false,
+		},
+		{
+			name: "plain error",
+			err:  fmt.Errorf("not an aws error"),
+			want: false,
+		},
+		{
+			name: "other api error",
+			err:  TestAwsError(awsErrorAccessDenied, "not authorized"),
+			want: false,
+		},
+		{
+			name: "dry run operation",
+			err:  TestAwsError(dryRunOperationErrorCode, "Request would have succeeded, but DryRun flag is set"),
+			want: true,
+		},
+		{
+			name: "wrapped dry run operation",
+			err:  fmt.Errorf("describe instances: %w", TestAwsError(dryRunOperationErrorCode, "Request would have succeeded, but DryRun flag is set")),
+			want: true,
+		},
+	}
+	for _, tt := range cases {
+		t.Run(tt.name, func(t *testing.T) {
+			assert.Equal(t, tt.want, IsDryRunSuccess(tt.err))
+		})
+	}
+}
+
 func Test_BadRequestStatusf(t *testing.T) {
 	require, assert := require.New(t), assert.New(t)
 	err := BadRequestStatusf("test: %s", "hello world")
