@@ -301,6 +301,17 @@ func Test_ParseAWSError(t *testing.T) {
 			},
 		},
 		{
+			name:               "aws-request-unauthorized-operation",
+			err:                TestAwsError(awsErrorUnauthorizedOperation, "You are not authorized to perform this operation."),
+			expectedStatusCode: codes.PermissionDenied,
+			expectedStatusMsg:  "aws service unknown: invalid credentials: test",
+			expectedPermission: &pb.Permission{
+				State:        pb.StateType_STATE_TYPE_ERROR,
+				ErrorDetails: "You are not authorized to perform this operation.",
+				CheckedAt:    timestamppb.Now(),
+			},
+		},
+		{
 			name:               "aws-request-invalid-access-key-id",
 			err:                TestAwsError(awsErrorInvalidAccessKeyId, "The AWS Access Key Id you provided does not exist in our records."),
 			expectedStatusCode: codes.PermissionDenied,

@@ -29,6 +29,11 @@ const (
 	// the owner. This error cannot be resolved by retrying the request.
 	awsErrorAccessDenied = "AccessDenied"
 
+	// awsErrorUnauthorizedOperation is returned by EC2 when the caller is not
+	// authorized to perform the operation. This includes DryRun permission
+	// checks that fail (the counterpart to DryRunOperation success).
+	awsErrorUnauthorizedOperation = "UnauthorizedOperation"
+
 	// awsErrorInvalidAccessKeyId is returned when the credential does
 	// not exist. This error will persist until the credentials attached
 	// to the storage bucket is updated. This error can occur when the
@@ -189,6 +194,8 @@ func ParseAWSError(op string, err error) (st *status.Status, permission *pb.Perm
 	if errors.As(err, &apiErr) {
 		switch apiErr.ErrorCode() {
 		case awsErrorAccessDenied:
+			fallthrough
+		case awsErrorUnauthorizedOperation:
 			fallthrough
 		case awsErrorInvalidAccessKeyId:
 			fallthrough

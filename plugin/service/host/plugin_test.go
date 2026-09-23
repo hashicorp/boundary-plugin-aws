@@ -2484,6 +2484,32 @@ func TestPluginListHostsErr(t *testing.T) {
 			expectedErrCode:     codes.PermissionDenied,
 		},
 		{
+			name: "DescribeInstances UnauthorizedOperation",
+			req: &pb.ListHostsRequest{
+				Catalog: &hostcatalogs.HostCatalog{
+					Attrs: &hostcatalogs.HostCatalog_Attributes{
+						Attributes: &structpb.Struct{
+							Fields: map[string]*structpb.Value{
+								credential.ConstRegion: structpb.NewStringValue("us-west-2"),
+							},
+						},
+					},
+				},
+				Persisted: testListHostsPersisted(),
+				Sets: []*hostsets.HostSet{
+					testListHostsSet("foobar", "tag-key=foo"),
+				},
+			},
+			catalogOpts: []awsCatalogPersistedStateOption{
+				withTestEC2APIFunc(newTestMockEC2(
+					nil,
+					testMockEC2WithDescribeInstancesError(awserrors.TestAwsError("UnauthorizedOperation", "You are not authorized to perform this operation.")),
+				)),
+			},
+			expectedErrContains: "invalid credentials",
+			expectedErrCode:     codes.PermissionDenied,
+		},
+		{
 			name: "target DescribeInstances AccessDenied",
 			req: &pb.ListHostsRequest{
 				Catalog: &hostcatalogs.HostCatalog{
