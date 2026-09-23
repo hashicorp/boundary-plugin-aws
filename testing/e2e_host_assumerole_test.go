@@ -54,6 +54,21 @@ func tagFilterSetAttrs(tags []string) map[string]any {
 	}
 }
 
+// buildExpectedTagInstancesMap builds a map of tag key to instance IDs from a Terraform instance_tags output map.
+func buildExpectedTagInstancesMap(rawTags map[string]any, expectedTags []string) map[string][]string {
+	tagMap := make(map[string][]string)
+	for instanceId, instanceTags := range rawTags {
+		for tagKey := range instanceTags.(map[string]any) {
+			for _, expectedTag := range expectedTags {
+				if tagKey == expectedTag {
+					tagMap[tagKey] = append(tagMap[tagKey], instanceId)
+				}
+			}
+		}
+	}
+	return tagMap
+}
+
 // ---------------------------------------------------------------------------
 // Table-driven runners
 // ---------------------------------------------------------------------------
@@ -271,3 +286,4 @@ func testListHostsCases(ctx context.Context, t *testing.T, p *host.HostPlugin, c
 		})
 	}
 }
+

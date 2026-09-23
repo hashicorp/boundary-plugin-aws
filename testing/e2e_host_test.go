@@ -162,16 +162,7 @@ func TestHostPlugin(t *testing.T) {
 	// Reassign the keyid and secret first.
 	keyid, secret = iamAccessKeyIds[5].(string), iamSecretAccessKeys[5].(string)
 	// Process the collection of instances and index by expected tag names.
-	expectedTagInstancesMap := make(map[string][]string)
-	for instanceId, instanceTags := range ec2InstanceTags {
-		for tagKey := range instanceTags.(map[string]any) {
-			for _, expectedTag := range expectedTags {
-				if tagKey == expectedTag {
-					expectedTagInstancesMap[tagKey] = append(expectedTagInstancesMap[tagKey], instanceId)
-				}
-			}
-		}
-	}
+	expectedTagInstancesMap := buildExpectedTagInstancesMap(ec2InstanceTags, expectedTags)
 
 	cases := [][]string{
 		{expectedTags[0]},
@@ -310,6 +301,10 @@ func TestHostPlugin(t *testing.T) {
 		crossAccountTargetNoEc2PermissionArn, err := tf.GetOutputString("cross_account_target_no_ec2_permission_arn")
 		require.NoError(err)
 
+		targetEc2InstanceTags, err := tf.GetOutputMap("target_instance_tags")
+		require.NoError(err)
+		expectedTargetTagInstancesMap := buildExpectedTagInstancesMap(targetEc2InstanceTags, expectedTags)
+
 		testOnCreateCatalogCases(ctx, t, p, []onCreateCatalogCase{
 			{name: "cross-account happy path", catalogAttrs: crossRoleAttrs(targetRegion, crossAccountPrincipalArn, crossAccountTargetArn)},
 			{name: "cross-account principal no trust", catalogAttrs: crossRoleAttrs(targetRegion, crossAccountPrincipalNoTrustArn, crossAccountTargetArn), wantErr: "AccessDenied"},
@@ -335,7 +330,7 @@ func TestHostPlugin(t *testing.T) {
 			{name: "cross-account target missing ec2 permission", catalogAttrs: crossRoleAttrs(targetRegion, crossAccountPrincipalArn, crossAccountTargetNoEc2PermissionArn), wantErr: "UnauthorizedOperation"},
 		})
 		testListHostsCases(ctx, t, p, []listHostsCase{
-			{name: "cross-account happy path", catalogAttrs: crossRoleAttrs(targetRegion, crossAccountPrincipalArn, crossAccountTargetArn), tags: cases[0], expected: expectedTagInstancesMap},
+			{name: "cross-account happy path", catalogAttrs: crossRoleAttrs(targetRegion, crossAccountPrincipalArn, crossAccountTargetArn), tags: cases[0], expected: expectedTargetTagInstancesMap},
 			{name: "cross-account principal no trust", catalogAttrs: crossRoleAttrs(targetRegion, crossAccountPrincipalNoTrustArn, crossAccountTargetArn), tags: cases[0], wantErr: "AccessDenied"},
 			{name: "cross-account target no trust", catalogAttrs: crossRoleAttrs(targetRegion, crossAccountPrincipalArn, crossAccountTargetNoTrustArn), tags: cases[0], wantErr: "AccessDenied"},
 			{name: "cross-account target missing ec2 permission", catalogAttrs: crossRoleAttrs(targetRegion, crossAccountPrincipalArn, crossAccountTargetNoEc2PermissionArn), tags: cases[0], wantErr: "UnauthorizedOperation"},

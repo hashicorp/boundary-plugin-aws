@@ -255,3 +255,68 @@ resource "aws_iam_role" "cross_account_target_no_trust" {
 output "cross_account_target_no_trust_arn" {
   value = aws_iam_role.cross_account_target_no_trust.arn
 }
+
+# ---------------------------------------------------------------------------
+# Account B: EC2 instance for cross-account host discovery validation
+# ---------------------------------------------------------------------------
+
+data "aws_availability_zones" "target_azs" {
+  count    = var.target_access_key_id != "" ? 1 : 0
+  provider = aws.target
+}
+
+data "aws_ami" "target_ubuntu" {
+  count       = var.target_access_key_id != "" ? 1 : 0
+  provider    = aws.target
+  most_recent = true
+
+  filter {
+    name   = "name"
+    values = ["ubuntu/images/hvm-ssd/ubuntu-focal-20.04-amd64-server-*"]
+  }
+
+  filter {
+    name   = "virtualization-type"
+    values = ["hvm"]
+  }
+
+  owners = ["099720109477"] # Canonical
+}
+
+resource "aws_vpc" "target_vpc" {
+  count                            = var.target_access_key_id != "" ? 1 : 0
+  provider                         = aws.target
+  cidr_block                       = "10.1.0.0/16"
+  assign_generated_ipv6_cidr_block = true
+}
+
+resource "aws_subnet" "target_subnet" {
+  count                           = var.target_access_key_id != "" ? 1 : 0
+  provider                        = aws.target
+  vpc_id                          = aws_vpc.target_vpc[0].id
+  cidr_block                      = aws_vpc.target_vpc[0].cidr_block
+  ipv6_cidr_block                 = cidrsubnet(aws_vpc.target_vpc[0].ipv6_cidr_block, 8, 0)
+  availability_zone               = data.aws_availability_zones.target_azs[0].names[0]
+  map_public_ip_on_launch         = true
+  assign_ipv6_address_on_creation = true
+}
+
+resource "aws_instance" "target_instances" {
+  count         = var.target_access_key_id != "" ? length(local.instance_tags) : 0
+  provider      = aws.target
+  ami           = data.aws_ami.target_ubuntu[0].id
+  instance_type = "t3.nano"
+  subnet_id     = aws_subnet.target_subnet[0].id
+
+  tags = local.instance_tags[count.index]
+}
+
+output "target_instance_ids" {
+  value = aws_instance.target_instances.*.id
+}
+
+output "target_instance_tags" {
+  value = {
+    for _, r in aws_instance.target_instances : r.id => r.tags
+  }
+}
