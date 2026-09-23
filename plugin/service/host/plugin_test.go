@@ -742,8 +742,11 @@ func TestPluginOnCreateCatalogErr(t *testing.T) {
 					testMockEC2WithDescribeInstancesError(errors.New(testDescribeInstancesError)),
 				)),
 			},
-			expectedErrContains: "aws describe instances failed: DescribeInstances error",
-			expectedErrCode:     codes.FailedPrecondition,
+			// checkHosts returns the DescribeInstances error as-is rather than
+			// wrapping it in a gRPC FailedPrecondition status like the old
+			// dryRunValidation did. A plain Go error maps to codes.Unknown.
+			expectedErrContains: testDescribeInstancesError,
+			expectedErrCode:     codes.Unknown,
 		},
 	}
 
@@ -994,8 +997,11 @@ func TestPluginOnUpdateCatalogErr(t *testing.T) {
 					testMockEC2WithDescribeInstancesError(errors.New(testDescribeInstancesError)),
 				)),
 			},
-			expectedErrContains: "aws describe instances failed: DescribeInstances error",
-			expectedErrCode:     codes.FailedPrecondition,
+			//checkHosts returns the DesribeInstances errror as-is rather than wrapping it
+			// in a gRpc FailedPrecodndition status like the old dryRunValidiation did.
+			// A plain Go error maps to codeds.Unknown.
+			expectedErrContains: testDescribeInstancesError,
+			expectedErrCode:     codes.Unknown,
 		},
 		{
 			name: "new incoming dynamic credential update dry run error",
@@ -1036,8 +1042,11 @@ func TestPluginOnUpdateCatalogErr(t *testing.T) {
 					testMockEC2WithDescribeInstancesError(errors.New(testDescribeInstancesError)),
 				)),
 			},
-			expectedErrContains: "aws describe instances failed: DescribeInstances error",
-			expectedErrCode:     codes.FailedPrecondition,
+			// checkHosts returns the DescribeInstances error as-is rather than wrapping it
+			// in a gRPC FailedPrecondition status like the old dryRunValidiation did.
+			// A plain Go error maps to codes.Unknown.
+			expectedErrContains: testDescribeInstancesError,
+			expectedErrCode:     codes.Unknown,
 		},
 		{
 			name: "replace creds error",
@@ -1211,8 +1220,11 @@ func TestPluginOnUpdateCatalogErr(t *testing.T) {
 					testMockEC2WithDescribeInstancesError(fmt.Errorf("oops there was an error")),
 				)),
 			},
-			expectedErrContains: "aws describe instances failed: oops there was an error",
-			expectedErrCode:     codes.FailedPrecondition,
+			// checkHosts returns the DescribeInstances error as-is rather than wrapping it
+			// in a gRPC FailedPrecondition status like the old dryRunValidiation did.
+			// A plain Go error maps to codes.Unknown.
+			expectedErrContains: "oops there was an error",
+			expectedErrCode:     codes.Unknown,
 		},
 	}
 
@@ -1565,8 +1577,8 @@ func TestPluginOnCreateSetErr(t *testing.T) {
 					testMockEC2WithDescribeInstancesError(errors.New(testDescribeInstancesError)),
 				)),
 			},
-			expectedErrContains: fmt.Sprintf("aws describe instances failed: %s", testDescribeInstancesError),
-			expectedErrCode:     codes.FailedPrecondition,
+			expectedErrContains: testDescribeInstancesError,
+			expectedErrCode:     codes.Unknown,
 		},
 	}
 
@@ -1828,8 +1840,8 @@ func TestPluginOnUpdateSetErr(t *testing.T) {
 					testMockEC2WithDescribeInstancesError(errors.New(testDescribeInstancesError)),
 				)),
 			},
-			expectedErrContains: fmt.Sprintf("aws describe instances failed: %s", testDescribeInstancesError),
-			expectedErrCode:     codes.FailedPrecondition,
+			expectedErrContains: testDescribeInstancesError,
+			expectedErrCode:     codes.Unknown,
 		},
 	}
 
@@ -3085,55 +3097,4 @@ func TestAppendDistinct(t *testing.T) {
 			require.ElementsMatch(actual, tc.expected)
 		})
 	}
-}
-
-func TestDryRunValidation(t *testing.T) {
-	t.Run("nil credential state", func(t *testing.T) {
-		st := dryRunValidation(context.Background(), nil, nil)
-		require.NotNil(t, st)
-		require.Equal(t, codes.InvalidArgument.String(), st.Code().String())
-		require.Equal(t, "persisted state is required", st.Message())
-	})
-
-	t.Run("ec2ClientErr", func(t *testing.T) {
-		st := dryRunValidation(context.Background(), &awsCatalogPersistedState{
-			AwsCredentialPersistedState: &credential.AwsCredentialPersistedState{
-				CredentialsConfig: &awsutil.CredentialsConfig{},
-			},
-			testEC2APIFunc: func(...aws.Config) (EC2API, error) {
-				return nil, fmt.Errorf("oops ec2 client err")
-			},
-		}, []ec2Option{})
-		require.NotNil(t, st)
-		require.Equal(t, codes.InvalidArgument.String(), st.Code().String())
-		require.Equal(t, "error getting EC2 client: oops ec2 client err", st.Message())
-	})
-
-	t.Run("describeInstancesErr", func(t *testing.T) {
-		st := dryRunValidation(context.Background(), &awsCatalogPersistedState{
-			AwsCredentialPersistedState: &credential.AwsCredentialPersistedState{
-				CredentialsConfig: &awsutil.CredentialsConfig{
-					AccessKey: "AKIAfoo",
-					SecretKey: "baz",
-				},
-			},
-			testEC2APIFunc: newTestMockEC2(nil, testMockEC2WithDescribeInstancesError(fmt.Errorf("oops describe instances error"))),
-		}, []ec2Option{})
-		require.NotNil(t, st)
-		require.Equal(t, codes.FailedPrecondition.String(), st.Code().String())
-		require.Equal(t, "aws describe instances failed: oops describe instances error", st.Message())
-	})
-
-	t.Run("success", func(t *testing.T) {
-		st := dryRunValidation(context.Background(), &awsCatalogPersistedState{
-			AwsCredentialPersistedState: &credential.AwsCredentialPersistedState{
-				CredentialsConfig: &awsutil.CredentialsConfig{
-					AccessKey: "AKIAfoo",
-					SecretKey: "baz",
-				},
-			},
-			testEC2APIFunc: newTestMockEC2(nil, testMockEC2WithDescribeInstancesOutput(&ec2.DescribeInstancesOutput{})),
-		}, []ec2Option{})
-		require.Nil(t, st)
-	})
 }
