@@ -1126,6 +1126,16 @@ func TestPluginOnUpdateCatalogErr(t *testing.T) {
 					},
 				},
 			},
+			// ValidateCreds is called for DynamicAWS credentials before the dry-run
+			// DescribeInstances. Provide a mock STS that returns a successful AssumeRole
+			// so the validate step passes and execution reaches the EC2 mock.
+			credOpts: []credential.AwsCredentialPersistedStateOption{
+				credential.WithStateTestOpts([]awsutil.Option{
+					awsutil.WithSTSAPIFunc(awsutil.NewMockSTS(
+						awsutil.WithAssumeRoleOutput(validAssumeRoleOutput()),
+					)),
+				}),
+			},
 			catalogOpts: []awsCatalogPersistedStateOption{
 				withTestEC2APIFunc(newTestMockEC2(
 					nil,
