@@ -633,11 +633,11 @@ func buildFilters(attrs *SetAttributes) ([]types.Filter, error) {
 		splitFilter := strings.Split(filterAttr, "=")
 		switch {
 		case len(splitFilter) != 2:
-			return nil, fmt.Errorf("expected filter %q to contain a single equal sign", filterAttr)
+			return nil, errors.BadRequestStatusf("expected filter %q to contain a single equal sign", filterAttr)
 		case len(splitFilter[0]) == 0:
-			return nil, fmt.Errorf("filter %q contains an empty filter key", filterAttr)
+			return nil, errors.BadRequestStatusf("filter %q contains an empty filter key", filterAttr)
 		case len(splitFilter[1]) == 0:
-			return nil, fmt.Errorf("filter %q contains an empty value", filterAttr)
+			return nil, errors.BadRequestStatusf("filter %q contains an empty value", filterAttr)
 		}
 
 		filterKey, filterValue := splitFilter[0], splitFilter[1]
@@ -668,7 +668,7 @@ func buildFilters(attrs *SetAttributes) ([]types.Filter, error) {
 func buildDescribeInstancesInput(attrs *SetAttributes, dryRun bool) (*ec2.DescribeInstancesInput, error) {
 	filters, err := buildFilters(attrs)
 	if err != nil {
-		return nil, fmt.Errorf("error building filters: %w", err)
+		return nil, err
 	}
 
 	return &ec2.DescribeInstancesInput{
