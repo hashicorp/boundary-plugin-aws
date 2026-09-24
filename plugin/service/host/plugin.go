@@ -5,7 +5,6 @@ package host
 
 import (
 	"context"
-	goerrors "errors"
 	"fmt"
 	"strings"
 
@@ -15,7 +14,6 @@ import (
 	"github.com/aws/aws-sdk-go-v2/service/ec2/types"
 	"github.com/aws/aws-sdk-go-v2/service/sts"
 	stsTypes "github.com/aws/aws-sdk-go-v2/service/sts/types"
-	"github.com/aws/smithy-go"
 	"github.com/hashicorp/boundary-plugin-aws/internal/credential"
 	"github.com/hashicorp/boundary-plugin-aws/internal/errors"
 	pb "github.com/hashicorp/boundary/sdk/pbs/plugin"
@@ -44,8 +42,6 @@ type hostSetQuery struct {
 	OutputHosts []*pb.ListHostsResponseHost
 }
 
-const defaultSessionName = "boundary-default"
-const dryRunOperationErrorCode = "DryRunOperation"
 const errBuildDescribeInstancesInput = "error building DescribeInstances input: %s"
 const errDryRunFailed = "error performing DescribeInstances dry run: %s"
 
@@ -567,10 +563,14 @@ func (p *HostPlugin) ListHosts(ctx context.Context, req *pb.ListHostsRequest) (*
 	for i, query := range queries {
 		output, err := checkHosts(ctx, catalogState, query.Input, opts, catalogAttributes.TargetAccount)
 		if err != nil {
-			if catalogAttributes.TargetAccount != nil {
-				return nil, errors.BadRequestStatusf("unable to list hosts for host set %q: %s", query.Id, err)
+			// Mapped AWS failures are already gRPC statuses from checkHosts.
+			if _, ok := status.FromError(err); ok {
+				return nil, err
 			}
-			return nil, errors.BadRequestStatusf("error retrieving host results for host set id %q: %s", query.Id, err)
+			if catalogAttributes.TargetAccount != nil {
+				return nil, status.Errorf(codes.Unknown, "unable to list hosts for host set %q: %v", query.Id, err)
+			}
+			return nil, status.Errorf(codes.Unknown, "error retrieving host results for host set id %q: %v", query.Id, err)
 		}
 
 		queries[i].Output = output
@@ -584,7 +584,7 @@ func (p *HostPlugin) ListHosts(ctx context.Context, req *pb.ListHostsRequest) (*
 			for _, instance := range reservation.Instances {
 				host, err := awsInstanceToHost(instance, catalogAttributes)
 				if err != nil {
-					return nil, errors.BadRequestStatusf("error processing host results for host set id %q: %s", query.Id, err)
+					return nil, status.Errorf(codes.Unknown, "error processing host results for host set id %q: %v", query.Id, err)
 				}
 
 				queries[i].OutputHosts = append(queries[i].OutputHosts, host)
@@ -759,25 +759,31 @@ func checkHosts(ctx context.Context,
 		// use the principal account to execute the DescribeInstances command
 		ec2Client, err = principalCatalogState.EC2Client(ctx, opts...)
 		if err != nil {
+			if st, _ := errors.ParseAWSError("EC2 client setup", err); st.Code() != codes.Unknown {
+				return nil, st.Err()
+			}
 			return nil, err
 		}
 	} else {
 		// use the target account to execute the DescribeInstances command
 		ec2Client, err = ec2ClientForTarget(ctx, principalCatalogState, target, opts)
 		if err != nil {
+			if _, ok := status.FromError(err); ok {
+				return nil, err
+			}
 			return nil, fmt.Errorf("EC2 client setup failed for target account: %w", err)
 		}
 	}
 
 	output, err := ec2Client.DescribeInstances(ctx, input)
 	if err != nil {
-		var awsErr smithy.APIError
-		ok := goerrors.As(err, &awsErr)
-		if ok && awsErr.ErrorCode() == dryRunOperationErrorCode {
-			// successful DryRun validation, no response necessary, no error thrown
+		if errors.IsDryRunSuccess(err) {
+			// DryRunOperation: request would have succeeded; not a failure.
 			return nil, nil
 		}
-
+		if st, _ := errors.ParseAWSError("DescribeInstances", err); st.Code() != codes.Unknown {
+			return nil, st.Err()
+		}
 		if target != nil {
 			return nil, fmt.Errorf("EC2 DescribeInstances failed for target account: %w", err)
 		}
@@ -800,6 +806,9 @@ func ec2ClientForTarget(
 	// principal identity).
 	principalCfg, err := principalCatalogState.GenerateCredentialChain(ctx)
 	if err != nil {
+		if st, _ := errors.ParseAWSError("EC2 client setup for target account", err); st.Code() != codes.Unknown {
+			return nil, st.Err()
+		}
 		return nil, fmt.Errorf("principal AWS configuration could not be loaded: %w", err)
 	}
 	if principalCfg == nil {
@@ -813,9 +822,6 @@ func ec2ClientForTarget(
 	provider := stscreds.NewAssumeRoleProvider(stsClient, target.RoleArn, func(o *stscreds.AssumeRoleOptions) {
 		if target.RoleSessionName != "" {
 			o.RoleSessionName = target.RoleSessionName
-		} else {
-			// STS may reject the AssumeRole request if session name is not provided.
-			o.RoleSessionName = defaultSessionName
 		}
 		if target.RoleExternalId != "" {
 			o.ExternalID = &target.RoleExternalId
