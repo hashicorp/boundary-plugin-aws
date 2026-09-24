@@ -304,6 +304,7 @@ func TestHostPlugin(t *testing.T) {
 		targetEc2InstanceTags, err := tf.GetOutputMap("target_instance_tags")
 		require.NoError(err)
 		expectedTargetTagInstancesMap := buildExpectedTagInstancesMap(targetEc2InstanceTags, expectedTags)
+		require.NotEmpty(expectedTargetTagInstancesMap)
 
 		testOnCreateCatalogCases(ctx, t, p, []onCreateCatalogCase{
 			{name: "cross-account happy path", catalogAttrs: crossRoleAttrs(targetRegion, crossAccountPrincipalArn, crossAccountTargetArn)},
