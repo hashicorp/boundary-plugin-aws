@@ -186,3 +186,63 @@ func GetCredentialAttributes(in *structpb.Struct) (*CredentialAttributes, error)
 		RoleTags:                  roleTags,
 	}, nil
 }
+
+// GetTargetCredentialAttributes parses values out of a protobuf struct input and returns a CredentialAttributes used
+// for configuring a second AWS session. target_role_arn is required when parsing target credentials.
+// A status error is returned with an InvalidArgument code when target account attributes are missing
+// required values or have invalid value types.
+func GetTargetCredentialAttributes(in *structpb.Struct) (*CredentialAttributes, error) {
+	badFields := make(map[string]string)
+
+	// Parse the role ARN of the target account to AssumeRole into.
+	targetRoleArn, err := values.GetStringValue(in, ConstTargetRoleArn, true)
+	if err != nil {
+		badFields[fmt.Sprintf("attributes.%s", ConstTargetRoleArn)] = err.Error()
+	}
+
+	// try parsing target_region, fallback to region, adds target_region to bad fields only when malformed since not required
+	targetRegion, err := values.GetStringValue(in, ConstTargetRegion, false)
+	if err != nil {
+		badFields[fmt.Sprintf("attributes.%s", ConstTargetRegion)] = err.Error()
+	}
+	if targetRegion == "" {
+		targetRegion, err = values.GetStringValue(in, ConstRegion, true) // region is required for processing
+		if err != nil {
+			badFields[fmt.Sprintf("attributes.%s", ConstRegion)] = err.Error()
+		}
+	}
+
+	// the remaining fields are optional and only raise errors when malformed
+	disableCredentialRotation, err := values.GetBoolValue(in, ConstDisableCredentialRotation, false)
+	if err != nil {
+		badFields[fmt.Sprintf("attributes.%s", ConstDisableCredentialRotation)] = err.Error()
+	}
+
+	targetRoleExternalId, err := values.GetStringValue(in, ConstTargetRoleExternalId, false)
+	if err != nil {
+		badFields[fmt.Sprintf("attributes.%s", ConstTargetRoleExternalId)] = err.Error()
+	}
+
+	targetRoleSessionName, err := values.GetStringValue(in, ConstTargetRoleSessionName, false)
+	if err != nil {
+		badFields[fmt.Sprintf("attributes.%s", ConstTargetRoleSessionName)] = err.Error()
+	}
+
+	targetRoleTags, err := values.GetMapStringString(in, ConstTargetRoleTags, false)
+	if err != nil {
+		badFields[fmt.Sprintf("attributes.%s", ConstTargetRoleTags)] = err.Error()
+	}
+
+	if len(badFields) > 0 {
+		return nil, errors.InvalidArgumentError("Error in the attributes provided", badFields)
+	}
+
+	return &CredentialAttributes{
+		Region:                    targetRegion,
+		DisableCredentialRotation: disableCredentialRotation,
+		RoleArn:                   targetRoleArn,
+		RoleExternalId:            targetRoleExternalId,
+		RoleSessionName:           targetRoleSessionName,
+		RoleTags:                  targetRoleTags,
+	}, nil
+}

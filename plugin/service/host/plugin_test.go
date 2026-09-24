@@ -16,8 +16,11 @@ import (
 	"github.com/aws/aws-sdk-go-v2/service/ec2/types"
 	"github.com/aws/aws-sdk-go-v2/service/iam"
 	iamTypes "github.com/aws/aws-sdk-go-v2/service/iam/types"
+	"github.com/aws/aws-sdk-go-v2/service/sts"
+	stsTypes "github.com/aws/aws-sdk-go-v2/service/sts/types"
 	"github.com/google/go-cmp/cmp"
 	"github.com/hashicorp/boundary-plugin-aws/internal/credential"
+	awserrors "github.com/hashicorp/boundary-plugin-aws/internal/errors"
 	"github.com/hashicorp/boundary/sdk/pbs/controller/api/resources/hostcatalogs"
 	"github.com/hashicorp/boundary/sdk/pbs/controller/api/resources/hostsets"
 	pb "github.com/hashicorp/boundary/sdk/pbs/plugin"
@@ -28,6 +31,38 @@ import (
 	"google.golang.org/protobuf/testing/protocmp"
 	"google.golang.org/protobuf/types/known/structpb"
 )
+// testRoleARN is a syntactically valid ARN used for role_arn test cases.
+// All STS calls against it are handled by injected mocks — no real AWS
+// account is contacted.
+const testRoleARN = "arn:aws:iam::123456789012:role/BoundaryTestRole"
+
+// validAssumeRoleOutput returns a mock AssumeRoleOutput with synthetic
+// temporary credentials for use with WithSTSAPIFunc.
+func validAssumeRoleOutput() *sts.AssumeRoleOutput {
+	return &sts.AssumeRoleOutput{
+		Credentials: &stsTypes.Credentials{
+			AccessKeyId:     aws.String("ASIAmockassumedkey"),
+			SecretAccessKey: aws.String("mockassumedsecret"),
+			SessionToken:    aws.String("mockassumedsessiontoken"),
+			Expiration:      aws.Time(time.Now().Add(time.Hour)),
+		},
+	}
+}
+
+// catalogAttrsStruct builds a catalog attributes structpb for the given
+// region. roleArn is written only when non-empty. disableRotation must be
+// set explicitly to avoid implicit rotation behaviour in tests.
+func catalogAttrsStruct(region, roleArn string, disableRotation bool) *structpb.Struct {
+	fields := map[string]*structpb.Value{
+		credential.ConstRegion:                    structpb.NewStringValue(region),
+		credential.ConstDisableCredentialRotation: structpb.NewBoolValue(disableRotation),
+	}
+	if roleArn != "" {
+		fields[credential.ConstRoleArn] = structpb.NewStringValue(roleArn)
+	}
+	return &structpb.Struct{Fields: fields}
+}
+
 
 func TestPluginOnCreateCatalogSuccess(t *testing.T) {
 	tests := []struct {
@@ -138,17 +173,13 @@ func TestPluginOnCreateCatalogSuccess(t *testing.T) {
 			},
 		},
 		{
+			// role_arn set, no static keys. AssumeRole mock succeeds.
+			// Persisted secrets are empty — dynamic credentials are not stored.
 			name: "usingAssumeRole",
 			req: &pb.OnCreateCatalogRequest{
 				Catalog: &hostcatalogs.HostCatalog{
 					Attrs: &hostcatalogs.HostCatalog_Attributes{
-						Attributes: &structpb.Struct{
-							Fields: map[string]*structpb.Value{
-								credential.ConstRegion:                    structpb.NewStringValue("us-east-1"),
-								credential.ConstRoleArn:                   structpb.NewStringValue("arn:0123:test:rolearn"),
-								credential.ConstDisableCredentialRotation: structpb.NewBoolValue(true),
-							},
-						},
+						Attributes: catalogAttrsStruct("us-east-1", testRoleARN, true),
 					},
 				},
 			},
@@ -157,6 +188,13 @@ func TestPluginOnCreateCatalogSuccess(t *testing.T) {
 					nil,
 					testMockEC2WithDescribeInstancesOutput(&ec2.DescribeInstancesOutput{}),
 				)),
+			},
+			credOpts: []credential.AwsCredentialPersistedStateOption{
+				credential.WithStateTestOpts([]awsutil.Option{
+					awsutil.WithSTSAPIFunc(awsutil.NewMockSTS(
+						awsutil.WithAssumeRoleOutput(validAssumeRoleOutput()),
+					)),
+				}),
 			},
 			expRsp: &pb.OnCreateCatalogResponse{Persisted: &pb.HostCatalogPersisted{Secrets: &structpb.Struct{}}},
 		},
@@ -315,6 +353,20 @@ func TestPluginOnUpdateCatalogSuccess(t *testing.T) {
 					testMockEC2WithDescribeInstancesOutput(&ec2.DescribeInstancesOutput{}),
 				)),
 			},
+			credOpts: []credential.AwsCredentialPersistedStateOption{
+				credential.WithStateTestOpts([]awsutil.Option{
+					awsutil.WithSTSAPIFunc(awsutil.NewMockSTS(
+						awsutil.WithAssumeRoleOutput(&sts.AssumeRoleOutput{
+							Credentials: &stsTypes.Credentials{
+								AccessKeyId:     aws.String("ASIAfoobar"),
+								SecretAccessKey: aws.String("secretkeyfoobar"),
+								SessionToken:    aws.String("sessiontokenfoobar"),
+								Expiration:      aws.Time(time.Now().Add(time.Hour)),
+							},
+						}),
+					)),
+				}),
+			},
 			expRsp: &pb.OnUpdateCatalogResponse{
 				Persisted: &pb.HostCatalogPersisted{Secrets: &structpb.Struct{}},
 			},
@@ -421,6 +473,16 @@ func TestPluginOnUpdateCatalogSuccess(t *testing.T) {
 			credOpts: []credential.AwsCredentialPersistedStateOption{
 				credential.WithStateTestOpts([]awsutil.Option{
 					awsutil.WithIAMAPIFunc(awsutil.NewMockIAM()),
+					awsutil.WithSTSAPIFunc(awsutil.NewMockSTS(
+						awsutil.WithAssumeRoleOutput(&sts.AssumeRoleOutput{
+							Credentials: &stsTypes.Credentials{
+								AccessKeyId:     aws.String("ASIAfoobar"),
+								SecretAccessKey: aws.String("secretkeyfoobar"),
+								SessionToken:    aws.String("sessiontokenfoobar"),
+								Expiration:      aws.Time(time.Now().Add(time.Hour)),
+							},
+						}),
+					)),
 				}),
 			},
 			expRsp: &pb.OnUpdateCatalogResponse{
@@ -742,8 +804,72 @@ func TestPluginOnCreateCatalogErr(t *testing.T) {
 					testMockEC2WithDescribeInstancesError(errors.New(testDescribeInstancesError)),
 				)),
 			},
-			expectedErrContains: "aws describe instances failed: DescribeInstances error",
-			expectedErrCode:     codes.FailedPrecondition,
+			// checkHosts returns the DescribeInstances error as-is rather than
+			// wrapping it in a gRPC FailedPrecondition status like the old
+			// dryRunValidation did. A plain Go error maps to codes.Unknown.
+			expectedErrContains: testDescribeInstancesError,
+			expectedErrCode:     codes.Unknown,
+		},
+		{
+			name: "dry run status error preserves gRPC code",
+			req: &pb.OnCreateCatalogRequest{
+				Catalog: &hostcatalogs.HostCatalog{
+					Secrets: &structpb.Struct{
+						Fields: map[string]*structpb.Value{
+							credential.ConstAccessKeyId:     structpb.NewStringValue("AKIA_foobar"),
+							credential.ConstSecretAccessKey: structpb.NewStringValue("bazqux"),
+						},
+					},
+					Attrs: &hostcatalogs.HostCatalog_Attributes{
+						Attributes: &structpb.Struct{
+							Fields: map[string]*structpb.Value{
+								credential.ConstRegion:                    structpb.NewStringValue("us-west-2"),
+								credential.ConstDisableCredentialRotation: structpb.NewBoolValue(true),
+							},
+						},
+					},
+				},
+			},
+			catalogOpts: []awsCatalogPersistedStateOption{
+				withTestEC2APIFunc(newTestMockEC2(
+					nil,
+					testMockEC2WithDescribeInstancesError(awserrors.TestAwsError("AccessDenied", "not authorized to perform ec2:DescribeInstances")),
+				)),
+			},
+			// checkHosts wraps the AWS error via ParseAWSError into a gRPC
+			// PermissionDenied status. OnCreateCatalog's dry-run error handler
+			// should preserve that status code, not re-wrap it as Unknown.
+			expectedErrContains: "invalid credentials",
+			expectedErrCode:     codes.PermissionDenied,
+		},
+		{
+			// BUG FIX: role_arn set, no static keys. AssumeRole mock returns
+			// an error. ValidateCreds now eagerly calls Retrieve() which forces
+			// sts:AssumeRole, so the error surfaces here at creation time.
+			// Previously this succeeded silently via the ambient credential chain.
+			name: "role_arn AssumeRole error — correctly rejected",
+			req: &pb.OnCreateCatalogRequest{
+				Catalog: &hostcatalogs.HostCatalog{
+					Attrs: &hostcatalogs.HostCatalog_Attributes{
+						Attributes: catalogAttrsStruct("us-east-1", testRoleARN, true),
+					},
+				},
+			},
+			credOpts: []credential.AwsCredentialPersistedStateOption{
+				credential.WithStateTestOpts([]awsutil.Option{
+					awsutil.WithSTSAPIFunc(awsutil.NewMockSTS(
+						awsutil.WithAssumeRoleError(errors.New("simulated AssumeRole failure")),
+					)),
+				}),
+			},
+			catalogOpts: []awsCatalogPersistedStateOption{
+				withTestEC2APIFunc(newTestMockEC2(
+					nil,
+					testMockEC2WithDescribeInstancesOutput(&ec2.DescribeInstancesOutput{}),
+				)),
+			},
+			expectedErrContains: "simulated AssumeRole failure",
+			expectedErrCode:     codes.Unknown,
 		},
 	}
 
@@ -994,8 +1120,11 @@ func TestPluginOnUpdateCatalogErr(t *testing.T) {
 					testMockEC2WithDescribeInstancesError(errors.New(testDescribeInstancesError)),
 				)),
 			},
-			expectedErrContains: "aws describe instances failed: DescribeInstances error",
-			expectedErrCode:     codes.FailedPrecondition,
+			//checkHosts returns the DesribeInstances errror as-is rather than wrapping it
+			// in a gRpc FailedPrecodndition status like the old dryRunValidiation did.
+			// A plain Go error maps to codeds.Unknown.
+			expectedErrContains: testDescribeInstancesError,
+			expectedErrCode:     codes.Unknown,
 		},
 		{
 			name: "new incoming dynamic credential update dry run error",
@@ -1030,14 +1159,27 @@ func TestPluginOnUpdateCatalogErr(t *testing.T) {
 					},
 				},
 			},
+			// ValidateCreds is called for DynamicAWS credentials before the dry-run
+			// DescribeInstances. Provide a mock STS that returns a successful AssumeRole
+			// so the validate step passes and execution reaches the EC2 mock.
+			credOpts: []credential.AwsCredentialPersistedStateOption{
+				credential.WithStateTestOpts([]awsutil.Option{
+					awsutil.WithSTSAPIFunc(awsutil.NewMockSTS(
+						awsutil.WithAssumeRoleOutput(validAssumeRoleOutput()),
+					)),
+				}),
+			},
 			catalogOpts: []awsCatalogPersistedStateOption{
 				withTestEC2APIFunc(newTestMockEC2(
 					nil,
 					testMockEC2WithDescribeInstancesError(errors.New(testDescribeInstancesError)),
 				)),
 			},
-			expectedErrContains: "aws describe instances failed: DescribeInstances error",
-			expectedErrCode:     codes.FailedPrecondition,
+			// checkHosts returns the DescribeInstances error as-is rather than wrapping it
+			// in a gRPC FailedPrecondition status like the old dryRunValidiation did.
+			// A plain Go error maps to codes.Unknown.
+			expectedErrContains: testDescribeInstancesError,
+			expectedErrCode:     codes.Unknown,
 		},
 		{
 			name: "replace creds error",
@@ -1211,8 +1353,53 @@ func TestPluginOnUpdateCatalogErr(t *testing.T) {
 					testMockEC2WithDescribeInstancesError(fmt.Errorf("oops there was an error")),
 				)),
 			},
-			expectedErrContains: "aws describe instances failed: oops there was an error",
-			expectedErrCode:     codes.FailedPrecondition,
+			// checkHosts returns the DescribeInstances error as-is rather than wrapping it
+			// in a gRPC FailedPrecondition status like the old dryRunValidiation did.
+			// A plain Go error maps to codes.Unknown.
+			expectedErrContains: "oops there was an error",
+			expectedErrCode:     codes.Unknown,
+		},
+		{
+			name: "final dry run gRPC status error preserves code",
+			req: &pb.OnUpdateCatalogRequest{
+				CurrentCatalog: &hostcatalogs.HostCatalog{
+					Attrs: &hostcatalogs.HostCatalog_Attributes{
+						Attributes: &structpb.Struct{
+							Fields: map[string]*structpb.Value{
+								credential.ConstRegion: structpb.NewStringValue("us-west-2"),
+							},
+						},
+					},
+				},
+				NewCatalog: &hostcatalogs.HostCatalog{
+					Attrs: &hostcatalogs.HostCatalog_Attributes{
+						Attributes: &structpb.Struct{
+							Fields: map[string]*structpb.Value{
+								credential.ConstRegion: structpb.NewStringValue("us-west-2"),
+							},
+						},
+					},
+				},
+				Persisted: &pb.HostCatalogPersisted{
+					Secrets: &structpb.Struct{
+						Fields: map[string]*structpb.Value{
+							credential.ConstAccessKeyId:          structpb.NewStringValue("AKIA_foobar"),
+							credential.ConstSecretAccessKey:      structpb.NewStringValue("bazqux"),
+							credential.ConstCredsLastRotatedTime: structpb.NewStringValue("2006-01-02T15:04:05+07:00"),
+						},
+					},
+				},
+			},
+			catalogOpts: []awsCatalogPersistedStateOption{
+				withTestEC2APIFunc(newTestMockEC2(
+					nil,
+					testMockEC2WithDescribeInstancesError(awserrors.TestAwsError("AccessDenied", "not authorized to perform ec2:DescribeInstances")),
+				)),
+			},
+			// ParseAWSError maps AccessDenied to PermissionDenied. The dry-run
+			// error handler should preserve that gRPC status, not wrap it as Unknown.
+			expectedErrContains: "invalid credentials",
+			expectedErrCode:     codes.PermissionDenied,
 		},
 	}
 
@@ -1565,8 +1752,57 @@ func TestPluginOnCreateSetErr(t *testing.T) {
 					testMockEC2WithDescribeInstancesError(errors.New(testDescribeInstancesError)),
 				)),
 			},
-			expectedErrContains: fmt.Sprintf("aws describe instances failed: %s", testDescribeInstancesError),
-			expectedErrCode:     codes.FailedPrecondition,
+			expectedErrContains: testDescribeInstancesError,
+			expectedErrCode:     codes.Unknown,
+		},
+		{
+			name: "dry run gRPC status error preserves code",
+			req: &pb.OnCreateSetRequest{
+				Catalog: &hostcatalogs.HostCatalog{
+					Attrs: &hostcatalogs.HostCatalog_Attributes{
+						Attributes: &structpb.Struct{
+							Fields: map[string]*structpb.Value{
+								credential.ConstRegion:                    structpb.NewStringValue("us-west-2"),
+								credential.ConstDisableCredentialRotation: structpb.NewBoolValue(true),
+							},
+						},
+					},
+				},
+				Persisted: &pb.HostCatalogPersisted{
+					Secrets: &structpb.Struct{
+						Fields: map[string]*structpb.Value{
+							credential.ConstAccessKeyId:     structpb.NewStringValue("AKIA_foobar"),
+							credential.ConstSecretAccessKey: structpb.NewStringValue("bazqux"),
+						},
+					},
+				},
+				Set: &hostsets.HostSet{
+					Id: "foobar",
+					Attrs: &hostsets.HostSet_Attributes{
+						Attributes: &structpb.Struct{
+							Fields: map[string]*structpb.Value{
+								ConstDescribeInstancesFilters: structpb.NewListValue(
+									&structpb.ListValue{
+										Values: []*structpb.Value{
+											structpb.NewStringValue("tag-key=foo"),
+										},
+									},
+								),
+							},
+						},
+					},
+				},
+			},
+			catalogOpts: []awsCatalogPersistedStateOption{
+				withTestEC2APIFunc(newTestMockEC2(
+					nil,
+					testMockEC2WithDescribeInstancesError(awserrors.TestAwsError("AccessDenied", "not authorized to perform ec2:DescribeInstances")),
+				)),
+			},
+			// ParseAWSError maps AccessDenied to PermissionDenied. The dry-run
+			// error handler should preserve that gRPC status, not wrap it as Unknown.
+			expectedErrContains: "invalid credentials",
+			expectedErrCode:     codes.PermissionDenied,
 		},
 	}
 
@@ -1828,8 +2064,56 @@ func TestPluginOnUpdateSetErr(t *testing.T) {
 					testMockEC2WithDescribeInstancesError(errors.New(testDescribeInstancesError)),
 				)),
 			},
-			expectedErrContains: fmt.Sprintf("aws describe instances failed: %s", testDescribeInstancesError),
-			expectedErrCode:     codes.FailedPrecondition,
+			expectedErrContains: testDescribeInstancesError,
+			expectedErrCode:     codes.Unknown,
+		},
+		{
+			name: "dry run gRPC status error preserves code",
+			req: &pb.OnUpdateSetRequest{
+				Catalog: &hostcatalogs.HostCatalog{
+					Attrs: &hostcatalogs.HostCatalog_Attributes{
+						Attributes: &structpb.Struct{
+							Fields: map[string]*structpb.Value{
+								credential.ConstRegion:                    structpb.NewStringValue("us-west-2"),
+								credential.ConstDisableCredentialRotation: structpb.NewBoolValue(true),
+							},
+						},
+					},
+				},
+				Persisted: &pb.HostCatalogPersisted{
+					Secrets: &structpb.Struct{
+						Fields: map[string]*structpb.Value{
+							credential.ConstAccessKeyId:     structpb.NewStringValue("AKIA_foobar"),
+							credential.ConstSecretAccessKey: structpb.NewStringValue("bazqux"),
+						},
+					},
+				},
+				NewSet: &hostsets.HostSet{
+					Attrs: &hostsets.HostSet_Attributes{
+						Attributes: &structpb.Struct{
+							Fields: map[string]*structpb.Value{
+								ConstDescribeInstancesFilters: structpb.NewListValue(
+									&structpb.ListValue{
+										Values: []*structpb.Value{
+											structpb.NewStringValue("tag-key=foo"),
+										},
+									},
+								),
+							},
+						},
+					},
+				},
+			},
+			catalogOpts: []awsCatalogPersistedStateOption{
+				withTestEC2APIFunc(newTestMockEC2(
+					nil,
+					testMockEC2WithDescribeInstancesError(awserrors.TestAwsError("AccessDenied", "not authorized to perform ec2:DescribeInstances")),
+				)),
+			},
+			// ParseAWSError maps AccessDenied to PermissionDenied. The dry-run
+			// error handler should preserve that gRPC status, not wrap it as Unknown.
+			expectedErrContains: "invalid credentials",
+			expectedErrCode:     codes.PermissionDenied,
 		},
 	}
 
@@ -1845,6 +2129,162 @@ func TestPluginOnUpdateSetErr(t *testing.T) {
 			require.Error(err)
 			require.Contains(err.Error(), tc.expectedErrContains)
 			require.Equal(status.Code(err).String(), tc.expectedErrCode.String())
+		})
+	}
+}
+
+func testListHostsSet(id, filter string) *hostsets.HostSet {
+	return &hostsets.HostSet{
+		Id: id,
+		Attrs: &hostsets.HostSet_Attributes{
+			Attributes: &structpb.Struct{
+				Fields: map[string]*structpb.Value{
+					ConstDescribeInstancesFilters: structpb.NewListValue(
+						&structpb.ListValue{
+							Values: []*structpb.Value{
+								structpb.NewStringValue(filter),
+							},
+						},
+					),
+				},
+			},
+		},
+	}
+}
+
+func testListHostsPersisted() *pb.HostCatalogPersisted {
+	return &pb.HostCatalogPersisted{
+		Secrets: &structpb.Struct{
+			Fields: map[string]*structpb.Value{
+				credential.ConstAccessKeyId:     structpb.NewStringValue("AKIA_foobar"),
+				credential.ConstSecretAccessKey: structpb.NewStringValue("bazqux"),
+			},
+		},
+	}
+}
+
+func testExpectedDescribeInput(filterKey, filterValue string) *ec2.DescribeInstancesInput {
+	return &ec2.DescribeInstancesInput{
+		DryRun: aws.Bool(false),
+		Filters: []types.Filter{
+			{
+				Name:   aws.String(filterKey),
+				Values: []string{filterValue},
+			},
+			{
+				Name:   aws.String("instance-state-name"),
+				Values: []string{string(types.InstanceStateNameRunning)},
+			},
+		},
+	}
+}
+
+func TestPluginListHosts(t *testing.T) {
+	describeOutput := &ec2.DescribeInstancesOutput{
+		Reservations: []types.Reservation{
+			{
+				Instances: []types.Instance{
+					{
+						InstanceId:       aws.String("i-shared"),
+						PrivateIpAddress: aws.String("10.0.0.1"),
+					},
+				},
+			},
+		},
+	}
+
+	cases := []struct {
+		name             string
+		catalogFields    map[string]*structpb.Value
+		sets             []*hostsets.HostSet
+		expectedRegion   string
+		expectedHosts    []*pb.ListHostsResponseHost
+		expectedInputs   []*ec2.DescribeInstancesInput
+		expectedDescribe int
+	}{
+		{
+			name: "principal account lists hosts",
+			catalogFields: map[string]*structpb.Value{
+				credential.ConstRegion: structpb.NewStringValue("us-west-2"),
+			},
+			sets: []*hostsets.HostSet{
+				testListHostsSet("set-1", "tag-key=foo"),
+			},
+			expectedRegion: "us-west-2",
+			expectedHosts: []*pb.ListHostsResponseHost{
+				{
+					ExternalId: "i-shared",
+					SetIds:     []string{"set-1"},
+				},
+			},
+			expectedInputs: []*ec2.DescribeInstancesInput{
+				testExpectedDescribeInput("tag-key", "foo"),
+			},
+			expectedDescribe: 1,
+		},
+		{
+			name: "target account lists hosts without querying principal",
+			catalogFields: map[string]*structpb.Value{
+				credential.ConstRegion:        structpb.NewStringValue("us-west-2"),
+				credential.ConstTargetRoleArn: structpb.NewStringValue("arn:aws:iam::222222222222:role/Target"),
+				credential.ConstTargetRegion:  structpb.NewStringValue("eu-west-1"),
+			},
+			sets: []*hostsets.HostSet{
+				testListHostsSet("set-1", "tag-key=foo"),
+				testListHostsSet("set-2", "tag-key=bar"),
+			},
+			expectedRegion: "eu-west-1",
+			expectedHosts: []*pb.ListHostsResponseHost{
+				{
+					ExternalId: "i-shared",
+					SetIds:     []string{"set-1", "set-2"},
+				},
+			},
+			expectedInputs: []*ec2.DescribeInstancesInput{
+				testExpectedDescribeInput("tag-key", "foo"),
+				testExpectedDescribeInput("tag-key", "bar"),
+			},
+			expectedDescribe: 2,
+		},
+	}
+
+	for _, tc := range cases {
+		tc := tc
+		t.Run(tc.name, func(t *testing.T) {
+			require := require.New(t)
+			state := &testMockEC2State{}
+			p := &HostPlugin{
+				testCatalogStateOpts: []awsCatalogPersistedStateOption{
+					withTestEC2APIFunc(newTestMockEC2(
+						state,
+						testMockEC2WithDescribeInstancesOutput(describeOutput),
+					)),
+				},
+			}
+
+			resp, err := p.ListHosts(context.Background(), &pb.ListHostsRequest{
+				Catalog: &hostcatalogs.HostCatalog{
+					Attrs: &hostcatalogs.HostCatalog_Attributes{
+						Attributes: &structpb.Struct{Fields: tc.catalogFields},
+					},
+				},
+				Persisted: testListHostsPersisted(),
+				Sets:      tc.sets,
+			})
+			require.NoError(err)
+			require.NotNil(resp)
+			require.Len(resp.GetHosts(), len(tc.expectedHosts))
+			for i, expected := range tc.expectedHosts {
+				require.Equal(expected.ExternalId, resp.Hosts[i].ExternalId)
+				require.Equal(expected.SetIds, resp.Hosts[i].SetIds)
+			}
+
+			require.Equal(tc.expectedDescribe, state.DescribeInstancesCallCount)
+			require.Len(state.ClientRegions, tc.expectedDescribe)
+			for _, region := range state.ClientRegions {
+				require.Equal(tc.expectedRegion, region)
+			}
+			require.Equal(tc.expectedInputs, state.DescribeInstancesInputs)
 		})
 	}
 }
@@ -2130,8 +2570,102 @@ func TestPluginListHostsErr(t *testing.T) {
 					testMockEC2WithDescribeInstancesError(errors.New(testDescribeInstancesError)),
 				)),
 			},
-			expectedErrContains: fmt.Sprintf("error running DescribeInstances for host set id \"foobar\": %s", testDescribeInstancesError),
+			expectedErrContains: fmt.Sprintf("error retrieving host results for host set id \"foobar\": %s", testDescribeInstancesError),
+			expectedErrCode:     codes.Unknown,
+		},
+		{
+			name: "target attributes missing target_role_arn",
+			req: &pb.ListHostsRequest{
+				Catalog: &hostcatalogs.HostCatalog{
+					Attrs: &hostcatalogs.HostCatalog_Attributes{
+						Attributes: &structpb.Struct{
+							Fields: map[string]*structpb.Value{
+								credential.ConstRegion:       structpb.NewStringValue("us-west-2"),
+								credential.ConstTargetRegion: structpb.NewStringValue("eu-west-1"),
+							},
+						},
+					},
+				},
+			},
+			expectedErrContains: "attributes.target_role_arn: missing required value \"target_role_arn\"",
 			expectedErrCode:     codes.InvalidArgument,
+		},
+		{
+			name: "target EC2 client error",
+			req: &pb.ListHostsRequest{
+				Catalog: &hostcatalogs.HostCatalog{
+					Attrs: &hostcatalogs.HostCatalog_Attributes{
+						Attributes: &structpb.Struct{
+							Fields: map[string]*structpb.Value{
+								credential.ConstRegion:        structpb.NewStringValue("us-west-2"),
+								credential.ConstTargetRoleArn: structpb.NewStringValue("arn:aws:iam::222222222222:role/Target"),
+							},
+						},
+					},
+				},
+				Persisted: &pb.HostCatalogPersisted{
+					Secrets: &structpb.Struct{
+						Fields: map[string]*structpb.Value{
+							credential.ConstAccessKeyId:          structpb.NewStringValue("AKIA_foobar"),
+							credential.ConstSecretAccessKey:      structpb.NewStringValue("bazqux"),
+							credential.ConstCredsLastRotatedTime: structpb.NewStringValue("2006-01-02T15:04:05+07:00"),
+						},
+					},
+				},
+				Sets: []*hostsets.HostSet{
+					{
+						Id: "foobar",
+						Attrs: &hostsets.HostSet_Attributes{
+							Attributes: &structpb.Struct{
+								Fields: map[string]*structpb.Value{
+									ConstDescribeInstancesFilters: structpb.NewListValue(
+										&structpb.ListValue{
+											Values: []*structpb.Value{
+												structpb.NewStringValue("tag-key=foo"),
+											},
+										},
+									),
+								},
+							},
+						},
+					},
+				},
+			},
+			catalogOpts: []awsCatalogPersistedStateOption{
+				withTestEC2APIFunc(func(...aws.Config) (EC2API, error) {
+					return nil, errors.New("test EC2 client error")
+				}),
+			},
+			expectedErrContains: "unable to list hosts for host set \"foobar\": EC2 client setup failed for target account: test EC2 client error",
+			expectedErrCode:     codes.Unknown,
+		},
+		{
+			name: "target DescribeInstances error",
+			req: &pb.ListHostsRequest{
+				Catalog: &hostcatalogs.HostCatalog{
+					Attrs: &hostcatalogs.HostCatalog_Attributes{
+						Attributes: &structpb.Struct{
+							Fields: map[string]*structpb.Value{
+								credential.ConstRegion:        structpb.NewStringValue("us-west-2"),
+								credential.ConstTargetRoleArn: structpb.NewStringValue("arn:aws:iam::222222222222:role/Target"),
+								credential.ConstTargetRegion:  structpb.NewStringValue("eu-west-1"),
+							},
+						},
+					},
+				},
+				Persisted: testListHostsPersisted(),
+				Sets: []*hostsets.HostSet{
+					testListHostsSet("foobar", "tag-key=foo"),
+				},
+			},
+			catalogOpts: []awsCatalogPersistedStateOption{
+				withTestEC2APIFunc(newTestMockEC2(
+					nil,
+					testMockEC2WithDescribeInstancesError(errors.New(testDescribeInstancesError)),
+				)),
+			},
+			expectedErrContains: "unable to list hosts for host set \"foobar\": EC2 DescribeInstances failed for target account: DescribeInstances error",
+			expectedErrCode:     codes.Unknown,
 		},
 		{
 			name: "awsInstanceToHost error",
@@ -2192,7 +2726,115 @@ func TestPluginListHostsErr(t *testing.T) {
 				)),
 			},
 			expectedErrContains: "error processing host results for host set id \"foobar\": response integrity error: missing instance id",
-			expectedErrCode:     codes.InvalidArgument,
+			expectedErrCode:     codes.Unknown,
+		},
+		{
+			name: "DescribeInstances AccessDenied",
+			req: &pb.ListHostsRequest{
+				Catalog: &hostcatalogs.HostCatalog{
+					Attrs: &hostcatalogs.HostCatalog_Attributes{
+						Attributes: &structpb.Struct{
+							Fields: map[string]*structpb.Value{
+								credential.ConstRegion: structpb.NewStringValue("us-west-2"),
+							},
+						},
+					},
+				},
+				Persisted: testListHostsPersisted(),
+				Sets: []*hostsets.HostSet{
+					testListHostsSet("foobar", "tag-key=foo"),
+				},
+			},
+			catalogOpts: []awsCatalogPersistedStateOption{
+				withTestEC2APIFunc(newTestMockEC2(
+					nil,
+					testMockEC2WithDescribeInstancesError(awserrors.TestAwsError("AccessDenied", "not authorized to perform ec2:DescribeInstances")),
+				)),
+			},
+			expectedErrContains: "invalid credentials",
+			expectedErrCode:     codes.PermissionDenied,
+		},
+		{
+			name: "DescribeInstances UnauthorizedOperation",
+			req: &pb.ListHostsRequest{
+				Catalog: &hostcatalogs.HostCatalog{
+					Attrs: &hostcatalogs.HostCatalog_Attributes{
+						Attributes: &structpb.Struct{
+							Fields: map[string]*structpb.Value{
+								credential.ConstRegion: structpb.NewStringValue("us-west-2"),
+							},
+						},
+					},
+				},
+				Persisted: testListHostsPersisted(),
+				Sets: []*hostsets.HostSet{
+					testListHostsSet("foobar", "tag-key=foo"),
+				},
+			},
+			catalogOpts: []awsCatalogPersistedStateOption{
+				withTestEC2APIFunc(newTestMockEC2(
+					nil,
+					testMockEC2WithDescribeInstancesError(awserrors.TestAwsError("UnauthorizedOperation", "You are not authorized to perform this operation.")),
+				)),
+			},
+			expectedErrContains: "invalid credentials",
+			expectedErrCode:     codes.PermissionDenied,
+		},
+		{
+			name: "target DescribeInstances AccessDenied",
+			req: &pb.ListHostsRequest{
+				Catalog: &hostcatalogs.HostCatalog{
+					Attrs: &hostcatalogs.HostCatalog_Attributes{
+						Attributes: &structpb.Struct{
+							Fields: map[string]*structpb.Value{
+								credential.ConstRegion:        structpb.NewStringValue("us-west-2"),
+								credential.ConstTargetRoleArn: structpb.NewStringValue("arn:aws:iam::222222222222:role/Target"),
+								credential.ConstTargetRegion:  structpb.NewStringValue("eu-west-1"),
+							},
+						},
+					},
+				},
+				Persisted: testListHostsPersisted(),
+				Sets: []*hostsets.HostSet{
+					testListHostsSet("foobar", "tag-key=foo"),
+				},
+			},
+			catalogOpts: []awsCatalogPersistedStateOption{
+				withTestEC2APIFunc(newTestMockEC2(
+					nil,
+					testMockEC2WithDescribeInstancesError(awserrors.TestAwsError("AccessDenied", "not authorized to perform ec2:DescribeInstances")),
+				)),
+			},
+			expectedErrContains: "invalid credentials",
+			expectedErrCode:     codes.PermissionDenied,
+		},
+		{
+			name: "target EC2 client AccessDenied",
+			req: &pb.ListHostsRequest{
+				Catalog: &hostcatalogs.HostCatalog{
+					Attrs: &hostcatalogs.HostCatalog_Attributes{
+						Attributes: &structpb.Struct{
+							Fields: map[string]*structpb.Value{
+								credential.ConstRegion:        structpb.NewStringValue("us-west-2"),
+								credential.ConstTargetRoleArn: structpb.NewStringValue("arn:aws:iam::222222222222:role/Target"),
+							},
+						},
+					},
+				},
+				Persisted: testListHostsPersisted(),
+				Sets: []*hostsets.HostSet{
+					testListHostsSet("foobar", "tag-key=foo"),
+				},
+			},
+			catalogOpts: []awsCatalogPersistedStateOption{
+				withTestEC2APIFunc(func(...aws.Config) (EC2API, error) {
+					return nil, awserrors.TestAwsError("AccessDenied", "not authorized to assume role")
+				}),
+			},
+			// ec2ClientForTarget returns testEC2APIFunc errors unparsed; checkHosts
+			// only preserves existing gRPC statuses, so this surfaces as Unknown.
+			expectedErrContains: "unable to list hosts for host set \"foobar\": EC2 client setup failed for target account: api error AccessDenied: not authorized to assume role",
+			expectedErrCode:     codes.Unknown,
 		},
 	}
 
@@ -2383,6 +3025,21 @@ func TestBuildDescribeInstancesInput(t *testing.T) {
 			require.Equal(tc.expected, actual)
 		})
 	}
+
+	t.Run("nil attrs, dry run", func(t *testing.T) {
+		require := require.New(t)
+		actual, err := buildDescribeInstancesInput(nil, true)
+		require.NoError(err)
+		require.Equal(&ec2.DescribeInstancesInput{
+			DryRun: aws.Bool(true),
+			Filters: []types.Filter{
+				{
+					Name:   aws.String("instance-state-name"),
+					Values: []string{string(types.InstanceStateNameRunning)},
+				},
+			},
+		}, actual)
+	})
 }
 
 func TestAwsInstanceToHost(t *testing.T) {
@@ -2820,55 +3477,4 @@ func TestAppendDistinct(t *testing.T) {
 			require.ElementsMatch(actual, tc.expected)
 		})
 	}
-}
-
-func TestDryRunValidation(t *testing.T) {
-	t.Run("nil credential state", func(t *testing.T) {
-		st := dryRunValidation(context.Background(), nil, nil)
-		require.NotNil(t, st)
-		require.Equal(t, codes.InvalidArgument.String(), st.Code().String())
-		require.Equal(t, "persisted state is required", st.Message())
-	})
-
-	t.Run("ec2ClientErr", func(t *testing.T) {
-		st := dryRunValidation(context.Background(), &awsCatalogPersistedState{
-			AwsCredentialPersistedState: &credential.AwsCredentialPersistedState{
-				CredentialsConfig: &awsutil.CredentialsConfig{},
-			},
-			testEC2APIFunc: func(...aws.Config) (EC2API, error) {
-				return nil, fmt.Errorf("oops ec2 client err")
-			},
-		}, []ec2Option{})
-		require.NotNil(t, st)
-		require.Equal(t, codes.InvalidArgument.String(), st.Code().String())
-		require.Equal(t, "error getting EC2 client: oops ec2 client err", st.Message())
-	})
-
-	t.Run("describeInstancesErr", func(t *testing.T) {
-		st := dryRunValidation(context.Background(), &awsCatalogPersistedState{
-			AwsCredentialPersistedState: &credential.AwsCredentialPersistedState{
-				CredentialsConfig: &awsutil.CredentialsConfig{
-					AccessKey: "AKIAfoo",
-					SecretKey: "baz",
-				},
-			},
-			testEC2APIFunc: newTestMockEC2(nil, testMockEC2WithDescribeInstancesError(fmt.Errorf("oops describe instances error"))),
-		}, []ec2Option{})
-		require.NotNil(t, st)
-		require.Equal(t, codes.FailedPrecondition.String(), st.Code().String())
-		require.Equal(t, "aws describe instances failed: oops describe instances error", st.Message())
-	})
-
-	t.Run("success", func(t *testing.T) {
-		st := dryRunValidation(context.Background(), &awsCatalogPersistedState{
-			AwsCredentialPersistedState: &credential.AwsCredentialPersistedState{
-				CredentialsConfig: &awsutil.CredentialsConfig{
-					AccessKey: "AKIAfoo",
-					SecretKey: "baz",
-				},
-			},
-			testEC2APIFunc: newTestMockEC2(nil, testMockEC2WithDescribeInstancesOutput(&ec2.DescribeInstancesOutput{})),
-		}, []ec2Option{})
-		require.Nil(t, st)
-	})
 }

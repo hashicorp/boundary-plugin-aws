@@ -9,8 +9,11 @@ import (
 	"strings"
 
 	"github.com/aws/aws-sdk-go-v2/aws"
+	"github.com/aws/aws-sdk-go-v2/credentials/stscreds"
 	"github.com/aws/aws-sdk-go-v2/service/ec2"
 	"github.com/aws/aws-sdk-go-v2/service/ec2/types"
+	"github.com/aws/aws-sdk-go-v2/service/sts"
+	stsTypes "github.com/aws/aws-sdk-go-v2/service/sts/types"
 	"github.com/hashicorp/boundary-plugin-aws/internal/credential"
 	"github.com/hashicorp/boundary-plugin-aws/internal/errors"
 	pb "github.com/hashicorp/boundary/sdk/pbs/plugin"
@@ -31,6 +34,16 @@ type HostPlugin struct {
 	// testCatalogStateOpts are passed in to the stored state to control test behavior
 	testCatalogStateOpts []awsCatalogPersistedStateOption
 }
+
+type hostSetQuery struct {
+	Id          string
+	Input       *ec2.DescribeInstancesInput
+	Output      *ec2.DescribeInstancesOutput
+	OutputHosts []*pb.ListHostsResponseHost
+}
+
+const errBuildDescribeInstancesInput = "error building DescribeInstances input: %s"
+const errDryRunFailed = "error performing DescribeInstances dry run: %s"
 
 // Ensure that we are implementing HostPluginServiceServer
 var _ pb.HostPluginServiceServer = (*HostPlugin)(nil)
@@ -73,6 +86,15 @@ func (p *HostPlugin) OnCreateCatalog(ctx context.Context, req *pb.OnCreateCatalo
 		}
 	}
 
+	// Validate assumed-role credentials at catalog-creation time so that an
+	// invalid role_arn is rejected immediately rather than silently falling
+	// back to ambient credentials.
+	if credential.GetCredentialType(credState.CredentialsConfig) == credential.DynamicAWS {
+		if err := credState.ValidateCreds(ctx); err != nil {
+			return nil, err
+		}
+	}
+
 	catalogState, err := newAwsCatalogPersistedState(
 		append([]awsCatalogPersistedStateOption{
 			withCredentials(credState),
@@ -82,13 +104,21 @@ func (p *HostPlugin) OnCreateCatalog(ctx context.Context, req *pb.OnCreateCatalo
 		return nil, errors.BadRequestStatusf("error setting up persisted state: %s", err)
 	}
 
-	// perform dry run to ensure we can interact with AWS as expected.
 	opts := []ec2Option{}
 	if catalogAttributes.DualStack {
 		opts = append(opts, WithDualStack(catalogAttributes.DualStack))
 	}
-	if st := dryRunValidation(ctx, catalogState, opts); st != nil {
-		return nil, st.Err()
+	input, err := buildDescribeInstancesInput(&SetAttributes{}, true)
+	if err != nil {
+		return nil, status.Errorf(codes.Unknown, errBuildDescribeInstancesInput, err)
+	}
+	// Run a DescribeInstances request with DryRun set to true to ensure
+	// we can interact with AWS resources as expected.
+	if _, err := checkHosts(ctx, catalogState, input, opts, catalogAttributes.TargetAccount); err != nil {
+		if _, ok := status.FromError(err); ok {
+			return nil, err
+		}
+		return nil, fmt.Errorf(errDryRunFailed, err)
 	}
 
 	persistedProto, err := catalogState.toProto()
@@ -163,6 +193,15 @@ func (p *HostPlugin) OnUpdateCatalog(ctx context.Context, req *pb.OnUpdateCatalo
 		if err != nil {
 			return nil, errors.BadRequestStatusf("error setting up new credential persisted state: %s", err)
 		}
+
+		// Validate assumed-role credentials when the role_arn changes so that
+		// an invalid ARN is caught before replacing the existing credential state.
+		if credential.GetCredentialType(newCredState.CredentialsConfig) == credential.DynamicAWS {
+			if err := newCredState.ValidateCreds(ctx); err != nil {
+				return nil, err
+			}
+		}
+
 		newCatalogState, err := newAwsCatalogPersistedState(
 			append([]awsCatalogPersistedStateOption{
 				withCredentials(newCredState),
@@ -171,12 +210,22 @@ func (p *HostPlugin) OnUpdateCatalog(ctx context.Context, req *pb.OnUpdateCatalo
 		if err != nil {
 			return nil, errors.BadRequestStatusf("error loading persisted state: %s", err)
 		}
+
 		opts := []ec2Option{}
 		if newCatalogAttributes.DualStack {
 			opts = append(opts, WithDualStack(newCatalogAttributes.DualStack))
 		}
-		if st := dryRunValidation(ctx, newCatalogState, opts); st != nil {
-			return nil, st.Err()
+		input, err := buildDescribeInstancesInput(&SetAttributes{}, true)
+		if err != nil {
+			return nil, status.Errorf(codes.Unknown, errBuildDescribeInstancesInput, err)
+		}
+		// Run a DescribeInstances request with DryRun set to true to ensure
+		// we can interact with AWS resources as expected.
+		if _, err := checkHosts(ctx, newCatalogState, input, opts, newCatalogAttributes.TargetAccount); err != nil {
+			if _, ok := status.FromError(err); ok {
+				return nil, err
+			}
+			return nil, fmt.Errorf(errDryRunFailed, err)
 		}
 
 		// Replace the existing credential state.
@@ -216,13 +265,21 @@ func (p *HostPlugin) OnUpdateCatalog(ctx context.Context, req *pb.OnUpdateCatalo
 		return nil, errors.BadRequestStatusf("error loading persisted state: %s", err)
 	}
 
-	// perform dry run to ensure we can interact with AWS as expected.
 	opts := []ec2Option{}
 	if newCatalogAttributes.DualStack {
 		opts = append(opts, WithDualStack(newCatalogAttributes.DualStack))
 	}
-	if st := dryRunValidation(ctx, catalogState, opts); st != nil {
-		return nil, st.Err()
+	input, err := buildDescribeInstancesInput(&SetAttributes{}, true)
+	if err != nil {
+		return nil, status.Errorf(codes.Unknown, errBuildDescribeInstancesInput, err)
+	}
+	// Run a DescribeInstances request with DryRun set to true to ensure
+	// we can interact with AWS resources as expected.
+	if _, err := checkHosts(ctx, catalogState, input, opts, newCatalogAttributes.TargetAccount); err != nil {
+		if _, ok := status.FromError(err); ok {
+			return nil, err
+		}
+		return nil, fmt.Errorf(errDryRunFailed, err)
 	}
 
 	persistedProto, err := catalogState.toProto()
@@ -366,18 +423,23 @@ func (p *HostPlugin) OnCreateSet(ctx context.Context, req *pb.OnCreateSetRequest
 		return nil, err
 	}
 
-	describeInstanceFilters, err := buildFilters(setAttrs)
-	if err != nil {
-		return nil, errors.BadRequestStatusf("error building set filters: %s", err)
-	}
-
 	opts := []ec2Option{}
 	if catalogAttributes.DualStack {
 		opts = append(opts, WithDualStack(catalogAttributes.DualStack))
 	}
-	if st := dryRunValidation(ctx, catalogState, opts, describeInstanceFilters...); st != nil {
-		return nil, st.Err()
+	input, err := buildDescribeInstancesInput(setAttrs, true)
+	if err != nil {
+		return nil, status.Errorf(codes.Unknown, errBuildDescribeInstancesInput, err)
 	}
+	// Run a DescribeInstances request with DryRun set to true to ensure
+	// we can interact with AWS resources as expected.
+	if _, err := checkHosts(ctx, catalogState, input, opts, catalogAttributes.TargetAccount); err != nil {
+		if _, ok := status.FromError(err); ok {
+			return nil, err
+		}
+		return nil, fmt.Errorf(errDryRunFailed, err)
+	}
+
 	return &pb.OnCreateSetResponse{}, nil
 }
 
@@ -431,17 +493,21 @@ func (p *HostPlugin) OnUpdateSet(ctx context.Context, req *pb.OnUpdateSetRequest
 		return nil, err
 	}
 
-	describeInstanceFilters, err := buildFilters(setAttrs)
-	if err != nil {
-		return nil, errors.BadRequestStatusf("error building set filters: %s", err)
-	}
-
 	opts := []ec2Option{}
 	if catalogAttributes.DualStack {
 		opts = append(opts, WithDualStack(catalogAttributes.DualStack))
 	}
-	if st := dryRunValidation(ctx, catalogState, opts, describeInstanceFilters...); st != nil {
-		return nil, st.Err()
+	input, err := buildDescribeInstancesInput(setAttrs, true)
+	if err != nil {
+		return nil, status.Errorf(codes.Unknown, errBuildDescribeInstancesInput, err)
+	}
+	// Run a DescribeInstances request with DryRun set to true to ensure
+	// we can interact with AWS resources as expected.
+	if _, err := checkHosts(ctx, catalogState, input, opts, catalogAttributes.TargetAccount); err != nil {
+		if _, ok := status.FromError(err); ok {
+			return nil, err
+		}
+		return nil, fmt.Errorf(errDryRunFailed, err)
 	}
 
 	return &pb.OnUpdateSetResponse{}, nil
@@ -495,13 +561,6 @@ func (p *HostPlugin) ListHosts(ctx context.Context, req *pb.ListHostsRequest) (*
 	}
 
 	// Build all the queries in advance.
-	type hostSetQuery struct {
-		Id          string
-		Input       *ec2.DescribeInstancesInput
-		Output      *ec2.DescribeInstancesOutput
-		OutputHosts []*pb.ListHostsResponseHost
-	}
-
 	queries := make([]hostSetQuery, len(sets))
 	for i, set := range sets {
 		// Validate Id since we use it in output
@@ -531,20 +590,26 @@ func (p *HostPlugin) ListHosts(ctx context.Context, req *pb.ListHostsRequest) (*
 	if catalogAttributes.DualStack {
 		opts = append(opts, WithDualStack(catalogAttributes.DualStack))
 	}
-	ec2Client, err := catalogState.EC2Client(ctx, opts...)
-	if err != nil {
-		return nil, errors.BadRequestStatusf("error getting EC2 client: %s", err)
-	}
 
 	// Run all queries now and assemble output.
 	var maxLen int
 	for i, query := range queries {
-		output, err := ec2Client.DescribeInstances(ctx, query.Input)
+		output, err := checkHosts(ctx, catalogState, query.Input, opts, catalogAttributes.TargetAccount)
 		if err != nil {
-			return nil, errors.BadRequestStatusf("error running DescribeInstances for host set id %q: %s", query.Id, err)
+			// Mapped AWS failures are already gRPC statuses from checkHosts.
+			if _, ok := status.FromError(err); ok {
+				return nil, err
+			}
+			if catalogAttributes.TargetAccount != nil {
+				return nil, status.Errorf(codes.Unknown, "unable to list hosts for host set %q: %v", query.Id, err)
+			}
+			return nil, status.Errorf(codes.Unknown, "error retrieving host results for host set id %q: %v", query.Id, err)
 		}
 
 		queries[i].Output = output
+		if output == nil {
+			continue
+		}
 
 		// Process the output here, we will normalize this into a single
 		// set of hosts afterwards (possibly removing duplicates).
@@ -552,7 +617,7 @@ func (p *HostPlugin) ListHosts(ctx context.Context, req *pb.ListHostsRequest) (*
 			for _, instance := range reservation.Instances {
 				host, err := awsInstanceToHost(instance, catalogAttributes)
 				if err != nil {
-					return nil, errors.BadRequestStatusf("error processing host results for host set id %q: %s", query.Id, err)
+					return nil, status.Errorf(codes.Unknown, "error processing host results for host set id %q: %v", query.Id, err)
 				}
 
 				queries[i].OutputHosts = append(queries[i].OutputHosts, host)
@@ -601,11 +666,11 @@ func buildFilters(attrs *SetAttributes) ([]types.Filter, error) {
 		splitFilter := strings.Split(filterAttr, "=")
 		switch {
 		case len(splitFilter) != 2:
-			return nil, fmt.Errorf("expected filter %q to contain a single equal sign", filterAttr)
+			return nil, errors.BadRequestStatusf("expected filter %q to contain a single equal sign", filterAttr)
 		case len(splitFilter[0]) == 0:
-			return nil, fmt.Errorf("filter %q contains an empty filter key", filterAttr)
+			return nil, errors.BadRequestStatusf("filter %q contains an empty filter key", filterAttr)
 		case len(splitFilter[1]) == 0:
-			return nil, fmt.Errorf("filter %q contains an empty value", filterAttr)
+			return nil, errors.BadRequestStatusf("filter %q contains an empty value", filterAttr)
 		}
 
 		filterKey, filterValue := splitFilter[0], splitFilter[1]
@@ -634,9 +699,13 @@ func buildFilters(attrs *SetAttributes) ([]types.Filter, error) {
 }
 
 func buildDescribeInstancesInput(attrs *SetAttributes, dryRun bool) (*ec2.DescribeInstancesInput, error) {
+	if attrs == nil {
+		attrs = &SetAttributes{}
+	}
+
 	filters, err := buildFilters(attrs)
 	if err != nil {
-		return nil, fmt.Errorf("error building filters: %w", err)
+		return nil, err
 	}
 
 	return &ec2.DescribeInstancesInput{
@@ -707,26 +776,121 @@ func awsInstanceToHost(instance types.Instance, catalogAttributes *CatalogAttrib
 	return result, nil
 }
 
-// dryRunValidation performs an AWS DescribeInstances call to verify the state's
-// credentials, the host listing functionality as well as the filters, if any
-// are passed in. This function can therefore be used for both host catalog and
-// host set validation.
-func dryRunValidation(ctx context.Context, state *awsCatalogPersistedState, ec2Opts []ec2Option, filters ...types.Filter) *status.Status {
-	if state == nil {
-		return status.New(codes.InvalidArgument, "persisted state is required")
+func checkHosts(ctx context.Context,
+	principalCatalogState *awsCatalogPersistedState,
+	input *ec2.DescribeInstancesInput,
+	opts []ec2Option,
+	target *credential.CredentialAttributes,
+) (*ec2.DescribeInstancesOutput, error) {
+	if principalCatalogState == nil {
+		return nil, fmt.Errorf("unable to create EC2 client from catalog state")
 	}
 
-	ec2Client, err := state.EC2Client(ctx, ec2Opts...)
+	var ec2Client EC2API
+	var err error
+	if target == nil {
+		// use the principal account to execute the DescribeInstances command
+		ec2Client, err = principalCatalogState.EC2Client(ctx, opts...)
+		if err != nil {
+			if st, _ := errors.ParseAWSError("EC2 client setup", err); st.Code() != codes.Unknown {
+				return nil, st.Err()
+			}
+			return nil, err
+		}
+	} else {
+		// use the target account to execute the DescribeInstances command
+		ec2Client, err = ec2ClientForTarget(ctx, principalCatalogState, target, opts)
+		if err != nil {
+			if _, ok := status.FromError(err); ok {
+				return nil, err
+			}
+			return nil, fmt.Errorf("EC2 client setup failed for target account: %w", err)
+		}
+	}
+
+	output, err := ec2Client.DescribeInstances(ctx, input)
 	if err != nil {
-		return status.New(codes.InvalidArgument, fmt.Sprintf("error getting EC2 client: %s", err))
+		if errors.IsDryRunSuccess(err) {
+			// DryRunOperation: request would have succeeded; not a failure.
+			return nil, nil
+		}
+		if st, _ := errors.ParseAWSError("DescribeInstances", err); st.Code() != codes.Unknown {
+			return nil, st.Err()
+		}
+		if target != nil {
+			return nil, fmt.Errorf("EC2 DescribeInstances failed for target account: %w", err)
+		}
+		return nil, err
 	}
 
-	_, err = ec2Client.DescribeInstances(ctx, &ec2.DescribeInstancesInput{Filters: filters})
+	return output, nil
+}
+
+// ec2ClientForTarget builds an EC2 client to query the target account.
+// The hop is a continuation of the principal session: STS AssumeRole is called
+// as the principal to get to the target, then EC2 uses the resulting temporary credentials.
+// This is not a second worker-level credential chain on the target attributes.
+func ec2ClientForTarget(
+	ctx context.Context,
+	principalCatalogState *awsCatalogPersistedState,
+	target *credential.CredentialAttributes,
+	opts []ec2Option) (EC2API, error) {
+	// Reuse the principal SDK config (HTTP client, retries, logger, and the
+	// principal identity).
+	principalCfg, err := principalCatalogState.GenerateCredentialChain(ctx)
 	if err != nil {
-		return status.New(codes.FailedPrecondition, fmt.Sprintf("aws describe instances failed: %s", err))
+		if st, _ := errors.ParseAWSError("EC2 client setup for target account", err); st.Code() != codes.Unknown {
+			return nil, st.Err()
+		}
+		return nil, fmt.Errorf("principal AWS configuration could not be loaded: %w", err)
+	}
+	if principalCfg == nil {
+		return nil, fmt.Errorf("nil principal AWS configuration while configuring EC2 client for target account")
 	}
 
-	return nil
+	// STS must run as the principal so the target role's trust policy sees that
+	// identity, not the worker's. Session name, external ID, and tags are
+	// forwarded from attrs when set so the AssumeRole matches the target role's configuration.
+	stsClient := sts.NewFromConfig(*principalCfg)
+	provider := stscreds.NewAssumeRoleProvider(stsClient, target.RoleArn, func(o *stscreds.AssumeRoleOptions) {
+		if target.RoleSessionName != "" {
+			o.RoleSessionName = target.RoleSessionName
+		}
+		if target.RoleExternalId != "" {
+			o.ExternalID = &target.RoleExternalId
+		}
+		for k, v := range target.RoleTags {
+			o.Tags = append(o.Tags, stsTypes.Tag{
+				Key:   aws.String(k),
+				Value: aws.String(v),
+			})
+		}
+	})
+
+	// Same worker SDK environment as the principal; only identity and region change.
+	targetCfg := principalCfg.Copy()
+	targetCfg.Credentials = aws.NewCredentialsCache(provider)
+	if target.Region != "" {
+		targetCfg.Region = target.Region
+	}
+
+	parsed, err := getOpts(opts...)
+	if err != nil {
+		return nil, fmt.Errorf("EC2 client options are invalid: %w", err)
+	}
+	// Dual-stack is the worker's path to AWS endpoints, not per-account. Apply
+	// it on the hopped client the same way EC2Client does for the principal.
+	var ec2Opts []func(*ec2.Options)
+	if parsed.withDualStack {
+		ec2Opts = append(ec2Opts, ec2.WithEndpointResolverV2(&endpointResolver{
+			dualStack: parsed.withDualStack,
+		}))
+	}
+
+	if principalCatalogState.testEC2APIFunc != nil {
+		return principalCatalogState.testEC2APIFunc(targetCfg)
+	}
+	return ec2.NewFromConfig(targetCfg, ec2Opts...), nil
 }
 
 // appendDistinct will append the elements to the slice

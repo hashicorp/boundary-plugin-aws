@@ -301,6 +301,17 @@ func Test_ParseAWSError(t *testing.T) {
 			},
 		},
 		{
+			name:               "aws-request-unauthorized-operation",
+			err:                TestAwsError(awsErrorUnauthorizedOperation, "You are not authorized to perform this operation."),
+			expectedStatusCode: codes.PermissionDenied,
+			expectedStatusMsg:  "aws service unknown: invalid credentials: test",
+			expectedPermission: &pb.Permission{
+				State:        pb.StateType_STATE_TYPE_ERROR,
+				ErrorDetails: "You are not authorized to perform this operation.",
+				CheckedAt:    timestamppb.Now(),
+			},
+		},
+		{
 			name:               "aws-request-invalid-access-key-id",
 			err:                TestAwsError(awsErrorInvalidAccessKeyId, "The AWS Access Key Id you provided does not exist in our records."),
 			expectedStatusCode: codes.PermissionDenied,
@@ -386,6 +397,46 @@ func Test_ParseAWSError(t *testing.T) {
 			require.Contains(actualStatus.Message(), tt.expectedStatusMsg)
 			require.Len(actualStatus.Details(), 0)
 			CheckSimilarPermission(assert, tt.expectedPermission, permission, true)
+		})
+	}
+}
+
+func Test_IsDryRunSuccess(t *testing.T) {
+	t.Parallel()
+
+	cases := []struct {
+		name string
+		err  error
+		want bool
+	}{
+		{
+			name: "nil",
+			want: false,
+		},
+		{
+			name: "plain error",
+			err:  fmt.Errorf("not an aws error"),
+			want: false,
+		},
+		{
+			name: "other api error",
+			err:  TestAwsError(awsErrorAccessDenied, "not authorized"),
+			want: false,
+		},
+		{
+			name: "dry run operation",
+			err:  TestAwsError(dryRunOperationErrorCode, "Request would have succeeded, but DryRun flag is set"),
+			want: true,
+		},
+		{
+			name: "wrapped dry run operation",
+			err:  fmt.Errorf("describe instances: %w", TestAwsError(dryRunOperationErrorCode, "Request would have succeeded, but DryRun flag is set")),
+			want: true,
+		},
+	}
+	for _, tt := range cases {
+		t.Run(tt.name, func(t *testing.T) {
+			assert.Equal(t, tt.want, IsDryRunSuccess(tt.err))
 		})
 	}
 }

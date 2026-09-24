@@ -22,11 +22,17 @@ const (
 type testMockEC2State struct {
 	DescribeInstancesCalled      bool
 	DescribeInstancesInputParams *ec2.DescribeInstancesInput
+	DescribeInstancesCallCount   int
+	DescribeInstancesInputs      []*ec2.DescribeInstancesInput
+	ClientRegions                []string
 }
 
 func (s *testMockEC2State) Reset() {
 	s.DescribeInstancesCalled = false
 	s.DescribeInstancesInputParams = nil
+	s.DescribeInstancesCallCount = 0
+	s.DescribeInstancesInputs = nil
+	s.ClientRegions = nil
 }
 
 type testMockEC2 struct {
@@ -72,7 +78,10 @@ func newTestMockEC2(state *testMockEC2State, opts ...testMockEC2Option) ec2APIFu
 			if cfg.Region != "" {
 				m.Region = cfg.Region
 			}
+		}
 
+		if state != nil {
+			state.ClientRegions = append(state.ClientRegions, m.Region)
 		}
 
 		return m, nil
@@ -83,6 +92,8 @@ func (m *testMockEC2) DescribeInstances(ctx context.Context, input *ec2.Describe
 	if m.State != nil {
 		m.State.DescribeInstancesCalled = true
 		m.State.DescribeInstancesInputParams = input
+		m.State.DescribeInstancesCallCount++
+		m.State.DescribeInstancesInputs = append(m.State.DescribeInstancesInputs, input)
 	}
 
 	if m.DescribeInstancesError != nil {
