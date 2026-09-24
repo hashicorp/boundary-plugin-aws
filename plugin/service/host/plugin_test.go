@@ -1366,8 +1366,7 @@ func TestPluginOnUpdateCatalogErr(t *testing.T) {
 					Attrs: &hostcatalogs.HostCatalog_Attributes{
 						Attributes: &structpb.Struct{
 							Fields: map[string]*structpb.Value{
-								credential.ConstRegion:                    structpb.NewStringValue("us-west-2"),
-								credential.ConstDisableCredentialRotation: structpb.NewBoolValue(true),
+								credential.ConstRegion: structpb.NewStringValue("us-west-2"),
 							},
 						},
 					},
@@ -1376,8 +1375,7 @@ func TestPluginOnUpdateCatalogErr(t *testing.T) {
 					Attrs: &hostcatalogs.HostCatalog_Attributes{
 						Attributes: &structpb.Struct{
 							Fields: map[string]*structpb.Value{
-								credential.ConstRegion:                    structpb.NewStringValue("us-west-2"),
-								credential.ConstDisableCredentialRotation: structpb.NewBoolValue(true),
+								credential.ConstRegion: structpb.NewStringValue("us-west-2"),
 							},
 						},
 					},
