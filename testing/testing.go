@@ -39,6 +39,10 @@ type TestTerraformer struct {
 	// The working directory for Terraform commands.
 	workDir string
 
+	// vars holds optional key/value pairs passed as -var flags to every
+	// Terraform command that accepts them (apply, destroy, plan).
+	vars map[string]string
+
 	// The Terraform state. Use the Output method to look up particular
 	// outputs from the Terraform state.
 	state *tfjson.State
@@ -53,8 +57,9 @@ type TestTerraformer struct {
 
 // NewTestTerraformer initializes a Terraform directory. It just
 // returns an initialized project, it does not perform any actions on
-// it.
-func NewTestTerraformer(workDir string) (*TestTerraformer, error) {
+// it. An optional vars map may be provided; each entry is passed as a
+// -var flag to Terraform commands.
+func NewTestTerraformer(workDir string, vars ...map[string]string) (*TestTerraformer, error) {
 	tfPath, err := exec.LookPath("terraform")
 	if err != nil {
 		return nil, fmt.Errorf("LookPath error: %w", err)
@@ -64,10 +69,24 @@ func NewTestTerraformer(workDir string) (*TestTerraformer, error) {
 		return nil, errors.New("workDir is empty")
 	}
 
-	return &TestTerraformer{
+	tf := &TestTerraformer{
 		tfPath:  tfPath,
 		workDir: workDir,
-	}, nil
+	}
+	if len(vars) > 0 {
+		tf.vars = vars[0]
+	}
+	return tf, nil
+}
+
+// varArgs converts the stored vars map into a slice of -var flags
+// suitable for appending to a Terraform command's argument list.
+func (t *TestTerraformer) varArgs() []string {
+	args := make([]string, 0, len(t.vars)*2)
+	for k, v := range t.vars {
+		args = append(args, "-var", fmt.Sprintf("%s=%s", k, v))
+	}
+	return args
 }
 
 // Deploy runs the following commands, in order: init, apply, plan,
@@ -214,7 +233,8 @@ func (t *TestTerraformer) init() error {
 
 // apply runs "terraform apply" in the project's working directory.
 func (t *TestTerraformer) apply() error {
-	cmd := exec.Command(t.tfPath, "apply", "-input=false", "-auto-approve")
+	args := append([]string{"apply", "-input=false", "-auto-approve"}, t.varArgs()...)
+	cmd := exec.Command(t.tfPath, args...)
 	cmd.Dir = t.workDir
 	stdoutStderr, err := cmd.CombinedOutput()
 	if err != nil {
@@ -226,7 +246,8 @@ func (t *TestTerraformer) apply() error {
 
 // destroy runs "terraform destroy" in the project's working directory.
 func (t *TestTerraformer) destroy() error {
-	cmd := exec.Command(t.tfPath, "destroy", "-input=false", "-auto-approve")
+	args := append([]string{"destroy", "-input=false", "-auto-approve"}, t.varArgs()...)
+	cmd := exec.Command(t.tfPath, args...)
 	cmd.Dir = t.workDir
 	stdoutStderr, err := cmd.CombinedOutput()
 	if err != nil {
@@ -242,7 +263,8 @@ func (t *TestTerraformer) destroy() error {
 // it's run to get the data for for importing the state via
 // terraform-json. The apply method ignores the plan generated here.
 func (t *TestTerraformer) plan() error {
-	cmd := exec.Command(t.tfPath, "plan", "-input=false", "-out=plan.tfplan")
+	args := append([]string{"plan", "-input=false", "-out=plan.tfplan"}, t.varArgs()...)
+	cmd := exec.Command(t.tfPath, args...)
 	cmd.Dir = t.workDir
 	stdoutStderr, err := cmd.CombinedOutput()
 	if err != nil {
