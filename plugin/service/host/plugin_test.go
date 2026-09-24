@@ -18,6 +18,7 @@ import (
 	iamTypes "github.com/aws/aws-sdk-go-v2/service/iam/types"
 	"github.com/google/go-cmp/cmp"
 	"github.com/hashicorp/boundary-plugin-aws/internal/credential"
+	awserrors "github.com/hashicorp/boundary-plugin-aws/internal/errors"
 	"github.com/hashicorp/boundary/sdk/pbs/controller/api/resources/hostcatalogs"
 	"github.com/hashicorp/boundary/sdk/pbs/controller/api/resources/hostsets"
 	pb "github.com/hashicorp/boundary/sdk/pbs/plugin"
@@ -2299,7 +2300,7 @@ func TestPluginListHostsErr(t *testing.T) {
 				)),
 			},
 			expectedErrContains: fmt.Sprintf("error retrieving host results for host set id \"foobar\": %s", testDescribeInstancesError),
-			expectedErrCode:     codes.InvalidArgument,
+			expectedErrCode:     codes.Unknown,
 		},
 		{
 			name: "target attributes missing target_role_arn",
@@ -2365,7 +2366,7 @@ func TestPluginListHostsErr(t *testing.T) {
 				}),
 			},
 			expectedErrContains: "unable to list hosts for host set \"foobar\": EC2 client setup failed for target account: test EC2 client error",
-			expectedErrCode:     codes.InvalidArgument,
+			expectedErrCode:     codes.Unknown,
 		},
 		{
 			name: "target DescribeInstances error",
@@ -2393,7 +2394,7 @@ func TestPluginListHostsErr(t *testing.T) {
 				)),
 			},
 			expectedErrContains: "unable to list hosts for host set \"foobar\": EC2 DescribeInstances failed for target account: DescribeInstances error",
-			expectedErrCode:     codes.InvalidArgument,
+			expectedErrCode:     codes.Unknown,
 		},
 		{
 			name: "awsInstanceToHost error",
@@ -2454,7 +2455,115 @@ func TestPluginListHostsErr(t *testing.T) {
 				)),
 			},
 			expectedErrContains: "error processing host results for host set id \"foobar\": response integrity error: missing instance id",
-			expectedErrCode:     codes.InvalidArgument,
+			expectedErrCode:     codes.Unknown,
+		},
+		{
+			name: "DescribeInstances AccessDenied",
+			req: &pb.ListHostsRequest{
+				Catalog: &hostcatalogs.HostCatalog{
+					Attrs: &hostcatalogs.HostCatalog_Attributes{
+						Attributes: &structpb.Struct{
+							Fields: map[string]*structpb.Value{
+								credential.ConstRegion: structpb.NewStringValue("us-west-2"),
+							},
+						},
+					},
+				},
+				Persisted: testListHostsPersisted(),
+				Sets: []*hostsets.HostSet{
+					testListHostsSet("foobar", "tag-key=foo"),
+				},
+			},
+			catalogOpts: []awsCatalogPersistedStateOption{
+				withTestEC2APIFunc(newTestMockEC2(
+					nil,
+					testMockEC2WithDescribeInstancesError(awserrors.TestAwsError("AccessDenied", "not authorized to perform ec2:DescribeInstances")),
+				)),
+			},
+			expectedErrContains: "invalid credentials",
+			expectedErrCode:     codes.PermissionDenied,
+		},
+		{
+			name: "DescribeInstances UnauthorizedOperation",
+			req: &pb.ListHostsRequest{
+				Catalog: &hostcatalogs.HostCatalog{
+					Attrs: &hostcatalogs.HostCatalog_Attributes{
+						Attributes: &structpb.Struct{
+							Fields: map[string]*structpb.Value{
+								credential.ConstRegion: structpb.NewStringValue("us-west-2"),
+							},
+						},
+					},
+				},
+				Persisted: testListHostsPersisted(),
+				Sets: []*hostsets.HostSet{
+					testListHostsSet("foobar", "tag-key=foo"),
+				},
+			},
+			catalogOpts: []awsCatalogPersistedStateOption{
+				withTestEC2APIFunc(newTestMockEC2(
+					nil,
+					testMockEC2WithDescribeInstancesError(awserrors.TestAwsError("UnauthorizedOperation", "You are not authorized to perform this operation.")),
+				)),
+			},
+			expectedErrContains: "invalid credentials",
+			expectedErrCode:     codes.PermissionDenied,
+		},
+		{
+			name: "target DescribeInstances AccessDenied",
+			req: &pb.ListHostsRequest{
+				Catalog: &hostcatalogs.HostCatalog{
+					Attrs: &hostcatalogs.HostCatalog_Attributes{
+						Attributes: &structpb.Struct{
+							Fields: map[string]*structpb.Value{
+								credential.ConstRegion:        structpb.NewStringValue("us-west-2"),
+								credential.ConstTargetRoleArn: structpb.NewStringValue("arn:aws:iam::222222222222:role/Target"),
+								credential.ConstTargetRegion:  structpb.NewStringValue("eu-west-1"),
+							},
+						},
+					},
+				},
+				Persisted: testListHostsPersisted(),
+				Sets: []*hostsets.HostSet{
+					testListHostsSet("foobar", "tag-key=foo"),
+				},
+			},
+			catalogOpts: []awsCatalogPersistedStateOption{
+				withTestEC2APIFunc(newTestMockEC2(
+					nil,
+					testMockEC2WithDescribeInstancesError(awserrors.TestAwsError("AccessDenied", "not authorized to perform ec2:DescribeInstances")),
+				)),
+			},
+			expectedErrContains: "invalid credentials",
+			expectedErrCode:     codes.PermissionDenied,
+		},
+		{
+			name: "target EC2 client AccessDenied",
+			req: &pb.ListHostsRequest{
+				Catalog: &hostcatalogs.HostCatalog{
+					Attrs: &hostcatalogs.HostCatalog_Attributes{
+						Attributes: &structpb.Struct{
+							Fields: map[string]*structpb.Value{
+								credential.ConstRegion:        structpb.NewStringValue("us-west-2"),
+								credential.ConstTargetRoleArn: structpb.NewStringValue("arn:aws:iam::222222222222:role/Target"),
+							},
+						},
+					},
+				},
+				Persisted: testListHostsPersisted(),
+				Sets: []*hostsets.HostSet{
+					testListHostsSet("foobar", "tag-key=foo"),
+				},
+			},
+			catalogOpts: []awsCatalogPersistedStateOption{
+				withTestEC2APIFunc(func(...aws.Config) (EC2API, error) {
+					return nil, awserrors.TestAwsError("AccessDenied", "not authorized to assume role")
+				}),
+			},
+			// ec2ClientForTarget returns testEC2APIFunc errors unparsed; checkHosts
+			// only preserves existing gRPC statuses, so this surfaces as Unknown.
+			expectedErrContains: "unable to list hosts for host set \"foobar\": EC2 client setup failed for target account: api error AccessDenied: not authorized to assume role",
+			expectedErrCode:     codes.Unknown,
 		},
 	}
 

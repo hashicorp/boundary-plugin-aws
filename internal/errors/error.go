@@ -29,6 +29,11 @@ const (
 	// the owner. This error cannot be resolved by retrying the request.
 	awsErrorAccessDenied = "AccessDenied"
 
+	// awsErrorUnauthorizedOperation is returned by EC2 when the caller is not
+	// authorized to perform the operation. This includes DryRun permission
+	// checks that fail (the counterpart to DryRunOperation success).
+	awsErrorUnauthorizedOperation = "UnauthorizedOperation"
+
 	// awsErrorInvalidAccessKeyId is returned when the credential does
 	// not exist. This error will persist until the credentials attached
 	// to the storage bucket is updated. This error can occur when the
@@ -66,7 +71,25 @@ const (
 
 	// RequestTimeoutException is returned when an http request takes longer than allowed
 	awsErrorRequestTimeoutException = "RequestTimeoutException"
+
+	// dryRunOperationErrorCode is returned by AWS when a DryRun request would have
+	// succeeded. It is a success signal disguised as an API error (typically HTTP 412).
+	dryRunOperationErrorCode = "DryRunOperation"
 )
+
+// IsDryRunSuccess reports whether err is the AWS DryRunOperation success signal.
+// A true result means the dry-run validated credentials, permissions, and parameters;
+// it must not be treated as a failure.
+func IsDryRunSuccess(err error) bool {
+	if err == nil {
+		return false
+	}
+	var apiErr smithy.APIError
+	if !errors.As(err, &apiErr) {
+		return false
+	}
+	return apiErr.ErrorCode() == dryRunOperationErrorCode
+}
 
 // InvalidArgumentError returns an grpc invalid argument status error.
 func InvalidArgumentError(msg string, f map[string]string) error {
@@ -171,6 +194,8 @@ func ParseAWSError(op string, err error) (st *status.Status, permission *pb.Perm
 	if errors.As(err, &apiErr) {
 		switch apiErr.ErrorCode() {
 		case awsErrorAccessDenied:
+			fallthrough
+		case awsErrorUnauthorizedOperation:
 			fallthrough
 		case awsErrorInvalidAccessKeyId:
 			fallthrough
