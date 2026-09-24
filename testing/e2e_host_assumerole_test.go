@@ -54,6 +54,21 @@ func tagFilterSetAttrs(tags []string) map[string]any {
 	}
 }
 
+// requireTagInstancesMatchProvisioned asserts that every instance ID in tagInstancesMap
+// is present in provisionedIds (the raw []any slice from a Terraform output).
+func requireTagInstancesMatchProvisioned(t *testing.T, provisionedIds []any, tagInstancesMap map[string][]string) {
+	t.Helper()
+	idSet := make(map[string]struct{}, len(provisionedIds))
+	for _, id := range provisionedIds {
+		idSet[id.(string)] = struct{}{}
+	}
+	for tag, ids := range tagInstancesMap {
+		for _, id := range ids {
+			require.Contains(t, idSet, id, "instance ID %s in tag bucket %q was not provisioned by Terraform", id, tag)
+		}
+	}
+}
+
 // buildExpectedTagInstancesMap builds a map of tag key to instance IDs from a Terraform instance_tags output map.
 func buildExpectedTagInstancesMap(rawTags map[string]any, expectedTags []string) map[string][]string {
 	tagMap := make(map[string][]string)

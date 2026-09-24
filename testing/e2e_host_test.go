@@ -164,6 +164,8 @@ func TestHostPlugin(t *testing.T) {
 	// Process the collection of instances and index by expected tag names.
 	expectedTagInstancesMap := buildExpectedTagInstancesMap(ec2InstanceTags, expectedTags)
 
+	requireTagInstancesMatchProvisioned(t, ec2InstanceIds, expectedTagInstancesMap)
+
 	cases := [][]string{
 		{expectedTags[0]},
 		{expectedTags[1]},
@@ -301,10 +303,15 @@ func TestHostPlugin(t *testing.T) {
 		crossAccountTargetNoEc2PermissionArn, err := tf.GetOutputString("cross_account_target_no_ec2_permission_arn")
 		require.NoError(err)
 
+		targetEc2InstanceIds, err := tf.GetOutputSlice("target_instance_ids")
+		require.NoError(err)
+		require.Len(targetEc2InstanceIds, expectedEc2InstanceCount)
+
 		targetEc2InstanceTags, err := tf.GetOutputMap("target_instance_tags")
 		require.NoError(err)
 		expectedTargetTagInstancesMap := buildExpectedTagInstancesMap(targetEc2InstanceTags, expectedTags)
-		require.NotEmpty(expectedTargetTagInstancesMap)
+
+		requireTagInstancesMatchProvisioned(t, targetEc2InstanceIds, expectedTargetTagInstancesMap)
 
 		testOnCreateCatalogCases(ctx, t, p, []onCreateCatalogCase{
 			{name: "cross-account happy path", catalogAttrs: crossRoleAttrs(targetRegion, crossAccountPrincipalArn, crossAccountTargetArn)},
