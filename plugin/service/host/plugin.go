@@ -115,6 +115,9 @@ func (p *HostPlugin) OnCreateCatalog(ctx context.Context, req *pb.OnCreateCatalo
 	// Run a DescribeInstances request with DryRun set to true to ensure
 	// we can interact with AWS resources as expected.
 	if _, err := checkHosts(ctx, catalogState, input, opts, catalogAttributes.TargetAccount); err != nil {
+		if _, ok := status.FromError(err); ok {
+			return nil, err
+		}
 		return nil, fmt.Errorf(errDryRunFailed, err)
 	}
 
@@ -219,6 +222,9 @@ func (p *HostPlugin) OnUpdateCatalog(ctx context.Context, req *pb.OnUpdateCatalo
 		// Run a DescribeInstances request with DryRun set to true to ensure
 		// we can interact with AWS resources as expected.
 		if _, err := checkHosts(ctx, newCatalogState, input, opts, newCatalogAttributes.TargetAccount); err != nil {
+			if _, ok := status.FromError(err); ok {
+				return nil, err
+			}
 			return nil, fmt.Errorf(errDryRunFailed, err)
 		}
 
@@ -270,6 +276,9 @@ func (p *HostPlugin) OnUpdateCatalog(ctx context.Context, req *pb.OnUpdateCatalo
 	// Run a DescribeInstances request with DryRun set to true to ensure
 	// we can interact with AWS resources as expected.
 	if _, err := checkHosts(ctx, catalogState, input, opts, newCatalogAttributes.TargetAccount); err != nil {
+		if _, ok := status.FromError(err); ok {
+			return nil, err
+		}
 		return nil, fmt.Errorf(errDryRunFailed, err)
 	}
 
@@ -425,6 +434,9 @@ func (p *HostPlugin) OnCreateSet(ctx context.Context, req *pb.OnCreateSetRequest
 	// Run a DescribeInstances request with DryRun set to true to ensure
 	// we can interact with AWS resources as expected.
 	if _, err := checkHosts(ctx, catalogState, input, opts, catalogAttributes.TargetAccount); err != nil {
+		if _, ok := status.FromError(err); ok {
+			return nil, err
+		}
 		return nil, fmt.Errorf(errDryRunFailed, err)
 	}
 
@@ -492,6 +504,9 @@ func (p *HostPlugin) OnUpdateSet(ctx context.Context, req *pb.OnUpdateSetRequest
 	// Run a DescribeInstances request with DryRun set to true to ensure
 	// we can interact with AWS resources as expected.
 	if _, err := checkHosts(ctx, catalogState, input, opts, catalogAttributes.TargetAccount); err != nil {
+		if _, ok := status.FromError(err); ok {
+			return nil, err
+		}
 		return nil, fmt.Errorf(errDryRunFailed, err)
 	}
 
