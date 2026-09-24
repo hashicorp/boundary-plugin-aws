@@ -112,10 +112,35 @@ func NewAwsCredentialPersistedState(opts ...AwsCredentialPersistedStateOption) (
 // and runs sts.GetCallerIdentity for the current credentials, which is done
 // to check that the credentials are valid. This method returns a status error
 // with PluginError details.
+//
+// When RoleARN is set and no static key is present (ambient role path),
+// credentials are eagerly retrieved before calling GetCallerIdentity. This
+// forces sts:AssumeRole to be called immediately so that any role errors
+// (e.g. no such role, access denied) surface here rather than being deferred
+// to the first real AWS API call.
 func (s *AwsCredentialPersistedState) ValidateCreds(ctx context.Context) error {
 	if s.CredentialsConfig == nil {
 		return errors.BadRequestStatus("missing credentials config")
 	}
+
+	// For the ambient role path (RoleARN set, no static key), eagerly resolve
+	// the credential chain so that sts:AssumeRole is called now. Without this,
+	// the AssumeRoleProvider inside the chain is lazy and GetCallerIdentity
+	// would succeed even with an invalid role ARN (it uses the mock/ambient
+	// identity directly rather than the assumed one).
+	cc := s.CredentialsConfig
+	if cc.RoleARN != "" && cc.AccessKey == "" {
+		cfg, err := s.GenerateCredentialChain(ctx)
+		if err != nil {
+			st, _ := errors.ParseAWSError("validating credentials", err)
+			return st.Err()
+		}
+		if _, err := cfg.Credentials.Retrieve(ctx); err != nil {
+			st, _ := errors.ParseAWSError("validating credentials", err)
+			return st.Err()
+		}
+	}
+
 	if _, err := s.CredentialsConfig.GetCallerIdentity(ctx, s.testOpts...); err != nil {
 		st, _ := errors.ParseAWSError("validating credentials", err)
 		return st.Err()
