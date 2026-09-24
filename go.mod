@@ -14,7 +14,7 @@ require (
 	github.com/google/uuid v1.6.0
 	github.com/hashicorp/boundary/sdk v0.0.59
 	github.com/hashicorp/go-multierror v1.1.1
-	github.com/hashicorp/go-secure-stdlib/awsutil/v2 v2.1.2
+	github.com/hashicorp/go-secure-stdlib/awsutil/v2 v2.1.3
 	github.com/hashicorp/go-secure-stdlib/parseutil v0.2.0
 	github.com/hashicorp/terraform-json v0.23.0
 	github.com/mitchellh/mapstructure v1.5.0
