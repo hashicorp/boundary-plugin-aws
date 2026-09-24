@@ -811,6 +811,38 @@ func TestPluginOnCreateCatalogErr(t *testing.T) {
 			expectedErrCode:     codes.Unknown,
 		},
 		{
+			name: "dry run status error preserves gRPC code",
+			req: &pb.OnCreateCatalogRequest{
+				Catalog: &hostcatalogs.HostCatalog{
+					Secrets: &structpb.Struct{
+						Fields: map[string]*structpb.Value{
+							credential.ConstAccessKeyId:     structpb.NewStringValue("AKIA_foobar"),
+							credential.ConstSecretAccessKey: structpb.NewStringValue("bazqux"),
+						},
+					},
+					Attrs: &hostcatalogs.HostCatalog_Attributes{
+						Attributes: &structpb.Struct{
+							Fields: map[string]*structpb.Value{
+								credential.ConstRegion:                    structpb.NewStringValue("us-west-2"),
+								credential.ConstDisableCredentialRotation: structpb.NewBoolValue(true),
+							},
+						},
+					},
+				},
+			},
+			catalogOpts: []awsCatalogPersistedStateOption{
+				withTestEC2APIFunc(newTestMockEC2(
+					nil,
+					testMockEC2WithDescribeInstancesError(awserrors.TestAwsError("AccessDenied", "not authorized to perform ec2:DescribeInstances")),
+				)),
+			},
+			// checkHosts wraps the AWS error via ParseAWSError into a gRPC
+			// PermissionDenied status. OnCreateCatalog's dry-run error handler
+			// should preserve that status code, not re-wrap it as Unknown.
+			expectedErrContains: "invalid credentials",
+			expectedErrCode:     codes.PermissionDenied,
+		},
+		{
 			// BUG FIX: role_arn set, no static keys. AssumeRole mock returns
 			// an error. ValidateCreds now eagerly calls Retrieve() which forces
 			// sts:AssumeRole, so the error surfaces here at creation time.
@@ -1327,6 +1359,50 @@ func TestPluginOnUpdateCatalogErr(t *testing.T) {
 			expectedErrContains: "oops there was an error",
 			expectedErrCode:     codes.Unknown,
 		},
+		{
+			name: "final dry run gRPC status error preserves code",
+			req: &pb.OnUpdateCatalogRequest{
+				CurrentCatalog: &hostcatalogs.HostCatalog{
+					Attrs: &hostcatalogs.HostCatalog_Attributes{
+						Attributes: &structpb.Struct{
+							Fields: map[string]*structpb.Value{
+								credential.ConstRegion:                    structpb.NewStringValue("us-west-2"),
+								credential.ConstDisableCredentialRotation: structpb.NewBoolValue(true),
+							},
+						},
+					},
+				},
+				NewCatalog: &hostcatalogs.HostCatalog{
+					Attrs: &hostcatalogs.HostCatalog_Attributes{
+						Attributes: &structpb.Struct{
+							Fields: map[string]*structpb.Value{
+								credential.ConstRegion:                    structpb.NewStringValue("us-west-2"),
+								credential.ConstDisableCredentialRotation: structpb.NewBoolValue(true),
+							},
+						},
+					},
+				},
+				Persisted: &pb.HostCatalogPersisted{
+					Secrets: &structpb.Struct{
+						Fields: map[string]*structpb.Value{
+							credential.ConstAccessKeyId:          structpb.NewStringValue("AKIA_foobar"),
+							credential.ConstSecretAccessKey:      structpb.NewStringValue("bazqux"),
+							credential.ConstCredsLastRotatedTime: structpb.NewStringValue("2006-01-02T15:04:05+07:00"),
+						},
+					},
+				},
+			},
+			catalogOpts: []awsCatalogPersistedStateOption{
+				withTestEC2APIFunc(newTestMockEC2(
+					nil,
+					testMockEC2WithDescribeInstancesError(awserrors.TestAwsError("AccessDenied", "not authorized to perform ec2:DescribeInstances")),
+				)),
+			},
+			// ParseAWSError maps AccessDenied to PermissionDenied. The dry-run
+			// error handler should preserve that gRPC status, not wrap it as Unknown.
+			expectedErrContains: "invalid credentials",
+			expectedErrCode:     codes.PermissionDenied,
+		},
 	}
 
 	for _, tc := range cases {
@@ -1681,6 +1757,55 @@ func TestPluginOnCreateSetErr(t *testing.T) {
 			expectedErrContains: testDescribeInstancesError,
 			expectedErrCode:     codes.Unknown,
 		},
+		{
+			name: "dry run gRPC status error preserves code",
+			req: &pb.OnCreateSetRequest{
+				Catalog: &hostcatalogs.HostCatalog{
+					Attrs: &hostcatalogs.HostCatalog_Attributes{
+						Attributes: &structpb.Struct{
+							Fields: map[string]*structpb.Value{
+								credential.ConstRegion:                    structpb.NewStringValue("us-west-2"),
+								credential.ConstDisableCredentialRotation: structpb.NewBoolValue(true),
+							},
+						},
+					},
+				},
+				Persisted: &pb.HostCatalogPersisted{
+					Secrets: &structpb.Struct{
+						Fields: map[string]*structpb.Value{
+							credential.ConstAccessKeyId:     structpb.NewStringValue("AKIA_foobar"),
+							credential.ConstSecretAccessKey: structpb.NewStringValue("bazqux"),
+						},
+					},
+				},
+				Set: &hostsets.HostSet{
+					Id: "foobar",
+					Attrs: &hostsets.HostSet_Attributes{
+						Attributes: &structpb.Struct{
+							Fields: map[string]*structpb.Value{
+								ConstDescribeInstancesFilters: structpb.NewListValue(
+									&structpb.ListValue{
+										Values: []*structpb.Value{
+											structpb.NewStringValue("tag-key=foo"),
+										},
+									},
+								),
+							},
+						},
+					},
+				},
+			},
+			catalogOpts: []awsCatalogPersistedStateOption{
+				withTestEC2APIFunc(newTestMockEC2(
+					nil,
+					testMockEC2WithDescribeInstancesError(awserrors.TestAwsError("AccessDenied", "not authorized to perform ec2:DescribeInstances")),
+				)),
+			},
+			// ParseAWSError maps AccessDenied to PermissionDenied. The dry-run
+			// error handler should preserve that gRPC status, not wrap it as Unknown.
+			expectedErrContains: "invalid credentials",
+			expectedErrCode:     codes.PermissionDenied,
+		},
 	}
 
 	for _, tc := range cases {
@@ -1943,6 +2068,54 @@ func TestPluginOnUpdateSetErr(t *testing.T) {
 			},
 			expectedErrContains: testDescribeInstancesError,
 			expectedErrCode:     codes.Unknown,
+		},
+		{
+			name: "dry run gRPC status error preserves code",
+			req: &pb.OnUpdateSetRequest{
+				Catalog: &hostcatalogs.HostCatalog{
+					Attrs: &hostcatalogs.HostCatalog_Attributes{
+						Attributes: &structpb.Struct{
+							Fields: map[string]*structpb.Value{
+								credential.ConstRegion:                    structpb.NewStringValue("us-west-2"),
+								credential.ConstDisableCredentialRotation: structpb.NewBoolValue(true),
+							},
+						},
+					},
+				},
+				Persisted: &pb.HostCatalogPersisted{
+					Secrets: &structpb.Struct{
+						Fields: map[string]*structpb.Value{
+							credential.ConstAccessKeyId:     structpb.NewStringValue("AKIA_foobar"),
+							credential.ConstSecretAccessKey: structpb.NewStringValue("bazqux"),
+						},
+					},
+				},
+				NewSet: &hostsets.HostSet{
+					Attrs: &hostsets.HostSet_Attributes{
+						Attributes: &structpb.Struct{
+							Fields: map[string]*structpb.Value{
+								ConstDescribeInstancesFilters: structpb.NewListValue(
+									&structpb.ListValue{
+										Values: []*structpb.Value{
+											structpb.NewStringValue("tag-key=foo"),
+										},
+									},
+								),
+							},
+						},
+					},
+				},
+			},
+			catalogOpts: []awsCatalogPersistedStateOption{
+				withTestEC2APIFunc(newTestMockEC2(
+					nil,
+					testMockEC2WithDescribeInstancesError(awserrors.TestAwsError("AccessDenied", "not authorized to perform ec2:DescribeInstances")),
+				)),
+			},
+			// ParseAWSError maps AccessDenied to PermissionDenied. The dry-run
+			// error handler should preserve that gRPC status, not wrap it as Unknown.
+			expectedErrContains: "invalid credentials",
+			expectedErrCode:     codes.PermissionDenied,
 		},
 	}
 
