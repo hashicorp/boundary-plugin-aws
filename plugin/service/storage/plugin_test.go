@@ -3749,159 +3749,193 @@ func TestStoragePlugin_PutObjectMultipart(t *testing.T) {
 		}
 	}
 
-	t.Run("multipart success spanning multiple parts", func(t *testing.T) {
-		require, assert := require.New(t), assert.New(t)
-		// 20 MiB with 8 MiB parts -> 3 parts (8, 8, 4 MiB).
-		fp, wholeChecksum := genFile(t, "large-file", 20*1024*1024)
+	inputCases := []struct {
+		name                string
+		req                 *pb.PutObjectRequest
+		storageState        *awsStoragePersistedState
+		file                *os.File
+		expectedErrContains string
+	}{
+		{
+			name:                "nil request",
+			expectedErrContains: "request is required",
+		},
+		{
+			name:                "nil storage state",
+			req:                 validRequest(""),
+			file:                &os.File{},
+			expectedErrContains: "storage state is required",
+		},
+		{
+			name:                "nil file",
+			req:                 validRequest(""),
+			storageState:        &awsStoragePersistedState{},
+			expectedErrContains: "file is required",
+		},
+	}
 
-		state := &testMockS3State{}
-		p := &StoragePlugin{
-			testCredStateOpts: validSTSMock(),
-			testStorageStateOpts: []awsStoragePersistedStateOption{
-				withTestS3APIFunc(newTestMockS3(state)),
-			},
-		}
+	for _, tc := range inputCases {
+		t.Run(tc.name, func(t *testing.T) {
+			err := (&StoragePlugin{}).putObjectMultipart(
+				context.Background(),
+				tc.req,
+				tc.storageState,
+				"bucket",
+				"object",
+				tc.file,
+				1,
+			)
+			require.ErrorContains(t, err, tc.expectedErrContains)
+			require.Equal(t, codes.InvalidArgument, status.Code(err))
+		})
+	}
 
-		resp, err := p.PutObject(context.Background(), validRequest(fp))
-		require.NoError(err)
-		require.NotNil(resp)
-
-		// Boundary must receive the whole-object SHA-256, not the multipart
-		// composite checksum.
-		assert.True(bytes.Equal(wholeChecksum, resp.GetChecksumSha_256()))
-
-		// The single-shot PutObject path must not have been used.
-		assert.False(state.PutObjectCalled)
-		assert.True(state.CreateMultipartUploadCalled)
-		assert.Equal(3, state.UploadPartCallCount)
-		assert.True(state.CompleteMultipartUploadCalled)
-		assert.False(state.AbortMultipartUploadCalled)
-
-		// The reassembled part bodies must equal the original file content.
-		orig, err := os.ReadFile(fp)
-		require.NoError(err)
-		assert.True(bytes.Equal(orig, state.UploadPartBody))
-
-		// The object key must include the configured bucket prefix.
-		require.NotNil(state.CreateMultipartUploadInputParams)
-		assert.Equal("prefix/mock-object", aws.ToString(state.CreateMultipartUploadInputParams.Key))
-	})
-
-	t.Run("file just above threshold uses two parts", func(t *testing.T) {
-		require, assert := require.New(t), assert.New(t)
-		// 8 MiB + 1 byte -> 2 parts (8 MiB, 1 byte).
-		fp, wholeChecksum := genFile(t, "just-over", 8*1024*1024+1)
-
-		state := &testMockS3State{}
-		p := &StoragePlugin{
-			testCredStateOpts: validSTSMock(),
-			testStorageStateOpts: []awsStoragePersistedStateOption{
-				withTestS3APIFunc(newTestMockS3(state)),
-			},
-		}
-
-		resp, err := p.PutObject(context.Background(), validRequest(fp))
-		require.NoError(err)
-		assert.True(bytes.Equal(wholeChecksum, resp.GetChecksumSha_256()))
-		assert.Equal(2, state.UploadPartCallCount)
-		assert.True(state.CompleteMultipartUploadCalled)
-	})
-
-	t.Run("file at threshold uses single PutObject", func(t *testing.T) {
-		require, assert := require.New(t), assert.New(t)
-		// Exactly 8 MiB is not above the threshold, so the single-shot path is used.
-		fp, wholeChecksum := genFile(t, "at-threshold", 8*1024*1024)
-		checksum := base64.StdEncoding.EncodeToString(wholeChecksum)
-
-		state := &testMockS3State{}
-		p := &StoragePlugin{
-			testCredStateOpts: validSTSMock(),
-			testStorageStateOpts: []awsStoragePersistedStateOption{
-				withTestS3APIFunc(newTestMockS3(
-					state,
+	cases := []struct {
+		name                    string
+		fileName                string
+		fileSize                int
+		mockOptions             func([]byte) []testMockS3Option
+		expectedErrContains     string
+		expectedErrCode         codes.Code
+		expectedParts           int
+		expectedChecksum        bool
+		expectedPutObject       bool
+		expectedCreateMultipart bool
+		expectedComplete        bool
+		expectedAbort           bool
+		checkUploadedBody       bool
+		expectedObjectKey       string
+	}{
+		{
+			name:                    "multipart success spanning multiple parts",
+			fileName:                "large-file",
+			fileSize:                20 * 1024 * 1024,
+			expectedParts:           3,
+			expectedChecksum:        true,
+			expectedCreateMultipart: true,
+			expectedComplete:        true,
+			checkUploadedBody:       true,
+			expectedObjectKey:       "prefix/mock-object",
+		},
+		{
+			name:                    "file just above threshold uses two parts",
+			fileName:                "just-over",
+			fileSize:                8*1024*1024 + 1,
+			expectedParts:           2,
+			expectedChecksum:        true,
+			expectedCreateMultipart: true,
+			expectedComplete:        true,
+		},
+		{
+			name:              "file at threshold uses single PutObject",
+			fileName:          "at-threshold",
+			fileSize:          8 * 1024 * 1024,
+			expectedChecksum:  true,
+			expectedPutObject: true,
+			mockOptions: func(checksum []byte) []testMockS3Option {
+				return []testMockS3Option{
 					testMockS3WithPutObjectOutput(&s3.PutObjectOutput{
-						ChecksumSHA256: aws.String(checksum),
+						ChecksumSHA256: aws.String(base64.StdEncoding.EncodeToString(checksum)),
 					}),
-				)),
+				}
 			},
-		}
-
-		resp, err := p.PutObject(context.Background(), validRequest(fp))
-		require.NoError(err)
-		assert.True(bytes.Equal(wholeChecksum, resp.GetChecksumSha_256()))
-		assert.True(state.PutObjectCalled)
-		assert.False(state.CreateMultipartUploadCalled)
-	})
-
-	t.Run("create multipart upload error", func(t *testing.T) {
-		require, assert := require.New(t), assert.New(t)
-		fp, _ := genFile(t, "create-err", 20*1024*1024)
-
-		state := &testMockS3State{}
-		p := &StoragePlugin{
-			testCredStateOpts: validSTSMock(),
-			testStorageStateOpts: []awsStoragePersistedStateOption{
-				withTestS3APIFunc(newTestMockS3(
-					state,
+		},
+		{
+			name:                    "create multipart upload error",
+			fileName:                "create-err",
+			fileSize:                20 * 1024 * 1024,
+			expectedErrContains:     "create multipart upload",
+			expectedErrCode:         codes.PermissionDenied,
+			expectedCreateMultipart: true,
+			mockOptions: func(_ []byte) []testMockS3Option {
+				return []testMockS3Option{
 					testMockS3WithCreateMultipartUploadError(TestAwsS3Error("AccessDenied", "CreateMultipartUpload", "not authorized")),
-				)),
+				}
 			},
-		}
-
-		resp, err := p.PutObject(context.Background(), validRequest(fp))
-		require.Error(err)
-		assert.Nil(resp)
-		assert.Equal(codes.PermissionDenied, status.Code(err))
-		// Nothing was created, so nothing should be aborted.
-		assert.False(state.AbortMultipartUploadCalled)
-	})
-
-	t.Run("upload part error aborts upload", func(t *testing.T) {
-		require, assert := require.New(t), assert.New(t)
-		fp, _ := genFile(t, "upload-err", 20*1024*1024)
-
-		state := &testMockS3State{}
-		p := &StoragePlugin{
-			testCredStateOpts: validSTSMock(),
-			testStorageStateOpts: []awsStoragePersistedStateOption{
-				withTestS3APIFunc(newTestMockS3(
-					state,
+		},
+		{
+			name:                    "upload part error aborts upload",
+			fileName:                "upload-err",
+			fileSize:                20 * 1024 * 1024,
+			expectedErrContains:     "upload part",
+			expectedErrCode:         codes.PermissionDenied,
+			expectedCreateMultipart: true,
+			expectedAbort:           true,
+			mockOptions: func(_ []byte) []testMockS3Option {
+				return []testMockS3Option{
 					testMockS3WithUploadPartErrorOnPart(2, TestAwsS3Error("AccessDenied", "UploadPart", "not authorized")),
-				)),
+				}
 			},
-		}
-
-		resp, err := p.PutObject(context.Background(), validRequest(fp))
-		require.Error(err)
-		assert.Nil(resp)
-		assert.Equal(codes.PermissionDenied, status.Code(err))
-		assert.True(state.CreateMultipartUploadCalled)
-		assert.False(state.CompleteMultipartUploadCalled)
-		// The failed upload must be aborted to avoid orphaned parts.
-		assert.True(state.AbortMultipartUploadCalled)
-	})
-
-	t.Run("complete multipart upload error aborts upload", func(t *testing.T) {
-		require, assert := require.New(t), assert.New(t)
-		fp, _ := genFile(t, "complete-err", 20*1024*1024)
-
-		state := &testMockS3State{}
-		p := &StoragePlugin{
-			testCredStateOpts: validSTSMock(),
-			testStorageStateOpts: []awsStoragePersistedStateOption{
-				withTestS3APIFunc(newTestMockS3(
-					state,
+		},
+		{
+			name:                    "complete multipart upload error aborts upload",
+			fileName:                "complete-err",
+			fileSize:                20 * 1024 * 1024,
+			expectedErrContains:     "complete multipart upload",
+			expectedCreateMultipart: true,
+			expectedParts:           3,
+			expectedComplete:        true,
+			expectedAbort:           true,
+			mockOptions: func(_ []byte) []testMockS3Option {
+				return []testMockS3Option{
 					testMockS3WithCompleteMultipartUploadError(TestAwsS3Error("InternalError", "CompleteMultipartUpload", "boom")),
-				)),
+				}
 			},
-		}
+		},
+	}
 
-		resp, err := p.PutObject(context.Background(), validRequest(fp))
-		require.Error(err)
-		assert.Nil(resp)
-		assert.Equal(3, state.UploadPartCallCount)
-		assert.True(state.AbortMultipartUploadCalled)
-	})
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			require, assert := require.New(t), assert.New(t)
+			fp, wholeChecksum := genFile(t, tc.fileName, tc.fileSize)
+			state := &testMockS3State{}
+
+			var mockOptions []testMockS3Option
+			if tc.mockOptions != nil {
+				mockOptions = tc.mockOptions(wholeChecksum)
+			}
+			p := &StoragePlugin{
+				testCredStateOpts: validSTSMock(),
+				testStorageStateOpts: []awsStoragePersistedStateOption{
+					withTestS3APIFunc(newTestMockS3(state, mockOptions...)),
+				},
+			}
+
+			resp, err := p.PutObject(context.Background(), validRequest(fp))
+			if tc.expectedErrContains != "" {
+				require.Error(err)
+				require.Nil(resp)
+				require.ErrorContains(err, tc.expectedErrContains)
+				if tc.expectedErrCode != codes.Code(0) {
+					require.Equal(tc.expectedErrCode, status.Code(err))
+				}
+			} else {
+				require.NoError(err)
+				require.NotNil(resp)
+				if tc.expectedChecksum {
+					assert.True(bytes.Equal(wholeChecksum, resp.GetChecksumSha_256()))
+				}
+			}
+
+			assert.Equal(tc.expectedPutObject, state.PutObjectCalled)
+			assert.Equal(tc.expectedCreateMultipart, state.CreateMultipartUploadCalled)
+			if tc.expectedParts > 0 {
+				assert.Equal(tc.expectedParts, state.UploadPartCallCount)
+			}
+			assert.Equal(tc.expectedComplete, state.CompleteMultipartUploadCalled)
+			assert.Equal(tc.expectedAbort, state.AbortMultipartUploadCalled)
+
+			if tc.checkUploadedBody {
+				orig, err := os.ReadFile(fp)
+				require.NoError(err)
+				assert.True(bytes.Equal(orig, state.UploadPartBody))
+			}
+			if tc.expectedObjectKey != "" {
+				require.NotNil(state.CreateMultipartUploadInputParams)
+				assert.Equal(tc.expectedObjectKey, aws.ToString(state.CreateMultipartUploadInputParams.Key))
+			}
+		})
+	}
 }
 
 func TestStoragePlugin_DeleteObjects(t *testing.T) {

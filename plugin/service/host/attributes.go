@@ -145,6 +145,10 @@ func getSetAttributes(in *structpb.Struct) (*SetAttributes, error) {
 }
 
 func hasTargetAccountAttributes(in *structpb.Struct) bool {
+	if in == nil {
+		return false
+	}
+
 	fields := in.GetFields()
 
 	_, hasTargetRegion := fields[cred.ConstTargetRegion]
