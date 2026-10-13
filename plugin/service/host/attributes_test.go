@@ -303,6 +303,44 @@ func TestGetCatalogAttributes(t *testing.T) {
 	}
 }
 
+func TestHasTargetAccountAttributes(t *testing.T) {
+	cases := []struct {
+		name     string
+		in       *structpb.Struct
+		expected bool
+	}{
+		{
+			name:     "nil input",
+			in:       nil,
+			expected: false,
+		},
+		{
+			name: "no target attributes",
+			in: &structpb.Struct{
+				Fields: map[string]*structpb.Value{
+					credential.ConstRegion: structpb.NewStringValue("us-west-2"),
+				},
+			},
+			expected: false,
+		},
+		{
+			name: "target attributes",
+			in: &structpb.Struct{
+				Fields: map[string]*structpb.Value{
+					credential.ConstTargetRoleArn: structpb.NewStringValue("arn:aws:iam::222222222222:role/Target"),
+				},
+			},
+			expected: true,
+		},
+	}
+
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			require.Equal(t, tc.expected, hasTargetAccountAttributes(tc.in))
+		})
+	}
+}
+
 func TestGetSetAttributes(t *testing.T) {
 	cases := []struct {
 		name                string

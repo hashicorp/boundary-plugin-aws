@@ -103,65 +103,75 @@ func TestGetCredentialAttributes(t *testing.T) {
 
 func TestGetTargetCredentialAttributes(t *testing.T) {
 	const targetRoleArn = "arn:aws:iam::222222222222:role/Target"
+	input := func(fields map[string]any) *structpb.Struct {
+		input, err := structpb.NewStruct(fields)
+		require.NoError(t, err)
+		return input
+	}
 
 	cases := []struct {
 		name                string
-		in                  map[string]any
+		in                  *structpb.Struct
 		expected            *CredentialAttributes
 		expectedErrContains string
 	}{
 		{
+			name:                "nil input",
+			in:                  nil,
+			expectedErrContains: "attributes are required",
+		},
+		{
 			name: "missing target_role_arn",
-			in: map[string]any{
+			in: input(map[string]any{
 				ConstRegion: "us-west-2",
-			},
+			}),
 			expectedErrContains: "attributes.target_role_arn: missing required value \"target_role_arn\"",
 		},
 		{
 			name:                "missing target_role_arn and region",
-			in:                  map[string]any{},
+			in:                  input(map[string]any{}),
 			expectedErrContains: "attributes.target_role_arn: missing required value \"target_role_arn\"",
 		},
 		{
 			name: "empty target_role_arn",
-			in: map[string]any{
+			in: input(map[string]any{
 				ConstRegion:        "us-west-2",
 				ConstTargetRoleArn: "",
-			},
+			}),
 			expectedErrContains: "attributes.target_role_arn: value \"target_role_arn\" cannot be empty",
 		},
 		{
 			name: "wrong type target_role_arn",
-			in: map[string]any{
+			in: input(map[string]any{
 				ConstRegion:        "us-west-2",
 				ConstTargetRoleArn: true,
-			},
+			}),
 			expectedErrContains: "attributes.target_role_arn: unexpected type for value \"target_role_arn\": want string, got bool",
 		},
 		{
 			name: "target_region without target_role_arn",
-			in: map[string]any{
+			in: input(map[string]any{
 				ConstRegion:       "us-west-2",
 				ConstTargetRegion: "eu-west-1",
-			},
+			}),
 			expectedErrContains: "attributes.target_role_arn: missing required value \"target_role_arn\"",
 		},
 		{
 			name: "other target fields without target_role_arn",
-			in: map[string]any{
+			in: input(map[string]any{
 				ConstRegion:                "us-west-2",
 				ConstTargetRoleExternalId:  "ext",
 				ConstTargetRoleSessionName: "sess",
 				ConstTargetRoleTags:        map[string]any{"k": "v"},
-			},
+			}),
 			expectedErrContains: "attributes.target_role_arn: missing required value \"target_role_arn\"",
 		},
 		{
 			name: "target_role_arn uses region when target_region omitted",
-			in: map[string]any{
+			in: input(map[string]any{
 				ConstRegion:        "us-west-2",
 				ConstTargetRoleArn: targetRoleArn,
-			},
+			}),
 			expected: &CredentialAttributes{
 				Region:  "us-west-2",
 				RoleArn: targetRoleArn,
@@ -169,18 +179,18 @@ func TestGetTargetCredentialAttributes(t *testing.T) {
 		},
 		{
 			name: "target_role_arn without target_region or region",
-			in: map[string]any{
+			in: input(map[string]any{
 				ConstTargetRoleArn: targetRoleArn,
-			},
+			}),
 			expectedErrContains: "missing required value \"region\"",
 		},
 		{
 			name: "target_region overrides region",
-			in: map[string]any{
+			in: input(map[string]any{
 				ConstRegion:        "us-west-2",
 				ConstTargetRegion:  "eu-west-1",
 				ConstTargetRoleArn: targetRoleArn,
-			},
+			}),
 			expected: &CredentialAttributes{
 				Region:  "eu-west-1",
 				RoleArn: targetRoleArn,
@@ -188,11 +198,11 @@ func TestGetTargetCredentialAttributes(t *testing.T) {
 		},
 		{
 			name: "empty target_region falls back to region",
-			in: map[string]any{
+			in: input(map[string]any{
 				ConstRegion:        "us-west-2",
 				ConstTargetRegion:  "",
 				ConstTargetRoleArn: targetRoleArn,
-			},
+			}),
 			expected: &CredentialAttributes{
 				Region:  "us-west-2",
 				RoleArn: targetRoleArn,
@@ -200,7 +210,7 @@ func TestGetTargetCredentialAttributes(t *testing.T) {
 		},
 		{
 			name: "all optional target fields",
-			in: map[string]any{
+			in: input(map[string]any{
 				ConstRegion:                    "us-west-2",
 				ConstDisableCredentialRotation: true,
 				ConstTargetRoleArn:             targetRoleArn,
@@ -208,7 +218,7 @@ func TestGetTargetCredentialAttributes(t *testing.T) {
 				ConstTargetRoleExternalId:      "target-ext",
 				ConstTargetRoleSessionName:     "target-sess",
 				ConstTargetRoleTags:            map[string]any{"env": "target"},
-			},
+			}),
 			expected: &CredentialAttributes{
 				Region:                    "eu-west-1",
 				DisableCredentialRotation: true,
@@ -220,14 +230,14 @@ func TestGetTargetCredentialAttributes(t *testing.T) {
 		},
 		{
 			name: "optional target fields omitted do not copy principal role fields",
-			in: map[string]any{
+			in: input(map[string]any{
 				ConstRegion:          "us-west-2",
 				ConstRoleArn:         "arn:aws:iam::111111111111:role/Principal",
 				ConstRoleExternalId:  "principal-ext",
 				ConstRoleSessionName: "principal-sess",
 				ConstRoleTags:        map[string]any{"env": "principal"},
 				ConstTargetRoleArn:   targetRoleArn,
-			},
+			}),
 			expected: &CredentialAttributes{
 				Region:  "us-west-2",
 				RoleArn: targetRoleArn,
@@ -235,11 +245,11 @@ func TestGetTargetCredentialAttributes(t *testing.T) {
 		},
 		{
 			name: "disable_credential_rotation false is copied",
-			in: map[string]any{
+			in: input(map[string]any{
 				ConstRegion:                    "us-west-2",
 				ConstDisableCredentialRotation: false,
 				ConstTargetRoleArn:             targetRoleArn,
-			},
+			}),
 			expected: &CredentialAttributes{
 				Region:                    "us-west-2",
 				DisableCredentialRotation: false,
@@ -248,58 +258,58 @@ func TestGetTargetCredentialAttributes(t *testing.T) {
 		},
 		{
 			name: "wrong type target_region",
-			in: map[string]any{
+			in: input(map[string]any{
 				ConstRegion:        "us-west-2",
 				ConstTargetRoleArn: targetRoleArn,
 				ConstTargetRegion:  true,
-			},
+			}),
 			expectedErrContains: "attributes.target_region: unexpected type for value \"target_region\": want string, got bool",
 		},
 		{
 			name: "wrong type target_role_external_id",
-			in: map[string]any{
+			in: input(map[string]any{
 				ConstRegion:               "us-west-2",
 				ConstTargetRoleArn:        targetRoleArn,
 				ConstTargetRoleExternalId: true,
-			},
+			}),
 			expectedErrContains: "attributes.target_role_external_id: unexpected type for value \"target_role_external_id\": want string, got bool",
 		},
 		{
 			name: "wrong type target_role_session_name",
-			in: map[string]any{
+			in: input(map[string]any{
 				ConstRegion:                "us-west-2",
 				ConstTargetRoleArn:         targetRoleArn,
 				ConstTargetRoleSessionName: true,
-			},
+			}),
 			expectedErrContains: "attributes.target_role_session_name: unexpected type for value \"target_role_session_name\": want string, got bool",
 		},
 		{
 			name: "wrong type target_role_tags",
-			in: map[string]any{
+			in: input(map[string]any{
 				ConstRegion:         "us-west-2",
 				ConstTargetRoleArn:  targetRoleArn,
 				ConstTargetRoleTags: true,
-			},
+			}),
 			expectedErrContains: "attributes.target_role_tags: unexpected type for value \"target_role_tags\": want map[string]string, got bool",
 		},
 		{
 			name: "wrong type target_role_tag value",
-			in: map[string]any{
+			in: input(map[string]any{
 				ConstRegion:        "us-west-2",
 				ConstTargetRoleArn: targetRoleArn,
 				ConstTargetRoleTags: map[string]any{
 					"env": true,
 				},
-			},
+			}),
 			expectedErrContains: `unexpected type for value in map["env"]: want string, got bool`,
 		},
 		{
 			name: "wrong type disable_credential_rotation",
-			in: map[string]any{
+			in: input(map[string]any{
 				ConstRegion:                    "us-west-2",
 				ConstTargetRoleArn:             targetRoleArn,
 				ConstDisableCredentialRotation: "sure",
-			},
+			}),
 			expectedErrContains: "attributes.disable_credential_rotation: unexpected type for value \"disable_credential_rotation\": want bool, got string",
 		},
 	}
@@ -309,10 +319,7 @@ func TestGetTargetCredentialAttributes(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			require := require.New(t)
 
-			input, err := structpb.NewStruct(tc.in)
-			require.NoError(err)
-
-			actual, err := GetTargetCredentialAttributes(input)
+			actual, err := GetTargetCredentialAttributes(tc.in)
 			if tc.expectedErrContains != "" {
 				require.Error(err)
 				require.Nil(actual)

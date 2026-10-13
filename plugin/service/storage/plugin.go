@@ -837,6 +837,15 @@ func (p *StoragePlugin) putObjectMultipart(
 	partSize int64,
 	opts ...s3Option,
 ) error {
+	switch {
+	case req == nil:
+		return errors.BadRequestStatus("request is required")
+	case storageState == nil:
+		return errors.BadRequestStatus("storage state is required")
+	case file == nil:
+		return errors.BadRequestStatus("file is required")
+	}
+
 	bucketId := req.GetBucket().GetId()
 
 	createCall := func(s3Client S3API) (any, error) {

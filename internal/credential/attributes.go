@@ -192,6 +192,10 @@ func GetCredentialAttributes(in *structpb.Struct) (*CredentialAttributes, error)
 // A status error is returned with an InvalidArgument code when target account attributes are missing
 // required values or have invalid value types.
 func GetTargetCredentialAttributes(in *structpb.Struct) (*CredentialAttributes, error) {
+	if in == nil {
+		return nil, errors.BadRequestStatus("attributes are required")
+	}
+
 	badFields := make(map[string]string)
 
 	// Parse the role ARN of the target account to AssumeRole into.
