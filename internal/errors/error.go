@@ -18,7 +18,7 @@ import (
 	awshttp "github.com/aws/aws-sdk-go-v2/aws/transport/http"
 	"github.com/aws/aws-sdk-go-v2/service/s3/types"
 	"github.com/aws/smithy-go"
-	pb "github.com/hashicorp/boundary/sdk/pbs/plugin"
+	pb "github.com/hashicorp/boundary-sdk/sdk/pbs/plugin"
 	"google.golang.org/protobuf/types/known/timestamppb"
 )
 

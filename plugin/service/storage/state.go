@@ -17,7 +17,7 @@ import (
 	"github.com/aws/aws-sdk-go-v2/service/s3"
 	smithyEndpoints "github.com/aws/smithy-go/endpoints"
 	"github.com/hashicorp/boundary-plugin-aws/internal/credential"
-	"github.com/hashicorp/boundary/sdk/pbs/controller/api/resources/storagebuckets"
+	"github.com/hashicorp/boundary-sdk/sdk/pbs/controller/api/resources/storagebuckets"
 	"google.golang.org/protobuf/types/known/structpb"
 )
 

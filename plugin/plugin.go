@@ -6,7 +6,7 @@ package plugin
 import (
 	"github.com/hashicorp/boundary-plugin-aws/plugin/service/host"
 	"github.com/hashicorp/boundary-plugin-aws/plugin/service/storage"
-	pb "github.com/hashicorp/boundary/sdk/pbs/plugin"
+	pb "github.com/hashicorp/boundary-sdk/sdk/pbs/plugin"
 )
 
 // Ensure that AWSPlugin implementings the following services:

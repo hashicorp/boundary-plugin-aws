@@ -16,7 +16,7 @@ import (
 	stsTypes "github.com/aws/aws-sdk-go-v2/service/sts/types"
 	"github.com/hashicorp/boundary-plugin-aws/internal/credential"
 	"github.com/hashicorp/boundary-plugin-aws/internal/errors"
-	pb "github.com/hashicorp/boundary/sdk/pbs/plugin"
+	pb "github.com/hashicorp/boundary-sdk/sdk/pbs/plugin"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 	"google.golang.org/protobuf/proto"
