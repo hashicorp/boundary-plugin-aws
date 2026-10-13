@@ -21,9 +21,9 @@ import (
 	"github.com/google/go-cmp/cmp"
 	"github.com/hashicorp/boundary-plugin-aws/internal/credential"
 	awserrors "github.com/hashicorp/boundary-plugin-aws/internal/errors"
-	"github.com/hashicorp/boundary/sdk/pbs/controller/api/resources/hostcatalogs"
-	"github.com/hashicorp/boundary/sdk/pbs/controller/api/resources/hostsets"
-	pb "github.com/hashicorp/boundary/sdk/pbs/plugin"
+	"github.com/hashicorp/boundary-sdk/sdk/pbs/controller/api/resources/hostcatalogs"
+	"github.com/hashicorp/boundary-sdk/sdk/pbs/controller/api/resources/hostsets"
+	pb "github.com/hashicorp/boundary-sdk/sdk/pbs/plugin"
 	"github.com/hashicorp/go-secure-stdlib/awsutil/v2"
 	"github.com/stretchr/testify/require"
 	"google.golang.org/grpc/codes"
@@ -31,6 +31,7 @@ import (
 	"google.golang.org/protobuf/testing/protocmp"
 	"google.golang.org/protobuf/types/known/structpb"
 )
+
 // testRoleARN is a syntactically valid ARN used for role_arn test cases.
 // All STS calls against it are handled by injected mocks — no real AWS
 // account is contacted.
@@ -62,7 +63,6 @@ func catalogAttrsStruct(region, roleArn string, disableRotation bool) *structpb.
 	}
 	return &structpb.Struct{Fields: fields}
 }
-
 
 func TestPluginOnCreateCatalogSuccess(t *testing.T) {
 	tests := []struct {

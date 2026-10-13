@@ -10,7 +10,7 @@ import (
 	"github.com/google/go-cmp/cmp"
 	"github.com/hashicorp/boundary-plugin-aws/internal/credential"
 	cred "github.com/hashicorp/boundary-plugin-aws/internal/credential"
-	"github.com/hashicorp/boundary/sdk/pbs/plugin"
+	"github.com/hashicorp/boundary-sdk/sdk/pbs/plugin"
 	"github.com/stretchr/testify/require"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"

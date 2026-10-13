@@ -5,7 +5,7 @@ package storage
 
 import (
 	"github.com/hashicorp/boundary-plugin-aws/internal/errors"
-	pb "github.com/hashicorp/boundary/sdk/pbs/plugin"
+	pb "github.com/hashicorp/boundary-sdk/sdk/pbs/plugin"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 )

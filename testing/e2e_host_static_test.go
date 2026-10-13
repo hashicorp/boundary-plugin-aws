@@ -15,9 +15,9 @@ import (
 
 	"github.com/hashicorp/boundary-plugin-aws/internal/credential"
 	"github.com/hashicorp/boundary-plugin-aws/plugin/service/host"
-	"github.com/hashicorp/boundary/sdk/pbs/controller/api/resources/hostcatalogs"
-	"github.com/hashicorp/boundary/sdk/pbs/controller/api/resources/hostsets"
-	pb "github.com/hashicorp/boundary/sdk/pbs/plugin"
+	"github.com/hashicorp/boundary-sdk/sdk/pbs/controller/api/resources/hostcatalogs"
+	"github.com/hashicorp/boundary-sdk/sdk/pbs/controller/api/resources/hostsets"
+	pb "github.com/hashicorp/boundary-sdk/sdk/pbs/plugin"
 	"github.com/stretchr/testify/require"
 	"google.golang.org/protobuf/types/known/structpb"
 )
