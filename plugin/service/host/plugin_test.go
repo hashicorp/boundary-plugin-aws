@@ -3478,3 +3478,95 @@ func TestAppendDistinct(t *testing.T) {
 		})
 	}
 }
+
+func TestCheckHostsAuthFailureRetry(t *testing.T) {
+	makeState := func(ec2Opts ...testMockEC2Option) *awsCatalogPersistedState {
+		return &awsCatalogPersistedState{
+			AwsCredentialPersistedState: &credential.AwsCredentialPersistedState{
+				CredentialsConfig: &awsutil.CredentialsConfig{
+					AccessKey: "AKIAfoo",
+					SecretKey: "baz",
+				},
+			},
+			testEC2APIFunc: newTestMockEC2(nil, ec2Opts...),
+		}
+	}
+	makeStateWithCounter := func(state *testMockEC2State, ec2Opts ...testMockEC2Option) *awsCatalogPersistedState {
+		return &awsCatalogPersistedState{
+			AwsCredentialPersistedState: &credential.AwsCredentialPersistedState{
+				CredentialsConfig: &awsutil.CredentialsConfig{
+					AccessKey: "AKIAfoo",
+					SecretKey: "baz",
+				},
+			},
+			testEC2APIFunc: newTestMockEC2(state, ec2Opts...),
+		}
+	}
+
+	dryRunInput := &ec2.DescribeInstancesInput{DryRun: aws.Bool(true)}
+	liveInput := &ec2.DescribeInstancesInput{DryRun: aws.Bool(false)}
+
+	t.Run("authFailureThenSuccess", func(t *testing.T) {
+		// Simulates the IAM eventual consistency window: EC2 returns AuthFailure
+		// twice before the credentials propagate and the call succeeds.
+		state := &testMockEC2State{}
+		output, err := checkHosts(context.Background(),
+			makeStateWithCounter(state,
+				testMockEC2WithDescribeInstancesErrorSequence(
+					fmt.Errorf("%s: credentials not yet propagated", awserrors.AwsErrorAuthFailure),
+					fmt.Errorf("%s: credentials not yet propagated", awserrors.AwsErrorAuthFailure),
+				),
+				testMockEC2WithDescribeInstancesOutput(&ec2.DescribeInstancesOutput{}),
+			),
+			dryRunInput, nil, nil,
+		)
+		require.NoError(t, err)
+		require.NotNil(t, output)
+		require.Equal(t, 3, state.DescribeInstancesCallCount)
+	})
+
+	t.Run("authFailureContextCancelled", func(t *testing.T) {
+		// If the context is cancelled while waiting to retry, checkHosts should
+		// return an error rather than hanging.
+		ctx, cancel := context.WithCancel(context.Background())
+		cancel()
+		_, err := checkHosts(ctx,
+			makeState(
+				testMockEC2WithDescribeInstancesError(fmt.Errorf("%s: credentials not yet propagated", awserrors.AwsErrorAuthFailure)),
+			),
+			dryRunInput, nil, nil,
+		)
+		require.Error(t, err)
+	})
+
+	t.Run("nonAuthFailureNoRetry", func(t *testing.T) {
+		// A non-AuthFailure error on a dry-run should fail immediately without retrying.
+		state := &testMockEC2State{}
+		_, err := checkHosts(context.Background(),
+			makeStateWithCounter(state,
+				testMockEC2WithDescribeInstancesError(fmt.Errorf("UnauthorizedOperation: access denied")),
+			),
+			dryRunInput, nil, nil,
+		)
+		require.Error(t, err)
+		require.Equal(t, 1, state.DescribeInstancesCallCount)
+	})
+
+	t.Run("authFailureRetriedOnLiveCall", func(t *testing.T) {
+		// AuthFailure on a live ListHosts call is also retried — the same
+		// propagation window applies after rotation regardless of dry-run.
+		state := &testMockEC2State{}
+		output, err := checkHosts(context.Background(),
+			makeStateWithCounter(state,
+				testMockEC2WithDescribeInstancesErrorSequence(
+					fmt.Errorf("%s: credentials not yet propagated", awserrors.AwsErrorAuthFailure),
+				),
+				testMockEC2WithDescribeInstancesOutput(&ec2.DescribeInstancesOutput{}),
+			),
+			liveInput, nil, nil,
+		)
+		require.NoError(t, err)
+		require.NotNil(t, output)
+		require.Equal(t, 2, state.DescribeInstancesCallCount)
+	})
+}

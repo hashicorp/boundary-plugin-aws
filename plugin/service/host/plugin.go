@@ -7,6 +7,7 @@ import (
 	"context"
 	"fmt"
 	"strings"
+	"time"
 
 	"github.com/aws/aws-sdk-go-v2/aws"
 	"github.com/aws/aws-sdk-go-v2/credentials/stscreds"
@@ -809,6 +810,20 @@ func checkHosts(ctx context.Context,
 	}
 
 	output, err := ec2Client.DescribeInstances(ctx, input)
+	// After static credential rotation, IAM eventual consistency can cause EC2
+	// to return AuthFailure for up to several seconds. Retry until the deadline.
+	deadline := time.Now().Add(30 * time.Second)
+	for strings.Contains(fmt.Sprint(err), errors.AwsErrorAuthFailure) && time.Now().Before(deadline) {
+		select {
+		case <-time.After(time.Second):
+		case <-ctx.Done():
+			break
+		}
+		if ctx.Err() != nil {
+			break
+		}
+		output, err = ec2Client.DescribeInstances(ctx, input)
+	}
 	if err != nil {
 		if errors.IsDryRunSuccess(err) {
 			// DryRunOperation: request would have succeeded; not a failure.
