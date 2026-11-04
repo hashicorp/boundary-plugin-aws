@@ -3513,8 +3513,8 @@ func TestCheckHostsAuthFailureRetry(t *testing.T) {
 		output, err := checkHosts(context.Background(),
 			makeStateWithCounter(state,
 				testMockEC2WithDescribeInstancesErrorSequence(
-					fmt.Errorf("%s: credentials not yet propagated", awserrors.AwsErrorAuthFailure),
-					fmt.Errorf("%s: credentials not yet propagated", awserrors.AwsErrorAuthFailure),
+					awserrors.TestAwsError(awserrors.AwsErrorAuthFailure, "credentials not yet propagated"),
+					awserrors.TestAwsError(awserrors.AwsErrorAuthFailure, "credentials not yet propagated"),
 				),
 				testMockEC2WithDescribeInstancesOutput(&ec2.DescribeInstancesOutput{}),
 			),
@@ -3532,7 +3532,7 @@ func TestCheckHostsAuthFailureRetry(t *testing.T) {
 		cancel()
 		_, err := checkHosts(ctx,
 			makeState(
-				testMockEC2WithDescribeInstancesError(fmt.Errorf("%s: credentials not yet propagated", awserrors.AwsErrorAuthFailure)),
+				testMockEC2WithDescribeInstancesError(awserrors.TestAwsError(awserrors.AwsErrorAuthFailure, "credentials not yet propagated")),
 			),
 			dryRunInput, nil, nil,
 		)
@@ -3559,7 +3559,7 @@ func TestCheckHostsAuthFailureRetry(t *testing.T) {
 		output, err := checkHosts(context.Background(),
 			makeStateWithCounter(state,
 				testMockEC2WithDescribeInstancesErrorSequence(
-					fmt.Errorf("%s: credentials not yet propagated", awserrors.AwsErrorAuthFailure),
+					awserrors.TestAwsError(awserrors.AwsErrorAuthFailure, "credentials not yet propagated"),
 				),
 				testMockEC2WithDescribeInstancesOutput(&ec2.DescribeInstancesOutput{}),
 			),

@@ -290,6 +290,17 @@ func Test_ParseAWSError(t *testing.T) {
 			},
 		},
 		{
+			name:               "aws-request-auth-failure",
+			err:                TestAwsError(AwsErrorAuthFailure, "credentials have not propagated"),
+			expectedStatusCode: codes.PermissionDenied,
+			expectedStatusMsg:  "aws service unknown: invalid credentials: test",
+			expectedPermission: &pb.Permission{
+				State:        pb.StateType_STATE_TYPE_ERROR,
+				ErrorDetails: "credentials have not propagated",
+				CheckedAt:    timestamppb.Now(),
+			},
+		},
+		{
 			name:               "aws-request-access-denied",
 			err:                TestAwsError(awsErrorAccessDenied, "not authorized to perform action"),
 			expectedStatusCode: codes.PermissionDenied,

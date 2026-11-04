@@ -813,7 +813,7 @@ func checkHosts(ctx context.Context,
 	// After static credential rotation, IAM eventual consistency can cause EC2
 	// to return AuthFailure for up to several seconds. Retry until the deadline.
 	deadline := time.Now().Add(30 * time.Second)
-	for strings.Contains(fmt.Sprint(err), errors.AwsErrorAuthFailure) && time.Now().Before(deadline) {
+	for errors.IsAuthFailure(err) && time.Now().Before(deadline) {
 		select {
 		case <-time.After(time.Second):
 		case <-ctx.Done():

@@ -82,6 +82,19 @@ const (
 	dryRunOperationErrorCode = "DryRunOperation"
 )
 
+// IsAuthFailure reports whether err is an AWS AuthFailure error, which indicates
+// credentials exist in IAM but have not yet propagated to EC2.
+func IsAuthFailure(err error) bool {
+	if err == nil {
+		return false
+	}
+	var apiErr smithy.APIError
+	if !errors.As(err, &apiErr) {
+		return false
+	}
+	return apiErr.ErrorCode() == AwsErrorAuthFailure
+}
+
 // IsDryRunSuccess reports whether err is the AWS DryRunOperation success signal.
 // A true result means the dry-run validated credentials, permissions, and parameters;
 // it must not be treated as a failure.
@@ -198,6 +211,8 @@ func ParseAWSError(op string, err error) (st *status.Status, permission *pb.Perm
 	var apiErr smithy.APIError
 	if errors.As(err, &apiErr) {
 		switch apiErr.ErrorCode() {
+		case AwsErrorAuthFailure:
+			fallthrough
 		case awsErrorAccessDenied:
 			fallthrough
 		case awsErrorUnauthorizedOperation:
