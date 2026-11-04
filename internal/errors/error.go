@@ -23,6 +23,11 @@ import (
 )
 
 const (
+	// AwsErrorAuthFailure is returned by EC2 when credentials exist in IAM
+	// but have not yet propagated to EC2. This is a transient eventual
+	// consistency issue that can resolve itself by retrying the request.
+	AwsErrorAuthFailure = "AuthFailure"
+
 	// awsErrorAccessDenied is returned when the credentials do not have
 	// the required permissions to do a specific action on a resource.
 	// This error will persist until the IAM Role Policy is updated by
@@ -76,6 +81,19 @@ const (
 	// succeeded. It is a success signal disguised as an API error (typically HTTP 412).
 	dryRunOperationErrorCode = "DryRunOperation"
 )
+
+// IsAuthFailure reports whether err is an AWS AuthFailure error, which indicates
+// credentials exist in IAM but have not yet propagated to EC2.
+func IsAuthFailure(err error) bool {
+	if err == nil {
+		return false
+	}
+	var apiErr smithy.APIError
+	if !errors.As(err, &apiErr) {
+		return false
+	}
+	return apiErr.ErrorCode() == AwsErrorAuthFailure
+}
 
 // IsDryRunSuccess reports whether err is the AWS DryRunOperation success signal.
 // A true result means the dry-run validated credentials, permissions, and parameters;
@@ -193,6 +211,8 @@ func ParseAWSError(op string, err error) (st *status.Status, permission *pb.Perm
 	var apiErr smithy.APIError
 	if errors.As(err, &apiErr) {
 		switch apiErr.ErrorCode() {
+		case AwsErrorAuthFailure:
+			fallthrough
 		case awsErrorAccessDenied:
 			fallthrough
 		case awsErrorUnauthorizedOperation:
