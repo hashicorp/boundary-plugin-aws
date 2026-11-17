@@ -1,6 +1,6 @@
 module github.com/hashicorp/boundary-plugin-aws
 
-go 1.26.10
+go 1.26.11
 
 require (
 	github.com/aws/aws-sdk-go-v2 v1.41.7
@@ -12,7 +12,7 @@ require (
 	github.com/aws/smithy-go v1.25.1
 	github.com/google/go-cmp v0.7.0
 	github.com/google/uuid v1.6.0
-	github.com/hashicorp/boundary-sdk/sdk v0.1.3
+	github.com/hashicorp/boundary-sdk/sdk v0.1.4
 	github.com/hashicorp/go-multierror v1.1.1
 	github.com/hashicorp/go-secure-stdlib/awsutil/v2 v2.1.3
 	github.com/hashicorp/go-secure-stdlib/parseutil v0.2.0
